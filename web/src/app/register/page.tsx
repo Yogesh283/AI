@@ -74,7 +74,7 @@ export default function RegisterPage() {
             Create account
           </h1>
           <p className="mt-2 text-sm text-white/45">
-            Join {brandName} — your AI companion
+            Join {brandName} — your personal AI assistant
           </p>
 
           <form onSubmit={onSubmit} className="mt-10 flex flex-col gap-5">

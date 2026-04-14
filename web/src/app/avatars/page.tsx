@@ -42,7 +42,7 @@ export default function AvatarsPage() {
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">Choose Your NeoXAI</h1>
         <p className="mt-1 text-sm text-white/45">
-          Select your personal AI companion.
+          Select your personal AI assistant style.
         </p>
       </header>
       <div className="mb-6 flex gap-2 rounded-2xl bg-black/30 p-1 ring-1 ring-white/10">

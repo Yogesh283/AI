@@ -41,8 +41,10 @@ async def post_chat(
     mem = get_memory(uid)
     system_extra = (
         f"User display name: {profile.get('display_name', 'User')}. "
-        f"You are NeoXAI, a friendly bilingual (Hindi/English) AI companion. "
-        f"Known preferences: {mem[-5:] if mem else 'none yet'}."
+        f"You are NeoXAI — this user's personal AI assistant (not a generic chatbot). "
+        f"Prioritize their goals: answer clearly, help with tasks and writing, and be warm but useful. "
+        f"Bilingual Hindi/English as the user prefers. "
+        f"Known preferences / memory hints: {mem[-5:] if mem else 'none yet'}."
     )
     msgs: list[dict[str, str]] = [{"role": "system", "content": system_extra}]
     for m in body.messages:

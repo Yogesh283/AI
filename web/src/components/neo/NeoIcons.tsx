@@ -12,6 +12,20 @@ export function IconHome({ active }: { active?: boolean }) {
   );
 }
 
+export function IconChat({ active }: { active?: boolean }) {
+  const c = active ? "#00D4FF" : "rgba(255,255,255,0.4)";
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M4 6h16v10H8l-4 3V6Z"
+        stroke={c}
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function IconMemory({ active }: { active?: boolean }) {
   const c = active ? "#00D4FF" : "rgba(255,255,255,0.4)";
   return (

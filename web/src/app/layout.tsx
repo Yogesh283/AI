@@ -15,10 +15,10 @@ export async function generateMetadata(): Promise<Metadata> {
   const brand = resolveSiteDisplayName(host);
   return {
     title: {
-      default: `${brand} — Your AI Companion`,
+      default: `${brand} — Your AI Assistant`,
       template: `%s | ${brand}`,
     },
-    description: `Chat, voice, and memory — ${brand}.`,
+    description: `Your personal AI assistant — chat, voice, memory, and tools. ${brand}.`,
   };
 }
 

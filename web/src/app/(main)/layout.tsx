@@ -13,7 +13,7 @@ export default function MainLayout({
   const path = usePathname();
   const isChat = path === "/chat";
   return (
-    <div className="relative min-h-[100dvh] pb-28 md:pb-0">
+    <div className="relative min-h-[100dvh] pb-24 md:pb-0">
       <NeoBackground stars={12} />
       <div className="neo-bottom-wave" aria-hidden />
       <div className="relative z-[1] flex min-h-[100dvh] md:h-[100dvh] md:max-h-[100dvh] md:overflow-hidden">

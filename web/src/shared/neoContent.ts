@@ -4,12 +4,12 @@
  */
 
 export const SPLASH = {
-  tagline: "Your AI Companion",
+  tagline: "Your Personal AI Assistant",
   loadingLabel: "Loading Intelligence...",
 } as const;
 
 export const DASHBOARD = {
-  greetingLine: "Ready to assist you.",
+  greetingLine: "Your assistant is ready when you are.",
   overviewTitle: "Today's Overview",
   stats: [
     { n: "3", l: "Tasks", tone: "cyan" as const },

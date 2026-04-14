@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  IconChat,
   IconMemory,
   IconMicCenter,
   IconTools,
@@ -11,6 +12,7 @@ import {
 
 const items = [
   { href: "/memory", label: "Memory", Icon: IconMemory },
+  { href: "/chat", label: "Chat", Icon: IconChat },
   { href: "/voice", label: "Voice", center: true },
   { href: "/tools", label: "Tools", Icon: IconTools },
   { href: "/profile", label: "Profile", Icon: IconUser },
@@ -35,8 +37,8 @@ function isRouteActive(
 export function BottomNav() {
   const path = usePathname();
   return (
-    <nav className="neo-safe-pb fixed bottom-0 left-0 right-0 z-50 border-t border-white/[0.1] bg-[#0a0c10]/95 backdrop-blur-2xl md:hidden">
-      <div className="mx-auto flex max-w-lg items-end justify-between px-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/[0.1] bg-[#0a0c10]/95 pb-[max(0.35rem,env(safe-area-inset-bottom))] backdrop-blur-2xl md:hidden">
+      <div className="mx-auto flex max-w-lg items-end justify-between gap-0.5 px-1 pt-1 sm:px-2">
         {items.map((it) => {
           const active = isRouteActive(path, it.href, it.center);
           if (it.center) {
@@ -44,17 +46,17 @@ export function BottomNav() {
               <Link
                 key={it.href}
                 href={it.href}
-                className="relative -mt-[1.65rem] flex min-w-[4.5rem] flex-col items-center"
+                className="relative -mt-[1.2rem] flex min-w-[3.5rem] flex-col items-center"
               >
                 <span
-                  className={`flex h-[4.5rem] w-[4.5rem] shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#2ec4ff] via-[#00a8e6] to-[#a855f7] shadow-[0_8px_32px_rgba(0,180,255,0.35),0_4px_16px_rgba(120,60,200,0.25)] ring-[5px] ring-[#07090e] ${
+                  className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#2ec4ff] via-[#00a8e6] to-[#a855f7] shadow-[0_6px_20px_rgba(0,180,255,0.3),0_3px_12px_rgba(120,60,200,0.2)] ring-[3px] ring-[#07090e] ${
                     active ? "ring-[#0a0c10]" : ""
                   }`}
                   aria-label={it.label}
                 >
                   <IconMicCenter />
                 </span>
-                <span className="mt-1.5 text-[11px] font-semibold tracking-wide text-white">
+                <span className="mt-1 text-[10px] font-semibold tracking-wide text-white">
                   {it.label}
                 </span>
               </Link>
@@ -65,7 +67,7 @@ export function BottomNav() {
             <Link
               key={it.href}
               href={it.href}
-              className={`flex min-w-[3.5rem] flex-col items-center gap-1 py-1.5 text-[10px] font-medium tracking-wide ${
+              className={`flex min-w-[2.85rem] flex-col items-center gap-0.5 py-0.5 text-[10px] font-medium tracking-wide sm:min-w-[3.25rem] ${
                 active ? "text-[#00D4FF]" : "text-white/45"
               }`}
             >

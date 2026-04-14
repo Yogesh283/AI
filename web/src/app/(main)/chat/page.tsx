@@ -10,16 +10,18 @@ import {
   isSpeechRecognitionSupported,
   speechRecognitionErrorMessage,
 } from "@/lib/voiceChat";
+import { useSiteBrand } from "@/components/SiteBrandProvider";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
-const initialMsgs = (): Msg[] => [
-  {
-    role: "assistant",
-    content:
-      "Good morning! Main NeoXAI hoon — poochho jo chaaho, Hindi ya English mein.",
-  },
-];
+function initialMsgs(brandName: string): Msg[] {
+  return [
+    {
+      role: "assistant",
+      content: `Good morning! Main ${brandName} hoon — aapka AI assistant. Jo bhi kaam ya sawaal ho, Hindi ya English mein poochho; main aapki madad ke liye yahan hoon.`,
+    },
+  ];
+}
 
 function AvatarNeo({ className = "" }: { className?: string }) {
   return (
@@ -46,8 +48,9 @@ function AvatarUser({ className = "" }: { className?: string }) {
 function ChatPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { brandName } = useSiteBrand();
   const [input, setInput] = useState("");
-  const [msgs, setMsgs] = useState<Msg[]>(() => initialMsgs());
+  const [msgs, setMsgs] = useState<Msg[]>(() => initialMsgs(brandName));
   const [loading, setLoading] = useState(false);
   const [voiceListening, setVoiceListening] = useState(false);
   const [voiceHint, setVoiceHint] = useState<string | null>(null);
@@ -58,9 +61,9 @@ function ChatPageInner() {
   const dictationBaseRef = useRef("");
 
   const resetConversation = useCallback(() => {
-    setMsgs(initialMsgs());
+    setMsgs(initialMsgs(brandName));
     setInput("");
-  }, []);
+  }, [brandName]);
 
   useEffect(() => {
     if (searchParams.get("new") === "1") {
@@ -208,10 +211,10 @@ function ChatPageInner() {
           <AvatarNeo />
           <div className="min-w-0">
             <h1 className="truncate font-semibold leading-tight tracking-tight text-white">
-              NeoXAI
+              {brandName}
             </h1>
-            <p className="text-[11px] font-medium tracking-wide text-emerald-400/90">
-              Online
+            <p className="text-[11px] font-medium tracking-wide text-white/45">
+              AI Assistant · <span className="text-emerald-400/90">Online</span>
             </p>
           </div>
         </div>
@@ -279,7 +282,7 @@ function ChatPageInner() {
             <div className="flex items-center gap-3 pl-1 sm:pl-2">
               <AvatarNeo />
               <div className="flex items-center gap-1.5 rounded-full border border-white/[0.06] bg-[#10151f] px-4 py-2.5">
-                <span className="sr-only">NeoXAI typing</span>
+                <span className="sr-only">{brandName} typing</span>
                 {[0, 1, 2].map((d) => (
                   <span
                     key={d}
@@ -299,7 +302,7 @@ function ChatPageInner() {
           <div className="flex items-end gap-2 rounded-2xl border border-white/[0.1] bg-[#0c1018] p-1.5 shadow-[0_0_0_1px_rgba(0,212,255,0.05),inset_0_1px_0_rgba(255,255,255,0.04)] ring-1 ring-[#00D4FF]/10 sm:gap-2 sm:p-2">
             <textarea
               className="max-h-36 min-h-[48px] min-w-0 flex-1 resize-none rounded-xl bg-transparent px-3 py-3 text-[15px] leading-snug text-white outline-none placeholder:text-white/30 focus-visible:ring-0 sm:px-4"
-              placeholder="Message NeoXAI…"
+              placeholder={`Message ${brandName}…`}
               rows={1}
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -348,7 +351,7 @@ function ChatPageInner() {
             </p>
           ) : (
             <p className="mt-2.5 text-center text-[11px] text-white/30">
-              Enter bhejta hai · Shift+Enter nayi line · NeoXAI galat ho sakta hai
+              Enter bhejta hai · Shift+Enter nayi line · Assistant galat ho sakta hai — verify zaroori kaam
             </p>
           )}
         </div>

@@ -12,7 +12,7 @@ import { GradientButton } from "@/components/neo/GradientButton";
 const featureCards = [
   {
     label: "Chat",
-    sub: "Bilingual AI",
+    sub: "Your assistant",
     icon: "💬",
     href: "/chat",
     ring: "hover:border-[#00D4FF]/35 hover:shadow-[0_0_28px_rgba(0,212,255,0.12)]",
@@ -101,7 +101,7 @@ export default function SplashPage() {
               {SPLASH.tagline}
             </p>
             <p className="mx-auto mt-2 max-w-sm text-xs leading-relaxed text-white/38">
-              Hindi & English · Voice · Memory · Tools — ek smooth experience.
+              Aapka assistant — Hindi & English, voice, memory, tools — sab ek jagah.
             </p>
           </div>
 

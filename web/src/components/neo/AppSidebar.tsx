@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSiteBrand } from "@/components/SiteBrandProvider";
 import {
+  IconChat,
   IconMemory,
   IconMicCenter,
   IconTools,
@@ -18,20 +19,6 @@ const nav = [
   { href: "/tools", label: "Tools", Icon: IconTools },
   { href: "/profile", label: "Profile", Icon: IconUser },
 ] as const;
-
-function ChatGlyph({ active }: { active?: boolean }) {
-  const c = active ? "#00D4FF" : "rgba(255,255,255,0.4)";
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M4 6h16v10H8l-4 3V6Z"
-        stroke={c}
-        strokeWidth="1.6"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
 
 export function AppSidebar() {
   const path = usePathname();
@@ -74,7 +61,7 @@ export function AppSidebar() {
               }`}
             >
               {"kind" in item && item.kind === "chat" ? (
-                <ChatGlyph active={active} />
+                <IconChat active={active} />
               ) : "kind" in item && item.kind === "voice" ? (
                 <span
                   className={

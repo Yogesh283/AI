@@ -6,7 +6,7 @@ import { NeoPublicShell } from "@/components/neo/NeoPublicShell";
 const features = [
   {
     title: "Chat & Voice",
-    desc: "Bilingual companion — Hindi & English.",
+    desc: "Bilingual assistant — Hindi & English.",
     icon: "💬",
   },
   {
