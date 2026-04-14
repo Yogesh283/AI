@@ -271,3 +271,119 @@ Build APK/IPA with EAS; set **`EXPO_PUBLIC_API_URL`** to your public API URL (e.
 | DB errors | MySQL running, `MYSQL_*` correct, migrations applied |
 
 For local parity, dev uses `backend/run_dev.ps1` (port 8010) and `web` with `npm run dev` (port 3000).
+
+---
+
+## 11. CloudPanel (jab `/var/www/neoxai` / systemd units kaam na karein)
+
+CloudPanel sites often live under **`/home/SITEUSER/htdocs/DOMAIN/`**. Agar tumne sirf **`web`** ka content clone kiya hai, to **`backend/` yahan hota hi nahi** — API deploy nahi hoti, isliye site “adhi” lagti hai.
+
+### 11.1 Ek hi jagah poora repo (recommended)
+
+**Site user** se login (example: `myneoxai`), root se mat pull karo (Git “dubious ownership” error aata hai).
+
+```bash
+# root se site user par switch (optional)
+su - myneoxai
+
+mkdir -p ~/apps
+cd ~/apps
+git clone https://github.com/Yogesh283/AI.git neoxai
+cd neoxai
+```
+
+Agar pehle se alag jagah clone hai aur Git block kare:
+
+```bash
+git config --global --add safe.directory /home/myneoxai/apps/neoxai
+```
+
+### 11.2 Backend (FastAPI) — zaroori
+
+```bash
+cd ~/apps/neoxai/backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+nano .env
+```
+
+`.env` mein kam se kam: `OPENAI_API_KEY`, `JWT_SECRET`, **`CORS_ORIGINS=https://myneoxai.com`** (apna domain), optional MySQL.
+
+API ko **localhost par** chalao (bahar se seedha 8010 expose mat karo):
+
+```bash
+# test
+source .venv/bin/activate
+uvicorn app.main:app --host 127.0.0.1 --port 8010
+# Ctrl+C ke baad production ke liye PM2 ya systemd neeche
+```
+
+**PM2 example** (site user):
+
+```bash
+npm install -g pm2   # agar nahi hai
+cd ~/apps/neoxai/backend
+source .venv/bin/activate
+pm2 start "`which uvicorn`" --name neoxai-api --interpreter none -- app.main:app --host 127.0.0.1 --port 8010
+pm2 save
+```
+
+### 11.3 Web (Next.js)
+
+```bash
+cd ~/apps/neoxai/web
+nano .env.production
+```
+
+Daalo:
+
+```env
+NEO_API_INTERNAL_URL=http://127.0.0.1:8010
+```
+
+Phir:
+
+```bash
+npm ci
+npm run build
+pm2 start npm --name neoxai-web -- start -- -p 3000
+pm2 save
+```
+
+CloudPanel **Nginx** ko is tarah samjho: **`https://myneoxai.com`** → **port 3000** (Next). **`/neo-api`** bhi **3000** par jana chahiye (Next proxy backend ko andar forward karta hai) — **8010 seedha public mat kholo**.
+
+Agar CloudPanel mein site abhi **`htdocs/.../web`** par point karti hai, to **Site settings** mein document root / Node app path badh kar **`~/apps/neoxai/web`** par lao, ya panel ke “Reverse proxy” se **3000** par bhejo — panel version ke hisaab se UI alag ho sakta hai ([CloudPanel docs](https://www.cloudpanel.io/docs/v2/)).
+
+### 11.4 Purana folder `htdocs/.../web`
+
+- Ya to **band** karke naya path (`~/apps/neoxai/web`) use karo,
+- Ya **symlink** (sirf jab tum jaante ho kya kar rahe ho):
+
+  `ln -sfn /home/myneoxai/apps/neoxai/web /home/myneoxai/htdocs/myneoxai.com/web` — pehle backup le lo.
+
+### 11.5 Deploy dubara (har update)
+
+**PC:** `git push`  
+**Server (`myneoxai` user):**
+
+```bash
+cd ~/apps/neoxai && git pull origin main
+cd backend && source .venv/bin/activate && pip install -r requirements.txt && deactivate
+cd ../web && npm ci && npm run build
+pm2 restart neoxai-api neoxai-web
+```
+
+### 11.6 Check
+
+```bash
+curl -s http://127.0.0.1:8010/health
+curl -sI http://127.0.0.1:3000 | head -1
+```
+
+Browser: `https://myneoxai.com/neo-api/health` — JSON aana chahiye (Next proxy ke through).
+
+---
+
+**Short:** Deploy “nahi hua” isliye lagta hai kyunki **sirf frontend build** tha, **backend + PM2 + sahi URL path** complete nahi tha. Poora repo `~/apps/neoxai`, **API 8010**, **Next 3000**, **CloudPanel/Nginx → 3000** — tab end‑to‑end chalega.
