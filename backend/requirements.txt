@@ -1,0 +1,14 @@
+# Flexible versions so pip can pick wheels for your Python (e.g. 3.14)
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+python-multipart>=0.0.9
+pydantic>=2.10.0
+pydantic-settings>=2.7.0
+python-dotenv>=1.0.0
+httpx>=0.28.0
+bcrypt>=4.2.0
+PyJWT>=2.9.0
+email-validator>=2.0.0
+google-auth>=2.0.0
+requests>=2.31.0
+aiomysql>=0.2.0

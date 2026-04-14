@@ -1,0 +1,168 @@
+"use client";
+
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { NeoPublicShell } from "@/components/neo/NeoPublicShell";
+import { GradientButton } from "@/components/neo/GradientButton";
+import { AuthGoogleSection } from "@/components/neo/AuthGoogleSection";
+import { useSiteBrand } from "@/components/SiteBrandProvider";
+import { googleLoginApi, registerApi, saveSession } from "@/lib/auth";
+
+export default function RegisterPage() {
+  const router = useRouter();
+  const { brandName } = useSiteBrand();
+  const [displayName, setDisplayName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setErr("");
+    if (password !== confirm) {
+      setErr("Passwords do not match");
+      return;
+    }
+    if (password.length < 6) {
+      setErr("Password must be at least 6 characters");
+      return;
+    }
+    setLoading(true);
+    try {
+      const data = await registerApi({
+        email: email.trim(),
+        password,
+        display_name: displayName.trim() || undefined,
+      });
+      saveSession(data.access_token, data.user);
+      router.replace("/onboarding");
+    } catch (x) {
+      setErr(x instanceof Error ? x.message : "Registration failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function onGoogleCredential(idToken: string) {
+    setErr("");
+    setGoogleLoading(true);
+    try {
+      const data = await googleLoginApi(idToken);
+      saveSession(data.access_token, data.user);
+      router.replace("/onboarding");
+    } catch (x) {
+      setErr(x instanceof Error ? x.message : "Google sign-in failed");
+    } finally {
+      setGoogleLoading(false);
+    }
+  }
+
+  return (
+    <NeoPublicShell>
+      <div className="pt-2">
+          <Link
+            href="/"
+            className="mb-8 inline-block text-sm text-[#00D4FF]/90 hover:underline"
+          >
+            ← Back
+          </Link>
+          <h1 className="text-2xl font-bold tracking-tight text-white">
+            Create account
+          </h1>
+          <p className="mt-2 text-sm text-white/45">
+            Join {brandName} — your AI companion
+          </p>
+
+          <form onSubmit={onSubmit} className="mt-10 flex flex-col gap-5">
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/40">
+                Display name
+              </label>
+              <input
+                type="text"
+                autoComplete="name"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                className="neo-glass w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3.5 text-sm text-white outline-none ring-1 ring-white/[0.06] placeholder:text-white/30 focus:border-[#00D4FF]/40"
+                placeholder="Aman"
+              />
+            </div>
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/40">
+                Email
+              </label>
+              <input
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="neo-glass w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3.5 text-sm text-white outline-none ring-1 ring-white/[0.06] placeholder:text-white/30 focus:border-[#00D4FF]/40"
+                placeholder="you@example.com"
+              />
+            </div>
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/40">
+                Password
+              </label>
+              <input
+                type="password"
+                autoComplete="new-password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="neo-glass w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3.5 text-sm text-white outline-none ring-1 ring-white/[0.06] placeholder:text-white/30 focus:border-[#00D4FF]/40"
+                placeholder="At least 6 characters"
+              />
+            </div>
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/40">
+                Confirm password
+              </label>
+              <input
+                type="password"
+                autoComplete="new-password"
+                required
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                className="neo-glass w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3.5 text-sm text-white outline-none ring-1 ring-white/[0.06] placeholder:text-white/30 focus:border-[#00D4FF]/40"
+                placeholder="Repeat password"
+              />
+            </div>
+            {err ? (
+              <p className="text-sm text-red-400/95" role="alert">
+                {err}
+              </p>
+            ) : null}
+            <GradientButton
+              type="submit"
+              disabled={loading}
+              className="!mt-2 w-full !py-4 disabled:opacity-60"
+            >
+              {loading ? "Creating account…" : "Register"}
+            </GradientButton>
+          </form>
+
+          <AuthGoogleSection
+            intent="signup"
+            disabled={loading || googleLoading}
+            onCredential={onGoogleCredential}
+          />
+
+          <p className="mt-8 text-center text-sm text-white/45">
+            Already have an account?{" "}
+            <Link
+              href="/login"
+              className="font-semibold text-[#00D4FF] hover:underline"
+            >
+              Sign in
+            </Link>
+          </p>
+      </div>
+    </NeoPublicShell>
+  );
+}
