@@ -52,6 +52,29 @@ Browser: **Incognito** ya `Ctrl+Shift+R` (cache).
 
 ---
 
+## B2) Login live par local jaisa (NeoXAI + Google button on)
+
+Do cheezein alag ho sakti hain:
+
+1. **Brand text** — `myneoxai.com` pe pehle domain se "Myneoxai" ban raha tha; code me ab override hai. Phir bhi custom naam chaho to `web/.env.production` mein daalo: `NEXT_PUBLIC_APP_NAME=NeoXAI`.
+2. **Google button** — `NEXT_PUBLIC_GOOGLE_CLIENT_ID` sirf build time pe bundle mein jaata hai. Isko **`web/.env` ya `web/.env.production`** mein daal kar **dobara `npm run build`** zaroor chalao; sirf PM2 restart se kaam nahi chalega.
+
+Example (`/home/myneoxai/apps/neoxai/web/.env.production`):
+
+```bash
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=your-web-client-id.apps.googleusercontent.com
+# optional:
+# NEXT_PUBLIC_APP_NAME=NeoXAI
+```
+
+Backend mein pehle se `GOOGLE_CLIENT_IDS` (same client ID allowed) hona chahiye. Build:
+
+```bash
+cd /home/myneoxai/apps/neoxai/web && rm -rf .next && npm ci && npm run build -- --webpack && PORT=3000 pm2 restart neo-web
+```
+
+---
+
 ## C) Sirf **frontend** dubara build (backend same rakho)
 
 ```bash

@@ -5,6 +5,11 @@
 
 const DEFAULT_BRAND = "NeoXAI";
 
+/** Production hosts that should keep product name instead of deriving from the domain label. */
+const HOST_BRAND_OVERRIDES: Record<string, string> = {
+  "myneoxai.com": DEFAULT_BRAND,
+};
+
 function capitalizeWords(slug: string): string {
   return slug
     .split(/[-_]+/)
@@ -28,6 +33,9 @@ export function resolveSiteDisplayName(hostHeader: string): string {
   if (fromEnv) return fromEnv;
 
   const host = normalizeHost(hostHeader);
+  const override = host ? HOST_BRAND_OVERRIDES[host] : undefined;
+  if (override) return override;
+
   if (!host || host === "localhost" || host === "127.0.0.1") return DEFAULT_BRAND;
 
   const parts = host.split(".").filter(Boolean);
