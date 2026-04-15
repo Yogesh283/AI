@@ -12,12 +12,6 @@ export type VoicePersona = {
 
 export const VOICE_PERSONAS: VoicePersona[] = [
   {
-    id: "arjun",
-    name: "Arjun",
-    imageSrc: "/avatars/persona-arjun.svg",
-    ttsGender: "male",
-  },
-  {
     id: "sara",
     name: "Sara",
     imageSrc: "/avatars/persona-sara.svg",

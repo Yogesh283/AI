@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { IconBack } from "@/components/neo/NeoIcons";
+import { useSiteBrand } from "@/components/SiteBrandProvider";
 import { SpeakingAvatar } from "@/components/neo/SpeakingAvatar";
 import { fetchMe, getStoredToken, getStoredUser, saveSession } from "@/lib/auth";
 import { postChat } from "@/lib/api";
@@ -22,37 +22,38 @@ import {
   isSpeechSynthesisSupported,
   primeSpeechVoices,
   readTtsGender,
-  readTtsSpeedPreset,
   speakText,
   speechRecognitionErrorMessage,
   stopSpeaking,
   writeTtsGender,
-  type TtsSpeedPreset,
   type TtsVoiceGender,
 } from "@/lib/voiceChat";
 import { useWakeLock } from "@/lib/useWakeLock";
 
 const VOICE_HISTORY_PREFIX = "neo-voice-history-";
-const VOICE_USE_WEB_KEY = "neo-voice-use-web";
 
 type Turn = { role: "user" | "assistant"; content: string };
 
 export default function VoicePage() {
+  const { brandName } = useSiteBrand();
   const [listening, setListening] = useState(false);
   const [sessionOn, setSessionOn] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [speaking, setSpeaking] = useState(false);
+  const [speechBeat, setSpeechBeat] = useState(0);
   const [personaId, setPersonaId] = useState<string | null>(null);
   const [interim, setInterim] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [lang, setLang] = useState<"en-IN" | "hi-IN">("en-IN");
-  const [ttsGender, setTtsGender] = useState<TtsVoiceGender>("female");
-  const [ttsSpeed, setTtsSpeed] = useState<TtsSpeedPreset>("clear");
+  const [ttsGender, setTtsGender] = useState<TtsVoiceGender>(() =>
+    typeof window === "undefined" ? "female" : readTtsGender(),
+  );
   const [history, setHistory] = useState<Turn[]>([]);
   const [speechSupported, setSpeechSupported] = useState<boolean | null>(null);
   const [ttsSupported, setTtsSupported] = useState<boolean | null>(null);
   const [replyMood, setReplyMood] = useState<VoiceReplyMood>("neutral");
-  const [useWeb, setUseWeb] = useState(false);
+  /** Bumps when `/api/auth/me` refreshes local profile (display name, etc.). */
+  const [, setProfileSync] = useState(0);
   const transcriptRef = useRef<HTMLDivElement>(null);
 
   const sessionOnRef = useRef(false);
@@ -74,21 +75,7 @@ export default function VoicePage() {
 
   useEffect(() => {
     setPersonaId(readStoredVoicePersonaId());
-    try {
-      const w = localStorage.getItem(VOICE_USE_WEB_KEY);
-      if (w === "1") setUseWeb(true);
-    } catch {
-      /* ignore */
-    }
   }, []);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(VOICE_USE_WEB_KEY, useWeb ? "1" : "0");
-    } catch {
-      /* ignore */
-    }
-  }, [useWeb]);
 
   useWakeLock(sessionOn);
 
@@ -132,17 +119,26 @@ export default function VoicePage() {
     let cancelled = false;
     const token = getStoredToken();
     if (!token) return;
-    void (async () => {
+       void (async () => {
       try {
         const u = await fetchMe();
-        if (cancelled || !u.voice_persona_id) return;
+        if (cancelled) return;
         const prev = getStoredUser();
-        if (prev) saveSession(token, { ...prev, voice_persona_id: u.voice_persona_id });
-        writeStoredVoicePersonaId(u.voice_persona_id);
-        const p = getVoicePersona(u.voice_persona_id);
-        writeTtsGender(p.ttsGender);
-        setPersonaId(u.voice_persona_id);
+        if (prev) {
+          saveSession(token, {
+            ...prev,
+            ...u,
+            voice_persona_id: u.voice_persona_id ?? prev.voice_persona_id,
+          });
+        }
+        if (u.voice_persona_id) {
+          writeStoredVoicePersonaId(u.voice_persona_id);
+          const p = getVoicePersona(u.voice_persona_id);
+          writeTtsGender(p.ttsGender);
+          setPersonaId(u.voice_persona_id);
+        }
         setTtsGender(readTtsGender());
+        setProfileSync((n) => n + 1);
       } catch {
         /* ignore */
       }
@@ -154,7 +150,6 @@ export default function VoicePage() {
 
   useEffect(() => {
     setTtsGender(readTtsGender());
-    setTtsSpeed(readTtsSpeedPreset());
   }, []);
 
   useEffect(() => {
@@ -162,9 +157,6 @@ export default function VoicePage() {
       if (e.key === "neo-voice-persona-id" || e.key === "neo-tts-gender") {
         setPersonaId(readStoredVoicePersonaId());
         setTtsGender(readTtsGender());
-      }
-      if (e.key === "neo-tts-speed") {
-        setTtsSpeed(readTtsSpeedPreset());
       }
     };
     window.addEventListener("storage", onStorage);
@@ -219,7 +211,7 @@ export default function VoicePage() {
         const msgs = [...historyRef.current, { role: "user" as const, content: t }];
         const { reply } = await postChat(msgs, uid, {
           source: "voice",
-          useWeb,
+          useWeb: true,
         });
         const next: Turn[] = [...msgs, { role: "assistant", content: reply }];
         historyRef.current = next;
@@ -230,11 +222,13 @@ export default function VoicePage() {
         setReplyMood(mood);
 
         setSpeaking(true);
+        setSpeechBeat(0);
         try {
           await speakText(reply, lang, {
             voiceGender: ttsGender,
-            speedPreset: ttsSpeed,
+            speedPreset: "natural",
             replyMood: mood,
+            onSpeechBoundary: () => setSpeechBeat((n) => n + 1),
           });
         } catch (ttsErr) {
           const msg =
@@ -259,7 +253,7 @@ export default function VoicePage() {
         queueMicrotask(() => beginListeningRef.current());
       }
     },
-    [lang, ttsGender, ttsSpeed, useWeb]
+    [lang, ttsGender]
   );
 
   const beginListening = useCallback(() => {
@@ -307,6 +301,12 @@ export default function VoicePage() {
       const msg = speechRecognitionErrorMessage(ev.error);
       if (msg) setErr(msg);
       if (ev.error === "aborted") return;
+      // Don't loop forever on permission/device failures.
+      if (ev.error === "not-allowed" || ev.error === "service-not-allowed" || ev.error === "audio-capture") {
+        sessionOnRef.current = false;
+        setSessionOn(false);
+        return;
+      }
       if (sessionOnRef.current) {
         queueMicrotask(() => beginListeningRef.current());
       }
@@ -353,22 +353,24 @@ export default function VoicePage() {
     setSessionOn(true);
     void (async () => {
       const u = getStoredUser();
-      const first = u?.display_name?.trim().split(/\s+/)[0] ?? "";
+      const nm = u?.display_name?.trim() ?? "";
       const hi = lang.startsWith("hi");
-      const line = first
+      const line = nm
         ? hi
-          ? `Namaste ${first}, main yahan hoon — aapke saath. Boliye, main sun raha hoon.`
-          : `Hello ${first}, I'm right here with you. Go ahead — I'm listening.`
+          ? `Namaste ${nm}, main yahan hoon — aapke saath. Boliye, main sun raha hoon.`
+          : `Hello ${nm}, I'm right here with you. Go ahead — I'm listening.`
         : hi
           ? `Namaste, main sun raha hoon. Boliye.`
           : `Hello, I'm listening.`;
       setErr(null);
       setSpeaking(true);
+      setSpeechBeat(0);
       try {
         await speakText(line, lang, {
           voiceGender: ttsGender,
-          speedPreset: ttsSpeed,
+          speedPreset: "natural",
           replyMood: "neutral",
+          onSpeechBoundary: () => setSpeechBeat((n) => n + 1),
         });
       } catch {
         /* still open mic */
@@ -377,7 +379,7 @@ export default function VoicePage() {
       }
       if (sessionOnRef.current) beginListening();
     })();
-  }, [beginListening, stopSession, lang, ttsGender, ttsSpeed]);
+  }, [beginListening, stopSession, lang, ttsGender]);
 
   useEffect(() => {
     return () => {
@@ -414,42 +416,25 @@ export default function VoicePage() {
           ? "listen"
           : "idle";
 
+  const profileName = getStoredUser()?.display_name?.trim() ?? "";
+
   return (
     <div className="relative z-[1] flex min-h-screen flex-col px-4 pb-36 pt-4 md:min-h-0 md:flex-1 md:px-8 md:pb-10 md:pt-6">
       <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col">
         <header className="-mx-4 sticky top-0 z-30 mb-5 border-b border-white/[0.1] bg-[#0b0e14]/96 px-4 pb-3 pt-2 backdrop-blur-xl md:static md:z-auto md:mx-0 md:border-white/[0.06] md:bg-transparent md:pb-4 md:pt-0 md:backdrop-blur-none">
           <div className="flex items-center justify-between gap-2">
-            <Link
-              href="/dashboard"
-              className="neo-glass flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/[0.07] transition hover:border-[#00D4FF]/25 md:hidden"
-              aria-label="Back"
-            >
-              <IconBack />
-            </Link>
-            <div className="min-w-0 flex-1 text-center md:text-left">
+            <div className="min-w-0 flex-1 text-left">
               <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/35">
                 Voice
               </p>
               <h1 className="bg-gradient-to-r from-white via-white to-white/70 bg-clip-text text-base font-semibold tracking-tight text-transparent sm:text-lg md:text-xl">
-                Talk to NeoXAI
+                Talk to {brandName}
               </h1>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-white/[0.08] bg-black/30 px-2 py-1.5 text-[10px] font-medium text-white/65">
-                <input
-                  type="checkbox"
-                  checked={useWeb}
-                  onChange={(e) => setUseWeb(e.target.checked)}
-                  className="h-3.5 w-3.5 accent-[#00D4FF]"
-                />
-                Web
-              </label>
-              <Link
-                href="/voice-personas"
-                className="neo-glass rounded-xl border border-white/[0.1] bg-black/30 px-3 py-2 text-[11px] font-semibold text-[#00D4FF]/90 transition hover:border-[#00D4FF]/35 hover:text-[#00D4FF]"
-              >
-                Speaker
-              </Link>
+              {profileName ? (
+                <p className="mt-0.5 truncate text-[12px] font-medium text-[#00D4FF]/80">
+                  {profileName}
+                </p>
+              ) : null}
             </div>
           </div>
           <div className="mt-3 flex justify-center md:justify-end">
@@ -484,7 +469,9 @@ export default function VoicePage() {
                   }`}
                 >
                   <span className="text-[10px] font-bold uppercase tracking-wide text-white/40">
-                    {turn.role === "user" ? "You" : "Assistant"}
+                    {turn.role === "user"
+                      ? profileName.split(/\s+/)[0] || "You"
+                      : brandName}
                   </span>
                   <p className="mt-1 whitespace-pre-wrap break-words">{turn.content}</p>
                 </div>
@@ -568,6 +555,7 @@ export default function VoicePage() {
               imageSrc={persona.imageSrc}
               name={persona.name}
               speaking={speaking}
+              speechBeat={speechBeat}
               listening={listening}
               sessionOn={sessionOn}
               replyMood={replyMood}
@@ -577,8 +565,8 @@ export default function VoicePage() {
           </div>
 
           <p className="mb-8 text-center text-[11px] text-white/35">
-            <Link href="/voice-personas#audio" className="text-[#00D4FF]/75 hover:text-[#00D4FF] hover:underline">
-              Speed &amp; avatar →
+            <Link href="/voice-personas" className="text-[#00D4FF]/75 hover:text-[#00D4FF] hover:underline">
+              Avatar →
             </Link>
           </p>
 
@@ -619,7 +607,7 @@ export default function VoicePage() {
                   : speechSupported === null
                     ? "Chrome / Edge: mic + speakers / volume on rakhein."
                     : speechSupported
-                      ? "One tap = session ON. Speaker face & speed: link upar."
+                      ? "One tap = session ON. Avatar selection: link upar."
                       : "Speech ke liye Chrome ya Edge."}
             </p>
           </div>

@@ -56,7 +56,7 @@ export default function MemoryPage() {
       <div className="mx-auto max-w-3xl">
         <h1 className="mb-1 text-2xl font-bold tracking-tight">NeoXAI Memory</h1>
         <p className="mb-8 text-sm text-white/45">
-          Saved messages sirf Chat aur Voice se — Tools yahan save nahi dikhte
+          Saved conversation history from Chat and Voice.
         </p>
 
         {err ? (
@@ -128,7 +128,7 @@ export default function MemoryPage() {
           <h2 className="mb-3 text-lg font-semibold tracking-tight text-white">
             Chat &amp; Voice (saved)
           </h2>
-          <div className="neo-glass max-h-[min(60vh,520px)] space-y-3 overflow-y-auto rounded-[26px] p-4 ring-1 ring-white/[0.06] md:p-5">
+          <div className="neo-glass max-h-[min(58vh,520px)] space-y-3 overflow-y-auto rounded-[26px] border border-white/[0.08] p-4 ring-1 ring-white/[0.05] md:p-5">
             {loading ? (
               <p className="text-sm text-white/50">Loading…</p>
             ) : !user ? (
@@ -147,8 +147,8 @@ export default function MemoryPage() {
                   key={m.id}
                   className={`rounded-2xl border px-3.5 py-2.5 text-sm leading-relaxed ${
                     m.role === "user"
-                      ? "ml-4 border-[#00D4FF]/20 bg-[rgba(0,212,255,0.07)] text-white/90"
-                      : "mr-4 border-white/[0.08] bg-black/30 text-white/80"
+                      ? "border-[#00D4FF]/20 bg-[rgba(0,212,255,0.07)] text-white/90"
+                      : "border-white/[0.08] bg-black/30 text-white/80"
                   }`}
                 >
                   <div className="mb-1 flex items-center justify-between gap-2 text-[10px] font-semibold uppercase tracking-wide text-white/40">

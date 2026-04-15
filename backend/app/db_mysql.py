@@ -250,3 +250,99 @@ async def fetch_chat_messages_for_user(user_id: str, limit: int = 500) -> list[d
     except Exception as e:
         logger.warning("fetch_chat_messages_for_user failed: %s", e)
         return []
+
+
+async def fetch_auth_user_by_email(email: str) -> dict[str, Any] | None:
+    """Read minimal auth user fields from MySQL by email."""
+    if _pool is None:
+        return None
+    em = (email or "").strip().lower()
+    if not em:
+        return None
+    try:
+        async with _pool.acquire() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cur:
+                await cur.execute(
+                    "SELECT id, email, display_name, password_hash_b64, auth_provider "
+                    "FROM users WHERE email = %s LIMIT 1",
+                    (em,),
+                )
+                row = await cur.fetchone()
+        if not row:
+            return None
+        return {
+            "id": str(row.get("id") or ""),
+            "email": str(row.get("email") or ""),
+            "display_name": str(row.get("display_name") or ""),
+            "password_hash_b64": str(row.get("password_hash_b64") or ""),
+            "auth_provider": str(row.get("auth_provider") or "password"),
+        }
+    except Exception as e:
+        logger.warning("fetch_auth_user_by_email failed: %s", e)
+        return None
+
+
+async def fetch_auth_user_by_id(user_id: str) -> dict[str, Any] | None:
+    """Read minimal auth user fields from MySQL by id."""
+    if _pool is None:
+        return None
+    uid = (user_id or "").strip()
+    if not uid:
+        return None
+    try:
+        async with _pool.acquire() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cur:
+                await cur.execute(
+                    "SELECT id, email, display_name, password_hash_b64, auth_provider "
+                    "FROM users WHERE id = %s LIMIT 1",
+                    (uid,),
+                )
+                row = await cur.fetchone()
+        if not row:
+            return None
+        return {
+            "id": str(row.get("id") or ""),
+            "email": str(row.get("email") or ""),
+            "display_name": str(row.get("display_name") or ""),
+            "password_hash_b64": str(row.get("password_hash_b64") or ""),
+            "auth_provider": str(row.get("auth_provider") or "password"),
+        }
+    except Exception as e:
+        logger.warning("fetch_auth_user_by_id failed: %s", e)
+        return None
+
+
+async def fetch_recent_chat_context(user_id: str, limit: int = 24) -> list[dict[str, Any]]:
+    """
+    Recent chat+voice rows for model context (oldest -> newest).
+    Uses smaller default limit to keep prompt size stable.
+    """
+    if _pool is None:
+        return []
+    lim = max(1, min(int(limit), 80))
+    try:
+        async with _pool.acquire() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cur:
+                await cur.execute(
+                    "SELECT role, source, content, created_at FROM chat_messages "
+                    "WHERE user_id = %s AND source IN ('chat', 'voice') "
+                    "ORDER BY created_at DESC, id DESC LIMIT %s",
+                    (user_id, lim),
+                )
+                rows = await cur.fetchall()
+        out: list[dict[str, Any]] = []
+        for r in reversed(rows):
+            ts = r.get("created_at")
+            created = ts.isoformat() if hasattr(ts, "isoformat") else str(ts)
+            out.append(
+                {
+                    "role": str(r.get("role") or ""),
+                    "source": str(r.get("source") or ""),
+                    "content": str(r.get("content") or ""),
+                    "created_at": created,
+                }
+            )
+        return out
+    except Exception as e:
+        logger.warning("fetch_recent_chat_context failed: %s", e)
+        return []

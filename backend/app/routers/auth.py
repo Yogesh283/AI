@@ -11,6 +11,8 @@ from pydantic import BaseModel, EmailStr, Field
 from app.auth_jwt import create_access_token, decode_token
 from app.config import settings
 from app.db_mysql import (
+    fetch_auth_user_by_email,
+    fetch_auth_user_by_id,
     fetch_voice_persona_id,
     normalize_voice_persona_id,
     sync_user_record,
@@ -69,6 +71,20 @@ async def _enrich_user(rec: dict[str, Any]) -> dict[str, Any]:
     return pub
 
 
+async def _resolve_user_by_email(email: str) -> dict[str, Any] | None:
+    u = get_user_by_email(email)
+    if u:
+        return u
+    return await fetch_auth_user_by_email(email)
+
+
+async def _resolve_user_by_id(user_id: str) -> dict[str, Any] | None:
+    u = get_user_by_id(user_id)
+    if u:
+        return u
+    return await fetch_auth_user_by_id(user_id)
+
+
 def _hash_password(password: str) -> str:
     raw = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
     return base64.b64encode(raw).decode("ascii")
@@ -98,7 +114,7 @@ async def register(body: RegisterBody) -> TokenResponse:
 
 @router.post("/login", response_model=TokenResponse)
 async def login(body: LoginBody) -> TokenResponse:
-    u = get_user_by_email(body.email)
+    u = await _resolve_user_by_email(body.email)
     if not u:
         raise HTTPException(status_code=401, detail="Invalid email or password")
     if not u.get("password_hash_b64"):
@@ -142,7 +158,7 @@ async def optional_user(
     payload = decode_token(creds.credentials)
     if not payload or not payload.get("sub"):
         return None
-    u = get_user_by_id(str(payload["sub"]))
+    u = await _resolve_user_by_id(str(payload["sub"]))
     return await _enrich_user(u) if u else None
 
 
@@ -154,7 +170,7 @@ async def require_user(
     payload = decode_token(creds.credentials)
     if not payload or not payload.get("sub"):
         raise HTTPException(status_code=401, detail="Not authenticated")
-    u = get_user_by_id(str(payload["sub"]))
+    u = await _resolve_user_by_id(str(payload["sub"]))
     if not u:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return await _enrich_user(u)
@@ -173,7 +189,7 @@ async def patch_me(
     user: dict[str, Any] = Depends(require_user),
 ) -> dict[str, Any]:
     uid = str(user["id"])
-    u = get_user_by_id(uid)
+    u = await _resolve_user_by_id(uid)
     if not u:
         raise HTTPException(status_code=401, detail="Not authenticated")
 

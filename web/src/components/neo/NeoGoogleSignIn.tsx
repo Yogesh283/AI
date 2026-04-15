@@ -31,7 +31,6 @@ export function NeoGoogleSignIn({
         logo_alignment="left"
         shape="rectangular"
         size="large"
-        width="100%"
       />
     </div>
   );

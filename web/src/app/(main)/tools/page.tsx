@@ -140,7 +140,7 @@ export default function ToolsPage() {
           NeoXAI backend se connected — har tool ke liye alag system prompt. Same account as Chat.
         </p>
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {TOOLS.map((t) => {
             const on = t.id === activeId;
             return (
@@ -152,7 +152,7 @@ export default function ToolsPage() {
                   setErr(null);
                   setOutput("");
                 }}
-                className={`neo-glass flex flex-col items-start rounded-[22px] border-2 bg-black/20 p-4 text-left transition hover:brightness-110 ${
+                className={`neo-glass flex min-h-[92px] flex-col items-start justify-center rounded-[22px] border-2 bg-black/20 p-4 text-left transition hover:brightness-110 ${
                   t.border
                 } ${on ? "ring-2 ring-[#00D4FF]/50" : "ring-0"}`}
               >
@@ -160,7 +160,7 @@ export default function ToolsPage() {
                   {t.icon}
                 </span>
                 <span className="font-semibold text-[#00D4FF]">{t.title}</span>
-                <span className="mt-0.5 text-[11px] text-white/45">{t.desc}</span>
+                <span className="mt-0.5 text-xs text-white/55">{t.desc}</span>
               </button>
             );
           })}

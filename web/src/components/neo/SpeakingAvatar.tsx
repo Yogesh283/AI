@@ -8,6 +8,8 @@ type Props = {
   imageSrc: string;
   name: string;
   speaking: boolean;
+  /** Incremented on TTS boundary events to sync movement with spoken words. */
+  speechBeat?: number;
   listening: boolean;
   sessionOn: boolean;
   /** Derived from the latest assistant reply — drives body language. */
@@ -26,6 +28,7 @@ export function SpeakingAvatar({
   imageSrc,
   name,
   speaking,
+  speechBeat = 0,
   listening,
   sessionOn,
   replyMood = "neutral",
@@ -171,20 +174,19 @@ export function SpeakingAvatar({
                   className="pointer-events-none absolute bottom-[20.5%] left-1/2 z-[2] h-[2%] w-[12%] -translate-x-1/2 rounded-full bg-neutral-950/35"
                   aria-hidden
                   animate={{
+                    // React to real TTS word boundaries (speechBeat), not just a free-running loop.
                     scaleY:
                       mood === "laugh"
-                        ? [1, 1.35, 1.85, 1.2, 1.9, 1.4, 1.6, 1]
-                        : [1, 1.25, 1.55, 1.1, 1.7, 1.15, 1.45, 1],
+                        ? 1.15 + (speechBeat % 3 === 0 ? 1.0 : speechBeat % 2 === 0 ? 0.62 : 0.35)
+                        : 1.08 + (speechBeat % 3 === 0 ? 0.75 : speechBeat % 2 === 0 ? 0.45 : 0.28),
                     scaleX:
                       mood === "laugh"
-                        ? [1, 1.15, 0.92, 1.2, 0.95, 1.1, 1, 1]
-                        : [1, 1.12, 0.95, 1.08, 1.02, 1.1, 0.98, 1],
+                        ? 1.04 + (speechBeat % 2 === 0 ? 0.06 : -0.04)
+                        : 1.03 + (speechBeat % 2 === 0 ? 0.04 : -0.03),
                   }}
                   transition={{
-                    duration: mouthDuration,
-                    repeat: Infinity,
-                    ease: [0.45, 0, 0.55, 1],
-                    times: [0, 0.12, 0.28, 0.4, 0.55, 0.68, 0.82, 1],
+                    duration: mouthDuration * 0.7,
+                    ease: [0.35, 0.05, 0.3, 1],
                   }}
                 />
                 <motion.div
@@ -193,18 +195,16 @@ export function SpeakingAvatar({
                   animate={{
                     scaleY:
                       mood === "laugh"
-                        ? [0.9, 1.6, 1.1, 1.75, 1, 1.5, 1.2, 0.95]
-                        : [0.85, 1.45, 1.05, 1.55, 0.95, 1.35, 1.1, 0.9],
+                        ? 0.94 + (speechBeat % 3 === 0 ? 0.9 : speechBeat % 2 === 0 ? 0.56 : 0.32)
+                        : 0.9 + (speechBeat % 3 === 0 ? 0.7 : speechBeat % 2 === 0 ? 0.4 : 0.25),
                     opacity:
                       mood === "sympathy"
-                        ? [0.4, 0.65, 0.45, 0.6, 0.42, 0.55, 0.48, 0.4]
-                        : [0.45, 0.85, 0.55, 0.9, 0.5, 0.8, 0.65, 0.45],
+                        ? 0.45 + (speechBeat % 2 === 0 ? 0.15 : 0.08)
+                        : 0.52 + (speechBeat % 2 === 0 ? 0.26 : 0.12),
                   }}
                   transition={{
-                    duration: mouthDuration * 0.92,
-                    repeat: Infinity,
-                    ease: "easeInOut",
-                    delay: 0.04,
+                    duration: mouthDuration * 0.66,
+                    ease: "easeOut",
                   }}
                 />
                 <motion.div

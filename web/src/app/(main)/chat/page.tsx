@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { getStoredUser } from "@/lib/auth";
 import { postChat } from "@/lib/api";
 import {
@@ -20,24 +20,25 @@ import {
 
 type Msg = { role: "user" | "assistant"; content: string };
 
-function initialMsgs(brandName: string, firstName?: string | null): Msg[] {
-  const first = firstName?.trim().split(/\s+/)[0] ?? "";
-  const line = first
-    ? `Hello ${first}! Main ${brandName} hoon — aapka personal assistant. Market, news, aaj ki baat — jo bhi ho, Hindi ya English mein; main yahan hoon.`
+function initialMsgs(brandName: string, displayName?: string | null): Msg[] {
+  const name = displayName?.trim() ?? "";
+  const line = name
+    ? `Hello ${name}! Main ${brandName} hoon — aapka personal assistant. Market, news, aaj ki baat — jo bhi ho, Hindi ya English mein; main yahan hoon.`
     : `Good morning! Main ${brandName} hoon — aapka personal assistant. Jo bhi kaam ya sawaal ho, Hindi ya English mein poochho; main yahan hoon.`;
   return [{ role: "assistant", content: line }];
 }
 
-const CHAT_USE_WEB_KEY = "neo-chat-use-web";
-
 function ChatPageInner() {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const { brandName } = useSiteBrand();
   const [input, setInput] = useState("");
-  const [msgs, setMsgs] = useState<Msg[]>(() => initialMsgs(brandName));
+  const [msgs, setMsgs] = useState<Msg[]>(() =>
+    initialMsgs(brandName, getStoredUser()?.display_name),
+  );
+  const [, setProfileTick] = useState(0);
   const hydratedRef = useRef(false);
-  const [useWeb, setUseWeb] = useState(false);
   const [loading, setLoading] = useState(false);
   const [voiceListening, setVoiceListening] = useState(false);
   const [voiceHint, setVoiceHint] = useState<string | null>(null);
@@ -68,25 +69,19 @@ function ChatPageInner() {
   }, [brandName]);
 
   useEffect(() => {
-    const uid = getStoredUser()?.id ?? "anon";
-    saveChatMessages(uid, msgs);
-  }, [msgs]);
+    setProfileTick((n) => n + 1);
+  }, [pathname]);
 
   useEffect(() => {
-    try {
-      if (localStorage.getItem(CHAT_USE_WEB_KEY) === "1") setUseWeb(true);
-    } catch {
-      /* ignore */
-    }
+    const onFocus = () => setProfileTick((n) => n + 1);
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
   }, []);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(CHAT_USE_WEB_KEY, useWeb ? "1" : "0");
-    } catch {
-      /* ignore */
-    }
-  }, [useWeb]);
+    const uid = getStoredUser()?.id ?? "anon";
+    saveChatMessages(uid, msgs);
+  }, [msgs]);
 
   useEffect(() => {
     if (searchParams.get("new") === "1") {
@@ -100,6 +95,10 @@ function ChatPageInner() {
     if (!el) return;
     el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [msgs, loading]);
+
+  const profileName = getStoredUser()?.display_name?.trim() ?? "";
+  const userShort =
+    profileName.split(/\s+/).filter(Boolean)[0] ?? "";
 
   const stopVoice = useCallback(() => {
     try {
@@ -204,7 +203,7 @@ function ChatPageInner() {
         content: m.content,
       }));
       const uid = getStoredUser()?.id ?? "default";
-      const { reply } = await postChat(apiMsgs, uid, { useWeb });
+      const { reply } = await postChat(apiMsgs, uid, { useWeb: true });
       setMsgs([...next, { role: "assistant", content: reply }]);
     } catch (e) {
       const hint =
@@ -237,17 +236,17 @@ function ChatPageInner() {
               {brandName}
             </h1>
             <p className="text-[11px] font-medium tracking-wide text-white/45">
+              {profileName ? (
+                <>
+                  <span className="text-white/65">{profileName}</span>
+                  <span className="text-white/30"> · </span>
+                </>
+              ) : null}
               AI Assistant · <span className="text-emerald-400/90">Online</span>
             </p>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-          <Link
-            href="/voice-personas"
-            className="rounded-lg px-2 py-1.5 text-[10px] font-medium text-white/50 transition hover:text-[#00D4FF] sm:text-xs"
-          >
-            Voice &amp; face
-          </Link>
+        <div className="flex shrink-0 items-center gap-2">
           <Link
             href="/voice"
             className="hidden rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-white/70 transition hover:border-[#00D4FF]/25 hover:text-white/90 md:inline-flex"
@@ -328,37 +327,22 @@ function ChatPageInner() {
       {/* Composer dock */}
       <div className="shrink-0 border-t border-white/[0.08] bg-[#060910]/98 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-12px_40px_rgba(0,0,0,0.45)] backdrop-blur-xl sm:px-5 md:px-8 md:pt-4">
         <div className="mx-auto w-full max-w-[44rem] space-y-2">
-          <div className="flex flex-wrap items-center justify-between gap-2 px-0.5">
-            <label className="flex cursor-pointer items-center gap-2 text-[11px] text-white/45">
-              <input
-                type="checkbox"
-                checked={useWeb}
-                onChange={(e) => setUseWeb(e.target.checked)}
-                className="h-4 w-4 accent-[#00D4FF]"
-              />
-              <span title="Live Google snippets when keys set; auto for market/today queries too.">
-                Web / live data
-              </span>
-            </label>
-            <div className="flex items-center gap-3 text-[11px]">
-              <Link
-                href="/voice-personas"
-                className="text-[#00D4FF]/80 transition hover:text-[#00D4FF] hover:underline"
-              >
-                Voice &amp; face
-              </Link>
-              <Link
-                href="/chat?new=1"
-                className="text-white/40 transition hover:text-white/75 hover:underline"
-              >
-                New chat
-              </Link>
-            </div>
+          <div className="flex items-center justify-end px-0.5 text-[11px]">
+            <Link
+              href="/chat?new=1"
+              className="text-white/40 transition hover:text-white/75 hover:underline"
+            >
+              New chat
+            </Link>
           </div>
           <div className="flex items-end gap-2 rounded-2xl border border-white/[0.1] bg-[#0c1018] p-1.5 shadow-[0_0_0_1px_rgba(0,212,255,0.05),inset_0_1px_0_rgba(255,255,255,0.04)] ring-1 ring-[#00D4FF]/10 sm:gap-2 sm:p-2">
             <textarea
               className="max-h-36 min-h-[48px] min-w-0 flex-1 resize-none rounded-xl bg-transparent px-3 py-3 text-[15px] leading-snug text-white outline-none placeholder:text-white/30 focus-visible:ring-0 sm:px-4"
-              placeholder={`Message ${brandName}…`}
+              placeholder={
+                userShort
+                  ? `${userShort}, yahan likho…`
+                  : `Message ${brandName}…`
+              }
               rows={1}
               value={input}
               onChange={(e) => setInput(e.target.value)}

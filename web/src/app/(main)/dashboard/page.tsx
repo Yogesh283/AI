@@ -2,10 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { DASHBOARD, REF_TASKS } from "@/shared/neoContent";
-import { NeoLogoHead } from "@/components/neo/NeoLogoHead";
+import { DASHBOARD } from "@/shared/neoContent";
 import { GradientButton } from "@/components/neo/GradientButton";
-import { IconBell } from "@/components/neo/NeoIcons";
 import { getStoredUser } from "@/lib/auth";
 
 function statColorClass(t: "cyan" | "magenta" | "purple") {
@@ -14,11 +12,44 @@ function statColorClass(t: "cyan" | "magenta" | "purple") {
   return "text-[#9D50BB]";
 }
 
-function memoryBulletClass(t: "cyan" | "magenta" | "purple") {
-  if (t === "cyan") return "text-[#00D4FF]";
-  if (t === "magenta") return "text-[#BD00FF]";
-  return "text-[#9D50BB]";
-}
+const workspaceCards = [
+  {
+    title: "Assistant Chat",
+    desc: "Daily Q&A, planning, and project support.",
+    icon: "💬",
+    href: "/chat",
+  },
+  {
+    title: "Voice Session",
+    desc: "Hands-free conversation with your assistant.",
+    icon: "🎙",
+    href: "/voice",
+  },
+  {
+    title: "Tools Studio",
+    desc: "Writer, code helper, and generation tools.",
+    icon: "⚡",
+    href: "/tools",
+  },
+] as const;
+
+const connectionCards = [
+  {
+    title: "Memory Timeline",
+    desc: "Review saved chat and voice history.",
+    href: "/memory",
+  },
+  {
+    title: "Profile & Security",
+    desc: "Manage identity, password, and account settings.",
+    href: "/profile",
+  },
+  {
+    title: "Voice Persona",
+    desc: "Select assistant face and speaking persona.",
+    href: "/voice-personas",
+  },
+] as const;
 
 export default function DashboardPage() {
   const [name, setName] = useState("there");
@@ -35,21 +66,14 @@ export default function DashboardPage() {
   return (
     <div className="relative z-[1] px-4 pb-10 pt-6 md:px-8 md:pt-8">
       <div className="mx-auto max-w-3xl">
-      <header className="mb-6 flex items-start justify-between">
-        <div>
+      <header className="mb-6">
+        <div className="neo-glass rounded-[24px] border border-white/[0.08] p-5 ring-1 ring-white/[0.06]">
           <p className="text-sm text-white/45">Hello,</p>
           <h1 className="mt-0.5 text-2xl font-bold tracking-tight text-white">
             {name} <span className="inline-block">👋</span>
           </h1>
-          <p className="mt-1 text-sm text-[#00D4FF]/80">{DASHBOARD.greetingLine}</p>
+          <p className="mt-2 text-sm leading-relaxed text-white/60">{DASHBOARD.greetingLine}</p>
         </div>
-        <button
-          type="button"
-          className="neo-glass neo-glow flex h-12 w-12 items-center justify-center rounded-2xl"
-          aria-label="Notifications"
-        >
-          <IconBell />
-        </button>
       </header>
 
       <section className="mb-2">
@@ -61,26 +85,28 @@ export default function DashboardPage() {
         {DASHBOARD.stats.map((x) => (
           <div
             key={x.l}
-            className="neo-glass rounded-[20px] px-2 py-4 text-center ring-1 ring-white/[0.06]"
+            className="neo-glass rounded-[20px] border border-white/[0.08] px-2 py-4 text-center ring-1 ring-white/[0.05]"
           >
             <p className={`text-2xl font-bold ${statColorClass(x.tone)}`}>{x.n}</p>
-            <p className="text-[11px] font-medium text-white/40">{x.l}</p>
+            <p className="text-xs font-medium text-white/45">{x.l}</p>
           </div>
         ))}
       </section>
 
       <section className="mb-6">
         <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-white/40">
-          {DASHBOARD.quickTasksTitle}
+          Project workspace
         </h2>
-        <div className="grid grid-cols-2 gap-3">
-          {REF_TASKS.map((t) => (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {workspaceCards.map((t) => (
             <Link
-              key={t.label}
-              href={t.webHref}
-              className="neo-glass flex min-h-[88px] flex-col justify-center rounded-[22px] px-4 py-3 ring-1 ring-white/[0.06] transition hover:brightness-110"
+              key={t.title + t.href}
+              href={t.href}
+              className="neo-glass flex min-h-[94px] flex-col justify-center rounded-[22px] border border-white/[0.08] px-4 py-3 ring-1 ring-white/[0.05] transition hover:brightness-110"
             >
-              <p className="font-semibold text-white">{t.label}</p>
+              <p className="text-base">{t.icon}</p>
+              <p className="mt-1 font-semibold text-white">{t.title}</p>
+              <p className="text-xs text-white/45">{t.desc}</p>
             </Link>
           ))}
         </div>
@@ -88,65 +114,17 @@ export default function DashboardPage() {
 
       <section className="mb-6">
         <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-white/40">
-          Voice &amp; sound
+          Connected sections
         </h2>
-        <div className="grid grid-cols-2 gap-3">
-          <Link
-            href="/voice"
-            className="neo-glass flex min-h-[76px] flex-col justify-center rounded-[22px] border border-[#00D4FF]/15 bg-[#00D4FF]/[0.06] px-4 py-3 ring-1 ring-[#00D4FF]/10 transition hover:border-[#00D4FF]/35"
-          >
-            <p className="text-lg">🎙</p>
-            <p className="mt-1 font-semibold text-white">Voice chat</p>
-            <p className="text-[11px] text-white/45">Talk with your assistant</p>
-          </Link>
-          <Link
-            href="/voice-personas"
-            className="neo-glass flex min-h-[76px] flex-col justify-center rounded-[22px] border border-[#BD00FF]/15 bg-[#BD00FF]/[0.06] px-4 py-3 ring-1 ring-[#BD00FF]/10 transition hover:border-[#BD00FF]/35"
-          >
-            <p className="text-lg">🎭</p>
-            <p className="mt-1 font-semibold text-white">Voice &amp; face</p>
-            <p className="text-[11px] text-white/45">Speaker + avatar motion</p>
-          </Link>
-        </div>
-      </section>
-
-      <section className="mb-6 flex justify-center">
-        <NeoLogoHead className="h-28 w-24 opacity-95 drop-shadow-[0_0_24px_rgba(0,212,255,0.35)]" />
-      </section>
-
-      <section className="mb-8 grid grid-cols-2 gap-4">
-        {DASHBOARD.mainTiles.map((t) => (
-          <Link
-            key={t.label + t.webHref}
-            href={t.webHref}
-            className="neo-glass neo-glow flex min-h-[128px] flex-col justify-between rounded-[26px] p-5 ring-1 ring-white/[0.07] transition hover:brightness-110"
-          >
-            <span className="text-3xl drop-shadow-[0_0_12px_rgba(0,212,255,0.35)]">
-              {t.icon}
-            </span>
-            <div>
-              <p className="font-semibold text-white">{t.label}</p>
-              <p className="text-xs text-white/40">{t.sub}</p>
-            </div>
-          </Link>
-        ))}
-      </section>
-
-      <section>
-        <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-white/40">
-          Quick Actions
-        </h2>
-        <div className="grid grid-cols-4 gap-3">
-          {DASHBOARD.quickActions.map((q) => (
+        <div className="grid grid-cols-1 gap-3">
+          {connectionCards.map((t) => (
             <Link
-              key={q.label}
-              href={q.webHref}
-              className="flex flex-col items-center gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.04] py-4 text-xl ring-1 ring-white/[0.04] transition hover:border-[#00D4FF]/30"
+              key={t.title}
+              href={t.href}
+              className="neo-glass flex min-h-[84px] flex-col justify-center rounded-[20px] border border-white/[0.08] px-4 py-3 ring-1 ring-white/[0.05] transition hover:border-[#00D4FF]/30"
             >
-              {q.icon}
-              <span className="text-center text-[10px] font-medium text-white/50">
-                {q.label}
-              </span>
+              <p className="text-sm font-semibold text-white/90">{t.title}</p>
+              <p className="mt-0.5 text-xs text-white/50">{t.desc}</p>
             </Link>
           ))}
         </div>
@@ -154,17 +132,16 @@ export default function DashboardPage() {
 
       <section className="mt-10">
         <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-white/40">
-          {DASHBOARD.memoryTitle}
+          Project focus
         </h2>
-        <div className="neo-glass space-y-3 rounded-[24px] p-5 text-sm text-white/65 ring-1 ring-white/[0.06]">
-          {DASHBOARD.memoryLines.map((line) => (
-            <p key={line.text} className="flex items-center gap-2">
-              <span className={memoryBulletClass(line.tone)}>▸</span> {line.text}
-            </p>
-          ))}
+        <div className="neo-glass rounded-[24px] border border-white/[0.08] p-5 text-sm text-white/65 ring-1 ring-white/[0.05]">
+          <p className="leading-relaxed">
+            Start from Chat for planning, continue in Voice for fast interaction, and use Tools for writing or code tasks.
+            All your key flows stay connected through Memory and Profile sections.
+          </p>
         </div>
         <div className="mt-6">
-          <GradientButton href="/chat">{DASHBOARD.openChat}</GradientButton>
+          <GradientButton href="/chat">Open Assistant</GradientButton>
         </div>
       </section>
       </div>

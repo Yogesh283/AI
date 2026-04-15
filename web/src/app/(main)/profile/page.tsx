@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   clearSession,
   fetchMe,
@@ -14,29 +14,6 @@ import {
 } from "@/lib/auth";
 import { getNeoAvatar, readStoredAvatarId } from "@/lib/avatars";
 import { getVoicePersona } from "@/lib/voicePersonas";
-
-const LS_NOTIFY_EMAIL = "neo-profile-notify-email";
-const LS_NOTIFY_PUSH = "neo-profile-notify-push";
-const LS_PRIVACY_USAGE = "neo-profile-privacy-usage";
-
-function readBool(key: string, fallback: boolean): boolean {
-  if (typeof window === "undefined") return fallback;
-  try {
-    const v = localStorage.getItem(key);
-    if (v === null) return fallback;
-    return v === "1";
-  } catch {
-    return fallback;
-  }
-}
-
-function writeBool(key: string, value: boolean) {
-  try {
-    localStorage.setItem(key, value ? "1" : "0");
-  } catch {
-    /* ignore */
-  }
-}
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -50,11 +27,7 @@ export default function ProfilePage() {
   const [savingPw, setSavingPw] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
-  const [avatarTick, setAvatarTick] = useState(0);
-
-  const [notifyEmail, setNotifyEmail] = useState(true);
-  const [notifyPush, setNotifyPush] = useState(true);
-  const [privacyUsage, setPrivacyUsage] = useState(true);
+  const [, setAvatarTick] = useState(0);
 
   const refreshLocal = useCallback(() => {
     setAvatarTick((t) => t + 1);
@@ -79,12 +52,6 @@ export default function ProfilePage() {
   }, []);
 
   useEffect(() => {
-    setNotifyEmail(readBool(LS_NOTIFY_EMAIL, true));
-    setNotifyPush(readBool(LS_NOTIFY_PUSH, true));
-    setPrivacyUsage(readBool(LS_PRIVACY_USAGE, true));
-  }, []);
-
-  useEffect(() => {
     void loadUser();
   }, [loadUser]);
 
@@ -100,7 +67,7 @@ export default function ProfilePage() {
     };
   }, [refreshLocal]);
 
-  const avatar = useMemo(() => getNeoAvatar(readStoredAvatarId()), [avatarTick]);
+  const avatar = getNeoAvatar(readStoredAvatarId());
   const voice = getVoicePersona(user?.voice_persona_id);
 
   useEffect(() => {
@@ -153,24 +120,6 @@ export default function ProfilePage() {
     } finally {
       setSavingPw(false);
     }
-  }
-
-  function setNotifyEmailAndStore(v: boolean) {
-    setNotifyEmail(v);
-    writeBool(LS_NOTIFY_EMAIL, v);
-    setOkMsg("Notification preference saved on this device.");
-  }
-
-  function setNotifyPushAndStore(v: boolean) {
-    setNotifyPush(v);
-    writeBool(LS_NOTIFY_PUSH, v);
-    setOkMsg("Notification preference saved on this device.");
-  }
-
-  function setPrivacyUsageAndStore(v: boolean) {
-    setPrivacyUsage(v);
-    writeBool(LS_PRIVACY_USAGE, v);
-    setOkMsg("Privacy preference saved on this device.");
   }
 
   if (loading) {
@@ -342,81 +291,6 @@ export default function ProfilePage() {
             >
               Voice persona
             </Link>
-            <Link
-              href="/customize"
-              className="flex flex-1 items-center justify-center rounded-xl border border-white/[0.1] bg-white/[0.05] py-3 text-sm font-medium text-white/90 transition hover:bg-white/[0.09]"
-            >
-              Customize
-            </Link>
-          </div>
-        </section>
-
-        {/* Notifications */}
-        <section className="neo-glass overflow-hidden rounded-[22px] ring-1 ring-white/[0.06]">
-          <div className="border-b border-white/[0.07] px-5 py-3.5">
-            <h2 className="text-sm font-semibold text-white/90">Notifications</h2>
-            <p className="mt-0.5 text-xs text-white/40">Stored on this device</p>
-          </div>
-          <div className="divide-y divide-white/[0.06] px-5 py-1">
-            <label className="flex cursor-pointer items-center justify-between gap-3 py-3">
-              <span className="text-sm text-white/80">Product updates (email)</span>
-              <input
-                type="checkbox"
-                checked={notifyEmail}
-                onChange={(e) => setNotifyEmailAndStore(e.target.checked)}
-                className="h-5 w-5 accent-[#00D4FF]"
-              />
-            </label>
-            <label className="flex cursor-pointer items-center justify-between gap-3 py-3">
-              <span className="text-sm text-white/80">Push-style reminders</span>
-              <input
-                type="checkbox"
-                checked={notifyPush}
-                onChange={(e) => setNotifyPushAndStore(e.target.checked)}
-                className="h-5 w-5 accent-[#00D4FF]"
-              />
-            </label>
-          </div>
-        </section>
-
-        {/* Privacy */}
-        <section className="neo-glass overflow-hidden rounded-[22px] ring-1 ring-white/[0.06]">
-          <div className="border-b border-white/[0.07] px-5 py-3.5">
-            <h2 className="text-sm font-semibold text-white/90">Privacy</h2>
-            <p className="mt-0.5 text-xs text-white/40">Local preferences</p>
-          </div>
-          <div className="px-5 py-3">
-            <label className="flex cursor-pointer items-center justify-between gap-3">
-              <span className="text-sm text-white/80">Allow usage hints to improve experience</span>
-              <input
-                type="checkbox"
-                checked={privacyUsage}
-                onChange={(e) => setPrivacyUsageAndStore(e.target.checked)}
-                className="h-5 w-5 accent-[#00D4FF]"
-              />
-            </label>
-            <p className="mt-2 text-[11px] leading-relaxed text-white/30">
-              Chat content for Memory still follows your account; this toggle is for optional UI hints on this device only.
-            </p>
-          </div>
-        </section>
-
-        {/* Subscription */}
-        <section className="neo-glass overflow-hidden rounded-[22px] ring-1 ring-white/[0.06]">
-          <div className="border-b border-white/[0.07] px-5 py-3.5">
-            <h2 className="text-sm font-semibold text-white/90">Subscription</h2>
-            <p className="mt-0.5 text-xs text-white/40">Plan &amp; billing</p>
-          </div>
-          <div className="px-5 py-4">
-            <div className="flex items-center justify-between rounded-xl border border-white/[0.08] bg-white/[0.04] px-4 py-3">
-              <div>
-                <p className="text-sm font-medium text-white/90">Free</p>
-                <p className="text-xs text-white/38">Paid tiers — coming soon.</p>
-              </div>
-              <span className="rounded-full bg-white/[0.08] px-3 py-1 text-[11px] font-medium text-white/55">
-                Current
-              </span>
-            </div>
           </div>
         </section>
 

@@ -16,7 +16,6 @@ const nav = [
   { href: "/chat", label: "Chat", kind: "chat" as const },
   { href: "/memory", label: "Memory", Icon: IconMemory },
   { href: "/voice", label: "Voice", kind: "voice" as const },
-  { href: "/voice-personas", label: "Voice & face", kind: "personas" as const },
   { href: "/tools", label: "Tools", Icon: IconTools },
   { href: "/profile", label: "Profile", Icon: IconUser },
 ] as const;
@@ -36,15 +35,6 @@ export function AppSidebar() {
           <span className="truncate bg-gradient-to-r from-[#00D4FF] to-[#BD00FF] bg-clip-text text-lg font-semibold tracking-tight text-transparent">
             {brandName}
           </span>
-        </Link>
-      </div>
-      <div className="p-3">
-        <Link
-          href="/chat?new=1"
-          className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/[0.1] bg-white/[0.06] py-2.5 text-sm font-medium text-white/90 transition hover:bg-white/[0.1]"
-        >
-          <span className="text-lg leading-none">+</span>
-          New chat
         </Link>
       </div>
       <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-4">
@@ -72,18 +62,6 @@ export function AppSidebar() {
                   }
                 >
                   <IconMicCenter />
-                </span>
-              ) : "kind" in item && item.kind === "personas" ? (
-                <span
-                  className={
-                    active
-                      ? "text-[#00D4FF] drop-shadow-[0_0_6px_rgba(0,212,255,0.35)]"
-                      : "text-white/45"
-                  }
-                >
-                  <span className="text-base" aria-hidden>
-                    🎭
-                  </span>
                 </span>
               ) : (
                 <item.Icon active={active} />

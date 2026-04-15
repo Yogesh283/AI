@@ -89,20 +89,20 @@ export type TtsVoiceGender = "male" | "female";
 
 const TTS_GENDER_STORAGE_KEY = "neo-tts-gender";
 
-/** Slower = easier to follow (especially Hindi + long replies). */
-export type TtsSpeedPreset = "slow" | "clear" | "fast";
+/** Slower = easier to follow (especially Hindi + long replies). `natural` = human-like pacing + pauses. */
+export type TtsSpeedPreset = "slow" | "natural" | "clear" | "fast";
 
 const TTS_SPEED_STORAGE_KEY = "neo-tts-speed";
 
 export function readTtsSpeedPreset(): TtsSpeedPreset {
-  if (typeof window === "undefined") return "clear";
+  if (typeof window === "undefined") return "natural";
   try {
     const v = localStorage.getItem(TTS_SPEED_STORAGE_KEY);
-    if (v === "slow" || v === "clear" || v === "fast") return v;
+    if (v === "slow" || v === "natural" || v === "clear" || v === "fast") return v;
   } catch {
     /* ignore */
   }
-  return "clear";
+  return "natural";
 }
 
 export function writeTtsSpeedPreset(p: TtsSpeedPreset): void {
@@ -118,11 +118,14 @@ export function rateForSpeedPreset(p: TtsSpeedPreset): number {
   switch (p) {
     case "slow":
       return 0.78;
+    case "natural":
+      /* Closer to conversational speech; pauses between chunks do the rest */
+      return 0.84;
     case "fast":
       return 1.02;
     default:
       /* Slightly slower = clearer, less “robot” */
-      return 0.88;
+      return 0.86;
   }
 }
 
@@ -149,9 +152,9 @@ export function writeTtsGender(g: TtsVoiceGender): void {
 function prefersVoiceGender(name: string): "f" | "m" | "u" {
   const n = name.toLowerCase();
   const femaleHints =
-    /\bfemale\b|\bzira\b|\bsamantha\b|\bvictoria\b|\bfiona\b|\bjenny\b|\bhazel\b|\bheera\b|\bveena\b|\bswara\b|\bkalpana\b|\bpriya\b|\btessa\b|\bkaren\b|\bsusan\b|\blinda\b|google uk english female|google us english|natural.*female|hindi.*female/i;
+    /\bfemale\b|\bzira\b|\bsamantha\b|\bvictoria\b|\bfiona\b|\bjenny\b|\bhazel\b|\bheera\b|\bveena\b|\bswara\b|\bkalpana\b|\bpriya\b|\bsonia\b|\bneerja\b|\bananya\b|\barya\b|\bmadhur\b|\baria\b|\bnova\b|\btessa\b|\bkaren\b|\bsusan\b|\blinda\b|google uk english female|google us english|natural.*female|hindi.*female|india.*english.*female/i;
   const maleHints =
-    /\bmale\b|\bdavid\b|\bgeorge\b|\bguy\b|\bfred\b|\bdaniel\b|\bjames\b|\brishi\b|microsoft mark|google uk english male|natural.*male|hindi.*male/i;
+    /\bmale\b|\bdavid\b|\bgeorge\b|\bguy\b|\bfred\b|\bdaniel\b|\bjames\b|\brishi\b|\baarav\b|\barjun\b|\bprabhat\b|\bmicrosoft mark|google uk english male|natural.*male|hindi.*male|india.*english.*male/i;
   const f = femaleHints.test(n);
   const m = maleHints.test(n);
   if (f && !m) return "f";
@@ -188,16 +191,19 @@ function genderRank(v: SpeechSynthesisVoice, gender?: TtsVoiceGender): number {
   return 1;
 }
 
-/** Prefer neural / cloud voices — usually clearer than legacy local ones. */
+/** Prefer neural / cloud voices — usually clearer and more “human” than legacy local ones. */
 function voiceClarityBonus(v: SpeechSynthesisVoice): number {
   const n = v.name.toLowerCase();
   let b = 0;
-  if (/\bnatural\b|\bneural\b|\bwavenet\b|\bpolly\b|\bonline\b|\bpremium\b/.test(n)) b += 4;
-  if (/\bgoogle\b|\bmicrosoft\b/.test(n) && (/\bindia\b|\bhindi\b|\benglish\b/.test(n) || /hi-|en-/i.test(v.lang)))
+  if (/\b(neural|natural|wavenet|wave|generative|premium|polly|online)\b/.test(n)) b += 6;
+  if (/microsoft\s+.*\s+natural\b/.test(n) || /\bnatural\s*-\s*/.test(n)) b += 5;
+  if (/\bgoogle\b/.test(n) && (/\bindia\b|\bhindi\b|\bindic\b|\benglish\b/.test(n) || /hi-|en-in/i.test(v.lang)))
+    b += 3;
+  if (/\bmicrosoft\b/.test(n) && (/hi-in|en-in|hindi|india/i.test(v.lang) || /\bindia\b|\bhindi\b/.test(n)))
     b += 2;
   try {
     if ("localService" in v && (v as SpeechSynthesisVoice & { localService?: boolean }).localService === false)
-      b += 1;
+      b += 2;
   } catch {
     /* ignore */
   }
@@ -263,7 +269,7 @@ function utterancePitch(
   if (gender === "male") base -= 0.04;
   if (gender === "female") base += 0.018;
 
-  const wobble = Math.sin((chunkIdx + 1) * 1.63) * 0.02;
+  const wobble = Math.sin((chunkIdx + 1) * 1.63) * 0.008;
   const moodBias =
     mood === "laugh"
       ? 0.06
@@ -293,14 +299,26 @@ function pickVoice(lang: string, gender?: TtsVoiceGender): SpeechSynthesisVoice 
   let bestScore = -1;
   for (const v of voices) {
     let s = langRank(v, want, primary) * 10 + genderRank(v, gender) * 4;
-    if (v.name.includes("Google") && langRank(v, want, primary) >= 4) s += 1;
+    if (v.name.includes("Google") && langRank(v, want, primary) >= 4) s += 2;
     s += voiceClarityBonus(v);
+    if (primary === "hi" && /hindi|hi-in|indic|devanagari/i.test(`${v.name} ${v.lang}`)) s += 2;
     if (s > bestScore) {
       bestScore = s;
       best = v;
     }
   }
   return best ?? voices.find((x) => x.default) ?? voices[0];
+}
+
+/** Short pause between phrase chunks — closer to how people speak. */
+function pauseAfterChunkMs(chunk: string, preset: TtsSpeedPreset): number {
+  const t = chunk.trimEnd();
+  const last = t.slice(-1);
+  const mult =
+    preset === "natural" ? 1.35 : preset === "slow" ? 1.2 : preset === "fast" ? 0.75 : 1;
+  if (/[.!?…]/.test(last)) return Math.round(220 * mult);
+  if (/[,;:]/.test(last)) return Math.round(110 * mult);
+  return Math.round(75 * mult);
 }
 
 /** Prime the voice list (call from Voice page on mount + after user gesture helps Chrome). */
@@ -321,6 +339,8 @@ export async function speakText(
     speedPreset?: TtsSpeedPreset;
     /** From `inferVoiceReplyMood` — shapes pitch and pacing per phrase. */
     replyMood?: VoiceReplyMood;
+    /** Fires on browser TTS boundary events (word/sentence), for UI sync. */
+    onSpeechBoundary?: () => void;
   }
 ): Promise<void> {
   const trimmed = textForTts(text);
@@ -351,10 +371,13 @@ export async function speakText(
       const u = new SpeechSynthesisUtterance(chunk);
       u.lang = lang;
       u.volume = 1;
-      const rateWobble = 1 + Math.sin(chunkIdx * 0.9) * 0.012;
+      const rateWobble = 1 + Math.sin(chunkIdx * 0.9) * 0.005;
       u.rate = Math.min(1.18, Math.max(0.72, baseRate * rateWobble));
       u.pitch = utterancePitch(mood, lang, opts?.voiceGender, chunkIdx);
       if (voice) u.voice = voice;
+      u.onboundary = () => {
+        opts?.onSpeechBoundary?.();
+      };
 
       u.onend = () => resolve();
       u.onerror = (ev) => {
@@ -379,6 +402,9 @@ export async function speakText(
 
   for (let i = 0; i < chunks.length; i++) {
     await speakChunk(chunks[i], i);
+    if (i < chunks.length - 1) {
+      await new Promise<void>((r) => setTimeout(r, pauseAfterChunkMs(chunks[i], preset)));
+    }
   }
 }
 

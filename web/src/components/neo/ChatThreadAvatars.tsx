@@ -1,16 +1,15 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { getNeoAvatar, readStoredAvatarId } from "@/lib/avatars";
 import { getVoicePersona, readStoredVoicePersonaId } from "@/lib/voicePersonas";
 
 /** Assistant side — uses selected voice persona portrait (human). */
 export function ChatAssistantAvatar({ className = "" }: { className?: string }) {
-  const [personaId, setPersonaId] = useState<string | null>(null);
-  useEffect(() => {
-    setPersonaId(readStoredVoicePersonaId());
-  }, []);
+  const [personaId] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : readStoredVoicePersonaId(),
+  );
   const p = getVoicePersona(personaId);
   return (
     <div
@@ -31,10 +30,9 @@ export function ChatAssistantAvatar({ className = "" }: { className?: string }) 
 
 /** User side — uses avatar chooser (human profile art). */
 export function ChatUserAvatar({ className = "" }: { className?: string }) {
-  const [avatarId, setAvatarId] = useState<string | null>(null);
-  useEffect(() => {
-    setAvatarId(readStoredAvatarId());
-  }, []);
+  const [avatarId] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : readStoredAvatarId(),
+  );
   const a = getNeoAvatar(avatarId);
   return (
     <div

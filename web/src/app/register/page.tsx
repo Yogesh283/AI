@@ -16,6 +16,7 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
@@ -110,7 +111,7 @@ export default function RegisterPage() {
                 Password
               </label>
               <input
-                type="password"
+                type={showPassword ? "text" : "password"}
                 autoComplete="new-password"
                 required
                 value={password}
@@ -124,7 +125,7 @@ export default function RegisterPage() {
                 Confirm password
               </label>
               <input
-                type="password"
+                type={showPassword ? "text" : "password"}
                 autoComplete="new-password"
                 required
                 value={confirm}
@@ -132,6 +133,15 @@ export default function RegisterPage() {
                 className="neo-glass w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3.5 text-sm text-white outline-none ring-1 ring-white/[0.06] placeholder:text-white/30 focus:border-[#00D4FF]/40"
                 placeholder="Repeat password"
               />
+              <label className="mt-2 inline-flex cursor-pointer items-center gap-2 text-xs text-white/55">
+                <input
+                  type="checkbox"
+                  checked={showPassword}
+                  onChange={(e) => setShowPassword(e.target.checked)}
+                  className="h-4 w-4 accent-[#00D4FF]"
+                />
+                Show passwords
+              </label>
             </div>
             {err ? (
               <p className="text-sm text-red-400/95" role="alert">

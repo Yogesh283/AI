@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import uuid
 from typing import Any
 
 _memory: dict[str, list[dict[str, Any]]] = {}
 _profiles: dict[str, dict[str, Any]] = {}
+_chat_history: dict[str, list[dict[str, Any]]] = {}
 
 # Registered users (demo in-memory; use PostgreSQL in production)
 _users: dict[str, dict[str, Any]] = {}
@@ -99,3 +101,24 @@ def set_profile(user_id: str, data: dict[str, Any]) -> dict[str, Any]:
     p = get_profile(user_id)
     p.update({k: v for k, v in data.items() if v is not None})
     return p
+
+
+def add_chat_turn(user_id: str, role: str, content: str, *, source: str = "chat") -> None:
+    hist = _chat_history.setdefault(user_id, [])
+    hist.append(
+        {
+            "role": role,
+            "source": source,
+            "content": str(content or ""),
+            "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }
+    )
+    # Keep bounded in-memory history
+    if len(hist) > 500:
+        del hist[: len(hist) - 500]
+
+
+def get_recent_chat_history(user_id: str, limit: int = 24) -> list[dict[str, Any]]:
+    hist = _chat_history.get(user_id, [])
+    lim = max(1, min(int(limit), 80))
+    return hist[-lim:]
