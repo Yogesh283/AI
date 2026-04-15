@@ -20,6 +20,7 @@ import {
   createSpeechRecognition,
   isSpeechRecognitionSupported,
   isSpeechSynthesisSupported,
+  prepareSpeechText,
   primeSpeechVoices,
   readTtsGender,
   speakText,
@@ -224,7 +225,7 @@ export default function VoicePage() {
         setSpeaking(true);
         setSpeechBeat(0);
         try {
-          await speakText(reply, lang, {
+          await speakText(prepareSpeechText(reply), lang, {
             voiceGender: ttsGender,
             speedPreset: "natural",
             replyMood: mood,
@@ -428,11 +429,11 @@ export default function VoicePage() {
                 Voice
               </p>
               <h1 className="bg-gradient-to-r from-white via-white to-white/70 bg-clip-text text-base font-semibold tracking-tight text-transparent sm:text-lg md:text-xl">
-                Talk to {brandName}
+                {profileName || `Talk to ${brandName}`}
               </h1>
               {profileName ? (
-                <p className="mt-0.5 truncate text-[12px] font-medium text-[#00D4FF]/80">
-                  {profileName}
+                <p className="mt-0.5 truncate text-[12px] font-medium text-white/50">
+                  with {brandName}
                 </p>
               ) : null}
             </div>
@@ -470,7 +471,7 @@ export default function VoicePage() {
                 >
                   <span className="text-[10px] font-bold uppercase tracking-wide text-white/40">
                     {turn.role === "user"
-                      ? profileName.split(/\s+/)[0] || "You"
+                      ? profileName || "You"
                       : brandName}
                   </span>
                   <p className="mt-1 whitespace-pre-wrap break-words">{turn.content}</p>
@@ -601,9 +602,9 @@ export default function VoicePage() {
             </motion.div>
             <p className="mt-4 max-w-[280px] text-center text-[12px] leading-relaxed text-white/45">
               {ttsSupported === false
-                ? "Is browser mein NeoXAI ki awaaz (TTS) support nahi — Chrome / Edge use karein."
+                ? `Is browser mein ${brandName} ki awaaz (TTS) support nahi — Chrome / Edge use karein.`
                 : sessionOn
-                  ? "Session on — tap again to stop. Mic pauses while NeoXAI replies."
+                  ? `Session on — tap again to stop. Mic pauses while ${brandName} replies.`
                   : speechSupported === null
                     ? "Chrome / Edge: mic + speakers / volume on rakhein."
                     : speechSupported

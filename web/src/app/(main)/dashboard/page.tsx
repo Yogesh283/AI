@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { DASHBOARD } from "@/shared/neoContent";
-import { GradientButton } from "@/components/neo/GradientButton";
 import { getStoredUser } from "@/lib/auth";
 
 function statColorClass(t: "cyan" | "magenta" | "purple") {
@@ -15,7 +14,7 @@ function statColorClass(t: "cyan" | "magenta" | "purple") {
 const workspaceCards = [
   {
     title: "Assistant Chat",
-    desc: "Daily Q&A, planning, and project support.",
+    desc: "Daily Q&A, planning, and quick tasks.",
     icon: "💬",
     href: "/chat",
   },
@@ -59,7 +58,7 @@ export default function DashboardPage() {
     if (u?.display_name) {
       // localStorage is unavailable during SSR; sync display name after mount.
       // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional post-hydration read
-      setName(u.display_name.split(" ")[0] || u.display_name);
+      setName(u.display_name.trim());
     }
   }, []);
 
@@ -95,7 +94,7 @@ export default function DashboardPage() {
 
       <section className="mb-6">
         <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-white/40">
-          Project workspace
+          Assistant
         </h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {workspaceCards.map((t) => (
@@ -114,7 +113,7 @@ export default function DashboardPage() {
 
       <section className="mb-6">
         <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-white/40">
-          Connected sections
+          More
         </h2>
         <div className="grid grid-cols-1 gap-3">
           {connectionCards.map((t) => (
@@ -127,21 +126,6 @@ export default function DashboardPage() {
               <p className="mt-0.5 text-xs text-white/50">{t.desc}</p>
             </Link>
           ))}
-        </div>
-      </section>
-
-      <section className="mt-10">
-        <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-white/40">
-          Project focus
-        </h2>
-        <div className="neo-glass rounded-[24px] border border-white/[0.08] p-5 text-sm text-white/65 ring-1 ring-white/[0.05]">
-          <p className="leading-relaxed">
-            Start from Chat for planning, continue in Voice for fast interaction, and use Tools for writing or code tasks.
-            All your key flows stay connected through Memory and Profile sections.
-          </p>
-        </div>
-        <div className="mt-6">
-          <GradientButton href="/chat">Open Assistant</GradientButton>
         </div>
       </section>
       </div>

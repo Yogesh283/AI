@@ -143,3 +143,16 @@ pm2 logs neo-api --lines 30
 
 
 ## cd /home/myneoxai/apps/neoxai && git pull origin main
+
+<!-- 
+cd /home/myneoxai/apps/neoxai
+git pull origin main
+git -C /home/myneoxai/apps/neoxai log -1 --oneline
+Dikhna chahiye: 761bcfc fix: NeoXAI brand...
+
+cd /home/myneoxai/apps/neoxai/web
+rm -rf .next && npm run build -- --webpack
+PORT=3000 pm2 restart neo-web
+Optional check (code aaya ya nahi):
+
+grep -n "HOST_BRAND_OVERRIDES" /home/myneoxai/apps/neoxai/web/src/lib/siteBrand -->

@@ -229,16 +229,16 @@ function ChatPageInner() {
     <div className="relative z-[1] flex min-h-0 flex-1 flex-col bg-[#080a0f] md:h-full">
       {/* Header */}
       <header className="sticky top-0 z-40 flex h-[52px] shrink-0 items-center justify-between gap-2 border-b border-white/[0.07] bg-[#0b0e14]/98 px-3 backdrop-blur-xl sm:h-14 sm:gap-3 sm:px-5 md:px-6">
-        <div className="flex min-w-0 items-center gap-3">
+               <div className="flex min-w-0 items-center gap-3">
           <ChatAssistantAvatar />
           <div className="min-w-0">
             <h1 className="truncate font-semibold leading-tight tracking-tight text-white">
-              {brandName}
+              {profileName || brandName}
             </h1>
             <p className="text-[11px] font-medium tracking-wide text-white/45">
               {profileName ? (
                 <>
-                  <span className="text-white/65">{profileName}</span>
+                  <span className="text-white/55">{brandName}</span>
                   <span className="text-white/30"> · </span>
                 </>
               ) : null}

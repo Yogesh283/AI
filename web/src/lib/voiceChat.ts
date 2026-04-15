@@ -120,12 +120,12 @@ export function rateForSpeedPreset(p: TtsSpeedPreset): number {
       return 0.78;
     case "natural":
       /* Closer to conversational speech; pauses between chunks do the rest */
-      return 0.84;
+      return 0.8;
     case "fast":
       return 1.02;
     default:
       /* Slightly slower = clearer, less “robot” */
-      return 0.86;
+      return 0.82;
   }
 }
 
@@ -164,6 +164,17 @@ function prefersVoiceGender(name: string): "f" | "m" | "u" {
 
 function primaryLangCode(lang: string): string {
   return lang.replace("_", "-").toLowerCase().split("-")[0] || "en";
+}
+
+function containsDevanagari(text: string): boolean {
+  return /[\u0900-\u097F]/.test(text);
+}
+
+function effectiveSpeechLang(text: string, requestedLang: string): string {
+  if (containsDevanagari(text) && primaryLangCode(requestedLang) !== "hi") {
+    return "hi-IN";
+  }
+  return requestedLang;
 }
 
 function langRank(v: SpeechSynthesisVoice, want: string, primary: string): number {
@@ -211,7 +222,7 @@ function voiceClarityBonus(v: SpeechSynthesisVoice): number {
 }
 
 /** Break speech into phrase-sized chunks so the engine breathes between sentences (more human). */
-function splitTtsChunks(text: string, maxLen = 300): string[] {
+function splitTtsChunks(text: string, maxLen = 220): string[] {
   const t = text.trim();
   if (!t) return [];
   if (t.length <= maxLen) return [t];
@@ -315,10 +326,30 @@ function pauseAfterChunkMs(chunk: string, preset: TtsSpeedPreset): number {
   const t = chunk.trimEnd();
   const last = t.slice(-1);
   const mult =
-    preset === "natural" ? 1.35 : preset === "slow" ? 1.2 : preset === "fast" ? 0.75 : 1;
-  if (/[.!?…]/.test(last)) return Math.round(220 * mult);
-  if (/[,;:]/.test(last)) return Math.round(110 * mult);
-  return Math.round(75 * mult);
+    preset === "natural" ? 1.45 : preset === "slow" ? 1.25 : preset === "fast" ? 0.78 : 1;
+  if (/[.!?…]/.test(last)) return Math.round(260 * mult);
+  if (/[,;:]/.test(last)) return Math.round(140 * mult);
+  return Math.round(90 * mult);
+}
+
+export function prepareSpeechText(raw: string, maxChars = 540): string {
+  const cleaned = textForTts(raw);
+  if (!cleaned) return "";
+  if (cleaned.length <= maxChars) return cleaned;
+
+  let clipped = cleaned.slice(0, maxChars);
+  const sentenceCut = Math.max(
+    clipped.lastIndexOf(". "),
+    clipped.lastIndexOf("? "),
+    clipped.lastIndexOf("! "),
+  );
+  if (sentenceCut > Math.floor(maxChars * 0.6)) {
+    clipped = clipped.slice(0, sentenceCut + 1);
+  } else {
+    const wordCut = clipped.lastIndexOf(" ");
+    if (wordCut > 40) clipped = clipped.slice(0, wordCut);
+  }
+  return `${clipped.trim()}...`;
 }
 
 /** Prime the voice list (call from Voice page on mount + after user gesture helps Chrome). */
@@ -360,7 +391,8 @@ export async function speakText(
     /* ignore */
   }
 
-  const voice = pickVoice(lang, opts?.voiceGender);
+  const speakLang = effectiveSpeechLang(trimmed, lang);
+  const voice = pickVoice(speakLang, opts?.voiceGender);
   const preset = opts?.speedPreset ?? readTtsSpeedPreset();
   const baseRate = rateForSpeedPreset(preset);
   const mood = opts?.replyMood ?? "neutral";
@@ -369,11 +401,11 @@ export async function speakText(
   const speakChunk = (chunk: string, chunkIdx: number) =>
     new Promise<void>((resolve, reject) => {
       const u = new SpeechSynthesisUtterance(chunk);
-      u.lang = lang;
+      u.lang = speakLang;
       u.volume = 1;
       const rateWobble = 1 + Math.sin(chunkIdx * 0.9) * 0.005;
       u.rate = Math.min(1.18, Math.max(0.72, baseRate * rateWobble));
-      u.pitch = utterancePitch(mood, lang, opts?.voiceGender, chunkIdx);
+      u.pitch = utterancePitch(mood, speakLang, opts?.voiceGender, chunkIdx);
       if (voice) u.voice = voice;
       u.onboundary = () => {
         opts?.onSpeechBoundary?.();

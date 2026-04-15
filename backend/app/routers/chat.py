@@ -225,6 +225,16 @@ async def post_chat(
         "for time-sensitive facts (prices, sports results, who is in office, etc.). "
         f"When live web snippets are provided below, they are the source for current ({live_year}) facts."
     )
+    voice_mode_extra = ""
+    if body.source == "voice":
+        voice_mode_extra = (
+            " Voice mode output rules: talk naturally like two humans in a real call. "
+            "Prefer short, clear spoken sentences (no dense paragraphs). "
+            "Avoid markdown, bullets, tables, and code formatting unless user explicitly asks for code. "
+            "Mirror the user's language style from their latest message (Hindi, English, or mixed Hinglish) "
+            "and keep default replies concise (around 2-4 short lines) unless they ask for detail."
+        )
+
     system_extra = (
         f"User display name: {profile.get('display_name', 'User')}. "
         f"Address them naturally by name when it fits. "
@@ -236,6 +246,7 @@ async def post_chat(
         "If user asks what they discussed before or when they talked, answer from known conversation timeline below. "
         "Do not say you have no memory if timeline/current chat context is available. "
         f"Prioritize their goals; bilingual Hindi/English. "
+        f"{voice_mode_extra}"
         f"Known preferences / memory hints: {mem[-5:] if mem else 'none yet'}."
     )
     system_extra += (
