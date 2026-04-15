@@ -16,6 +16,7 @@ const nav = [
   { href: "/chat", label: "Chat", kind: "chat" as const },
   { href: "/memory", label: "Memory", Icon: IconMemory },
   { href: "/voice", label: "Voice", kind: "voice" as const },
+  { href: "/voice-personas", label: "Voice & face", kind: "personas" as const },
   { href: "/tools", label: "Tools", Icon: IconTools },
   { href: "/profile", label: "Profile", Icon: IconUser },
 ] as const;
@@ -71,6 +72,18 @@ export function AppSidebar() {
                   }
                 >
                   <IconMicCenter />
+                </span>
+              ) : "kind" in item && item.kind === "personas" ? (
+                <span
+                  className={
+                    active
+                      ? "text-[#00D4FF] drop-shadow-[0_0_6px_rgba(0,212,255,0.35)]"
+                      : "text-white/45"
+                  }
+                >
+                  <span className="text-base" aria-hidden>
+                    🎭
+                  </span>
                 </span>
               ) : (
                 <item.Icon active={active} />

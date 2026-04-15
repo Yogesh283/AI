@@ -9,7 +9,7 @@ export const SPLASH = {
 } as const;
 
 export const DASHBOARD = {
-  greetingLine: "Your assistant is ready when you are.",
+  greetingLine: "Your personal assistant — chat, voice & live answers when you need them.",
   overviewTitle: "Today's Overview",
   stats: [
     { n: "3", l: "Tasks", tone: "cyan" as const },

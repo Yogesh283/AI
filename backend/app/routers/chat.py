@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from app.db_mysql import insert_chat_messages, insert_usage_transaction, pool_ready
 from app.routers.auth import optional_user
 from app.services.ai import chat_completion
-from app.services.web_search import fetch_google_snippets
+from app.services.web_search import fetch_google_snippets, should_auto_fetch_web
 from app.store import add_memory_fact, get_memory, get_profile
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -45,20 +45,24 @@ async def post_chat(
     last_user = next((m.content for m in reversed(body.messages) if m.role == "user"), "")
 
     web_block = ""
-    if body.use_web and last_user.strip():
+    want_web = bool(last_user.strip()) and (body.use_web or should_auto_fetch_web(last_user))
+    if want_web:
         web_block = await fetch_google_snippets(last_user)
 
     system_extra = (
         f"User display name: {profile.get('display_name', 'User')}. "
-        f"You are NeoXAI — this user's personal AI assistant (not a generic chatbot). "
-        f"Prioritize their goals: answer clearly, help with tasks and writing, and be warm but useful. "
-        f"Bilingual Hindi/English as the user prefers. "
+        f"Address them naturally by name when it fits. "
+        f"You are NeoXAI — this user's personal AI assistant (warm, present, one-to-one; not a generic bot). "
+        f"For prices, markets, news, or anything time-sensitive: prefer TODAY's facts from the web snippets below "
+        f"when provided — do not rely on outdated training data for numbers or dates. "
+        f"Prioritize their goals; bilingual Hindi/English. "
         f"Known preferences / memory hints: {mem[-5:] if mem else 'none yet'}."
     )
     if web_block:
         system_extra += (
-            "\n\n--- Web search (user turned this on; use for current facts, news, prices). "
-            "Summarize in your own words; do not dump raw links. If snippets are empty or irrelevant, say so briefly.\n"
+            "\n\n--- Live web results (Google; use for current facts — today / latest). "
+            "Answer in your own words; be specific with dates/numbers from snippets when relevant. "
+            "If snippets are empty or off-topic, say so briefly.\n"
             f"{web_block}"
         )
     msgs: list[dict[str, str]] = [{"role": "system", "content": system_extra}]

@@ -351,8 +351,33 @@ export default function VoicePage() {
     primeSpeechVoices();
     sessionOnRef.current = true;
     setSessionOn(true);
-    beginListening();
-  }, [beginListening, stopSession]);
+    void (async () => {
+      const u = getStoredUser();
+      const first = u?.display_name?.trim().split(/\s+/)[0] ?? "";
+      const hi = lang.startsWith("hi");
+      const line = first
+        ? hi
+          ? `Namaste ${first}, main yahan hoon — aapke saath. Boliye, main sun raha hoon.`
+          : `Hello ${first}, I'm right here with you. Go ahead — I'm listening.`
+        : hi
+          ? `Namaste, main sun raha hoon. Boliye.`
+          : `Hello, I'm listening.`;
+      setErr(null);
+      setSpeaking(true);
+      try {
+        await speakText(line, lang, {
+          voiceGender: ttsGender,
+          speedPreset: ttsSpeed,
+          replyMood: "neutral",
+        });
+      } catch {
+        /* still open mic */
+      } finally {
+        setSpeaking(false);
+      }
+      if (sessionOnRef.current) beginListening();
+    })();
+  }, [beginListening, stopSession, lang, ttsGender, ttsSpeed]);
 
   useEffect(() => {
     return () => {

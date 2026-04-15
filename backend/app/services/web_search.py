@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from urllib.parse import quote
+from datetime import datetime, timezone
 
 import httpx
 
@@ -21,7 +21,7 @@ async def fetch_google_snippets(query: str, *, limit: int = 5) -> str:
     """
     key = (settings.google_cse_api_key or "").strip()
     cx = (settings.google_cse_cx or "").strip()
-    q = (query or "").strip()[:240]
+    q = augment_search_query((query or "").strip()[:240])
     if not key or not cx or not q:
         return ""
 
@@ -51,3 +51,72 @@ async def fetch_google_snippets(query: str, *, limit: int = 5) -> str:
         link = str(it.get("link") or "").strip()
         lines.append(f"{i}. {title}\n   {snippet}\n   {link}")
     return "\n".join(lines)
+
+
+def should_auto_fetch_web(user_text: str) -> bool:
+    """Time-sensitive / market / news queries → pull live Google snippets when CSE is configured."""
+    s = user_text.lower()
+    keys = (
+        "today",
+        "aaj",
+        "abhi",
+        "abhi tak",
+        "latest",
+        "live",
+        "breaking",
+        "market",
+        "stock",
+        "stocks",
+        "share price",
+        "share ",
+        "nifty",
+        "sensex",
+        "crypto",
+        "bitcoin",
+        "gold rate",
+        "silver",
+        "ipo",
+        "news",
+        "current",
+        "rate ",
+        "price ",
+        "भाव",
+        "बाजार",
+        "शेयर",
+        "ताजा",
+    )
+    return any(k in s for k in keys)
+
+
+def augment_search_query(q: str) -> str:
+    """Bias query toward fresh results for market/news-style questions."""
+    raw = q.strip()
+    if not raw:
+        return ""
+    low = raw.lower()
+    marketish = any(
+        x in low
+        for x in (
+            "stock",
+            "market",
+            "share",
+            "nifty",
+            "sensex",
+            "crypto",
+            "gold",
+            "ipo",
+            "price",
+            "rate",
+            "today",
+            "aaj",
+            "live",
+            "latest",
+            "news",
+        )
+    )
+    now = datetime.now(timezone.utc)
+    if marketish:
+        return f"{raw} latest news {now.year}"
+    if "today" in low or "aaj" in low or "abhi" in low:
+        return f"{raw} {now.year}"
+    return raw

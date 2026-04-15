@@ -86,6 +86,30 @@ export default function DashboardPage() {
         </div>
       </section>
 
+      <section className="mb-6">
+        <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-white/40">
+          Voice &amp; sound
+        </h2>
+        <div className="grid grid-cols-2 gap-3">
+          <Link
+            href="/voice"
+            className="neo-glass flex min-h-[76px] flex-col justify-center rounded-[22px] border border-[#00D4FF]/15 bg-[#00D4FF]/[0.06] px-4 py-3 ring-1 ring-[#00D4FF]/10 transition hover:border-[#00D4FF]/35"
+          >
+            <p className="text-lg">🎙</p>
+            <p className="mt-1 font-semibold text-white">Voice chat</p>
+            <p className="text-[11px] text-white/45">Talk with your assistant</p>
+          </Link>
+          <Link
+            href="/voice-personas"
+            className="neo-glass flex min-h-[76px] flex-col justify-center rounded-[22px] border border-[#BD00FF]/15 bg-[#BD00FF]/[0.06] px-4 py-3 ring-1 ring-[#BD00FF]/10 transition hover:border-[#BD00FF]/35"
+          >
+            <p className="text-lg">🎭</p>
+            <p className="mt-1 font-semibold text-white">Voice &amp; face</p>
+            <p className="text-[11px] text-white/45">Speaker + avatar motion</p>
+          </Link>
+        </div>
+      </section>
+
       <section className="mb-6 flex justify-center">
         <NeoLogoHead className="h-28 w-24 opacity-95 drop-shadow-[0_0_24px_rgba(0,212,255,0.35)]" />
       </section>

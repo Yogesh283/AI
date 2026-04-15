@@ -12,16 +12,20 @@ import {
 } from "@/lib/voiceChat";
 import { useSiteBrand } from "@/components/SiteBrandProvider";
 import { ChatAssistantAvatar, ChatUserAvatar } from "@/components/neo/ChatThreadAvatars";
+import {
+  clearChatMessages,
+  loadChatMessages,
+  saveChatMessages,
+} from "@/lib/chatStorage";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
-function initialMsgs(brandName: string): Msg[] {
-  return [
-    {
-      role: "assistant",
-      content: `Good morning! Main ${brandName} hoon — aapka AI assistant. Jo bhi kaam ya sawaal ho, Hindi ya English mein poochho; main aapki madad ke liye yahan hoon.`,
-    },
-  ];
+function initialMsgs(brandName: string, firstName?: string | null): Msg[] {
+  const first = firstName?.trim().split(/\s+/)[0] ?? "";
+  const line = first
+    ? `Hello ${first}! Main ${brandName} hoon — aapka personal assistant. Market, news, aaj ki baat — jo bhi ho, Hindi ya English mein; main yahan hoon.`
+    : `Good morning! Main ${brandName} hoon — aapka personal assistant. Jo bhi kaam ya sawaal ho, Hindi ya English mein poochho; main yahan hoon.`;
+  return [{ role: "assistant", content: line }];
 }
 
 const CHAT_USE_WEB_KEY = "neo-chat-use-web";
@@ -32,6 +36,7 @@ function ChatPageInner() {
   const { brandName } = useSiteBrand();
   const [input, setInput] = useState("");
   const [msgs, setMsgs] = useState<Msg[]>(() => initialMsgs(brandName));
+  const hydratedRef = useRef(false);
   const [useWeb, setUseWeb] = useState(false);
   const [loading, setLoading] = useState(false);
   const [voiceListening, setVoiceListening] = useState(false);
@@ -43,9 +48,29 @@ function ChatPageInner() {
   const dictationBaseRef = useRef("");
 
   const resetConversation = useCallback(() => {
-    setMsgs(initialMsgs(brandName));
+    const uid = getStoredUser()?.id ?? "anon";
+    clearChatMessages(uid);
+    setMsgs(initialMsgs(brandName, getStoredUser()?.display_name));
     setInput("");
   }, [brandName]);
+
+  useEffect(() => {
+    if (hydratedRef.current) return;
+    hydratedRef.current = true;
+    const u = getStoredUser();
+    const uid = u?.id ?? "anon";
+    const loaded = loadChatMessages(uid);
+    if (loaded && loaded.length > 0) {
+      setMsgs(loaded);
+    } else {
+      setMsgs(initialMsgs(brandName, u?.display_name));
+    }
+  }, [brandName]);
+
+  useEffect(() => {
+    const uid = getStoredUser()?.id ?? "anon";
+    saveChatMessages(uid, msgs);
+  }, [msgs]);
 
   useEffect(() => {
     try {
@@ -216,7 +241,13 @@ function ChatPageInner() {
             </p>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+          <Link
+            href="/voice-personas"
+            className="rounded-lg px-2 py-1.5 text-[10px] font-medium text-white/50 transition hover:text-[#00D4FF] sm:text-xs"
+          >
+            Voice &amp; face
+          </Link>
           <Link
             href="/voice"
             className="hidden rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-white/70 transition hover:border-[#00D4FF]/25 hover:text-white/90 md:inline-flex"
@@ -296,7 +327,34 @@ function ChatPageInner() {
 
       {/* Composer dock */}
       <div className="shrink-0 border-t border-white/[0.08] bg-[#060910]/98 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-12px_40px_rgba(0,0,0,0.45)] backdrop-blur-xl sm:px-5 md:px-8 md:pt-4">
-        <div className="mx-auto w-full max-w-[44rem]">
+        <div className="mx-auto w-full max-w-[44rem] space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-0.5">
+            <label className="flex cursor-pointer items-center gap-2 text-[11px] text-white/45">
+              <input
+                type="checkbox"
+                checked={useWeb}
+                onChange={(e) => setUseWeb(e.target.checked)}
+                className="h-4 w-4 accent-[#00D4FF]"
+              />
+              <span title="Live Google snippets when keys set; auto for market/today queries too.">
+                Web / live data
+              </span>
+            </label>
+            <div className="flex items-center gap-3 text-[11px]">
+              <Link
+                href="/voice-personas"
+                className="text-[#00D4FF]/80 transition hover:text-[#00D4FF] hover:underline"
+              >
+                Voice &amp; face
+              </Link>
+              <Link
+                href="/chat?new=1"
+                className="text-white/40 transition hover:text-white/75 hover:underline"
+              >
+                New chat
+              </Link>
+            </div>
+          </div>
           <div className="flex items-end gap-2 rounded-2xl border border-white/[0.1] bg-[#0c1018] p-1.5 shadow-[0_0_0_1px_rgba(0,212,255,0.05),inset_0_1px_0_rgba(255,255,255,0.04)] ring-1 ring-[#00D4FF]/10 sm:gap-2 sm:p-2">
             <textarea
               className="max-h-36 min-h-[48px] min-w-0 flex-1 resize-none rounded-xl bg-transparent px-3 py-3 text-[15px] leading-snug text-white outline-none placeholder:text-white/30 focus-visible:ring-0 sm:px-4"
@@ -312,18 +370,7 @@ function ChatPageInner() {
               }}
               disabled={voiceListening}
             />
-            <div className="mb-2 flex items-center justify-between gap-2 px-0.5">
-            <label className="flex cursor-pointer items-center gap-2 text-[11px] text-white/45">
-              <input
-                type="checkbox"
-                checked={useWeb}
-                onChange={(e) => setUseWeb(e.target.checked)}
-                className="h-4 w-4 accent-[#00D4FF]"
-              />
-              <span title="Backend: GOOGLE_CSE_API_KEY + GOOGLE_CSE_CX">Web answers</span>
-            </label>
-          </div>
-          <div className="flex shrink-0 items-center gap-1 pb-0.5 sm:gap-1.5">
+            <div className="flex shrink-0 flex-col gap-1 pb-0.5">
               <button
                 type="button"
                 onClick={() => toggleVoice()}

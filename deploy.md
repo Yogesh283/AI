@@ -117,3 +117,6 @@ pm2 logs neo-api --lines 30
 ---
 
 *Local dev se automatic deploy nahi hota — `git push` + server par **B** (ya **E**) chalana zaroori hai.*
+
+
+## cd /home/myneoxai/apps/neoxai && git pull origin main
