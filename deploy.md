@@ -35,3 +35,59 @@ pm2 restart neo-api neo-web
 ```
 
 *(Pehli baar PM2 setup na ho to `deploy` alag se; `neo-api` / `neo-web` ke jagah apne PM2 process names.)*
+
+**Order:** hamesha pehle `git pull`, phir `web` mein `npm run build`, phir backend `pip`, phir `pm2 restart`. Agar pull ke bina build chala diya to purana code build ho sakta hai.
+
+---
+
+## 3) Live pe update nahi dikh raha — checklist
+
+### A) Server par sahi commit hai ya nahi
+
+```bash
+cd /home/myneoxai/apps/neoxai && git fetch origin && git log -1 --oneline && git status
+```
+
+Latest commit GitHub jaisa hona chahiye. Agar `behind` / merge issue ho to pehle `git pull origin main` fix karo.
+
+### B) Next.js — clean build (purana `.next` hata kar)
+
+```bash
+cd /home/myneoxai/apps/neoxai/web
+rm -rf .next
+npm ci
+npm run build
+pm2 restart neo-web
+```
+
+### C) PM2 `neo-web` galat folder se to nahi chal raha
+
+```bash
+pm2 describe neo-web
+```
+
+Dekho: **`exec cwd`** (ya script path) **`.../neoxai/web`** hona chahiye jahan `npm run build` chala. Agar cwd alag hai to process purana `next start` serve kar sakta hai.
+
+Sahi cwd se dubara start (example — apne path se):
+
+```bash
+cd /home/myneoxai/apps/neoxai/web
+pm2 delete neo-web
+pm2 start npm --name neo-web --cwd /home/myneoxai/apps/neoxai/web -- start
+pm2 save
+```
+
+(Backend alag se: `neo-api` pehle jaisa hi.)
+
+### D) Browser / CDN cache
+
+- Hard refresh: `Ctrl+Shift+R` (Windows) ya Incognito window.
+- Agar Cloudflare / proxy ho to **Development mode** ya cache purge** try karo.
+
+### E) Logs
+
+```bash
+pm2 logs neo-web --lines 40
+```
+
+Build ke baad bhi purana UI ho to almost hamesha **(B)** ya **(C)** fix karta hai.
