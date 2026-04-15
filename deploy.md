@@ -1,15 +1,17 @@
-# Deploy commands
+# Deploy — sirf commands (copy-paste)
 
-Repo: `https://github.com/Yogesh283/AI.git`  
-Server path (example): `/home/myneoxai/apps/neoxai` — apne path / PM2 names se badal lena.
+**Repo:** `https://github.com/Yogesh283/AI.git`  
 
-**Note:** Sirf local par project chalana (dev server, backend, browser test) se **koi automatic push / deploy nahi hota**. Remote tabhi update hota hai jab tum neeche wale `git add` → `commit` → `push` khud chalao.
+**Server path (yahan se sab chalta hai):** `/home/myneoxai/apps/neoxai`  
+Agar tumhara path alag ho to neeche `APP_ROOT` badal dena.
+
+**PM2 names:** `neo-api` (backend), `neo-web` (Next.js). Alag hon to commands mein naam badalna.
 
 ---
 
-## 1) Local → Git (4 commands)
+## A) Local PC → GitHub (code upload)
 
-Git Bash / terminal:
+Project folder mein (Windows example `D:\AI`):
 
 ```bash
 cd /d/AI
@@ -20,69 +22,63 @@ git push origin main
 
 ---
 
-## 2) Server → Git pull + live (4 commands)
+## B) Server SSH — **poora live update (ek hi block)**
 
-### Pehle: `fatal: detected dubious ownership` (bahut common)
-
-Repo folder **dusre user** (jaise `myneoxai`) ka ho aur tum **`root`** se `git pull` chalao — to Git pull **block** kar deta hai. Bina iske **naya code server par aata hi nahi**; sirf purana code build hota rahega.
-
-**Ek baar yeh chalao (root SSH par):**
+Root / SSH ke baad **poora neeche wala paste karo** (order fix hai: pehle code, phir web build, phir backend deps, phir PM2):
 
 ```bash
-git config --global --add safe.directory /home/myneoxai/apps/neoxai
-```
+export APP_ROOT=/home/myneoxai/apps/neoxai
 
-Phir `git pull` dubara try karo. Verify: `git log -1 --oneline` GitHub jaisa latest commit dikhaye.
+git config --global --add safe.directory "$APP_ROOT"
 
----
+cd "$APP_ROOT" && git pull origin main
 
-SSH ke baad:
+cd "$APP_ROOT/web" && rm -rf .next && npm ci && npm run build
 
-```bash
-cd /home/myneoxai/apps/neoxai && git pull origin main
-cd /home/myneoxai/apps/neoxai/web && npm ci && npm run build
-cd /home/myneoxai/apps/neoxai/backend && source .venv/bin/activate && pip install -r requirements.txt
-```
+cd "$APP_ROOT/backend" && . .venv/bin/activate && pip install -r requirements.txt
 
-```bash
 pm2 restart neo-api neo-web
 ```
 
-*(Pehli baar PM2 setup na ho to `deploy` alag se; `neo-api` / `neo-web` ke jagah apne PM2 process names.)*
+**Verify (optional):**
 
-**Order:** hamesha pehle `git pull`, phir `web` mein `npm run build`, phir backend `pip`, phir `pm2 restart`. Agar pull ke bina build chala diya to purana code build ho sakta hai.
+```bash
+curl -sS http://127.0.0.1:8010/health
+curl -sI http://127.0.0.1:3000 | head -5
+git -C /home/myneoxai/apps/neoxai log -1 --oneline
+```
+
+Browser: **Incognito** ya `Ctrl+Shift+R` (cache).
 
 ---
 
-## 3) Live pe update nahi dikh raha — checklist
-
-### A) Server par sahi commit hai ya nahi
+## C) Sirf **frontend** dubara build (backend same rakho)
 
 ```bash
-cd /home/myneoxai/apps/neoxai && git fetch origin && git log -1 --oneline && git status
+cd /home/myneoxai/apps/neoxai/web && rm -rf .next && npm ci && npm run build && pm2 restart neo-web
 ```
 
-Latest commit GitHub jaisa hona chahiye. Agar `behind` / merge issue ho to pehle `git pull origin main` fix karo.
+---
 
-### B) Next.js — clean build (purana `.next` hata kar)
+## D) Sirf **backend** restart / deps
 
 ```bash
-cd /home/myneoxai/apps/neoxai/web
-rm -rf .next
-npm ci
-npm run build
-pm2 restart neo-web
+cd /home/myneoxai/apps/neoxai/backend && . .venv/bin/activate && pip install -r requirements.txt && pm2 restart neo-api
 ```
 
-### C) PM2 `neo-web` galat folder se to nahi chal raha
+---
+
+## E) `git pull` fail — PC se files upload ke **baad** (bina Git)
+
+PC par zip / WinSCP se `neoxai` (ya `web` folder) server par copy karne ke **baad**:
 
 ```bash
-pm2 describe neo-web
+cd /home/myneoxai/apps/neoxai/web && rm -rf .next && npm ci && npm run build && pm2 restart neo-web
 ```
 
-Dekho: **`exec cwd`** (ya script path) **`.../neoxai/web`** hona chahiye jahan `npm run build` chala. Agar cwd alag hai to process purana `next start` serve kar sakta hai.
+---
 
-Sahi cwd se dubara start (example — apne path se):
+## F) PM2 `neo-web` sahi folder se start (galat cwd ho to)
 
 ```bash
 cd /home/myneoxai/apps/neoxai/web
@@ -91,103 +87,33 @@ pm2 start npm --name neo-web --cwd /home/myneoxai/apps/neoxai/web -- start
 pm2 save
 ```
 
-(Backend alag se: `neo-api` pehle jaisa hi.)
-
-### D) Browser / CDN cache
-
-- Hard refresh: `Ctrl+Shift+R` (Windows) ya Incognito window.
-- Agar Cloudflare / proxy ho to **Development mode** ya cache purge** try karo.
-
-### E) Logs
-
-```bash
-pm2 logs neo-web --lines 40
-```
-
-Build ke baad bhi purana UI ho to almost hamesha **(B)** ya **(C)** fix karta hai.
-
-### F) Nginx sahi port par hai? (site purani lagti hai lekin build naya hai)
-
-Server par:
-
-```bash
-curl -sI http://127.0.0.1:3000 | head -5
-pm2 logs neo-web --lines 15
-```
-
-`next start` default **3000** par sunta hai. CloudPanel / Nginx mein jo **reverse proxy** domain → `127.0.0.1:XXXX` hai, wahi port hona chahiye jahan `neo-web` bind ho raha hai (often `3000`). Agar Nginx 3001 ko point kar raha ho aur PM2 3000 par ho, to purana process / galat site dikh sakti hai.
-
 ---
 
-## 4) `git pull` → GitHub `port 443` / connection failed
+## G) Problem ho to — chhote checks
 
-Server se **bahar** HTTPS band ho to `git pull` kabhi kaam nahi karega — naya code GitHub se aayega hi nahi.
-
-**Check:**
+**GitHub / HTTPS server par band hai?**
 
 ```bash
-curl -sI --connect-timeout 5 https://github.com | head -3
+curl -sI --connect-timeout 8 https://github.com | head -3
 ```
 
-- Agar yeh fail ho → hosting **outbound firewall**, DNS, ya network policy. CloudPanel / Hetzner / provider panel se **outbound HTTPS (443)** allow karo, ya support se puchho.
-- **Workaround (jab tak Git fix na ho):** apne **PC** se repo zip / `rsync` / `scp` karke server par `/home/myneoxai/apps/neoxai` mein copy karo, phir `web` mein `npm run build` + `pm2 restart`.
+Khali / fail → pehle hosting par **outbound 443** theek karo; tab **B** wala `git pull` kaam karega.
 
----
-
-## 5) `ECONNREFUSED 127.0.0.1:8010` (login / API fail)
-
-Next.js **`/neo-api/*`** ko andar se **FastAPI** par bhejta hai (`NEO_API_INTERNAL_URL`, default `http://127.0.0.1:8010`). Agar port **8010** par koi process sun na raha ho to yeh error aayegi.
-
-**Check:**
+**API sun raha hai?**
 
 ```bash
 curl -sS http://127.0.0.1:8010/health
-# ya
-curl -sS http://127.0.0.1:8010/docs | head -5
 ss -tlnp | grep 8010
-pm2 logs neo-api --lines 40
-```
-
-**Fix (typical):** backend folder se API dubara start — repo mein `backend/start-neo-api.sh` **127.0.0.1:8010** par uvicorn chalata hai. PM2 mein `neo-api` is script / `uvicorn` ko point kare, phir:
-
-```bash
 pm2 restart neo-api
 ```
 
-Agar `curl` ab bhi fail ho → `pm2 describe neo-api` se dekho **script path / cwd** sahi `.../neoxai/backend` hai ya nahi, aur `.venv` exists hai. Python error ke liye `pm2 logs neo-api` dekho.
+**Logs:**
 
-**Order:** pehle **neo-api** healthy (`8010` OK), phir **neo-web** — warna login/chat proxy fail rahega.
+```bash
+pm2 logs neo-web --lines 30
+pm2 logs neo-api --lines 30
+```
 
 ---
 
-## 6) GitHub / OpenAI dono par HTTPS fail (design update + chat 500)
-
-Agar server par:
-
-```bash
-curl -sI --connect-timeout 8 https://github.com | head -2
-curl -sI --connect-timeout 8 https://api.openai.com | head -2
-```
-
-**output bilkul khali** ya timeout ho → VPS se **bahar HTTPS (443)** blocked / broken hai (firewall, routing, DNS, provider policy).
-
-| Symptom | Reason |
-|--------|--------|
-| Live **design / UI** purana | `git pull` kaam nahi karta → server par **purana code** hi build ho raha hai |
-| **`/api/chat` kabhi 500**, logs mein `httpx.ConnectError` / OpenAI | Backend **api.openai.com** tak connect nahi kar pa raha — wahi network issue |
-
-**Pehla fix (hosting):** provider panel / firewall mein **egress HTTPS 443** allow karo; DNS check (`ping -c1 github.com`). Jab `curl` se GitHub headers dikhne lagen, tab `git pull` + `npm run build` se design update hoga.
-
-**Jab tak network fix na ho — design deploy bina Git:**
-
-1. PC par latest code rakho (`git pull` on PC works).
-2. Poora project ya kam se kam `web/` (src, public, package.json, configs) **zip / WinSCP / `scp`** se server par `.../neoxai` mein copy karo (overwrite).
-3. Server:
-
-```bash
-cd /home/myneoxai/apps/neoxai/web && rm -rf .next && npm ci && npm run build && pm2 restart neo-web
-```
-
-4. Confirm: browser **Incognito** + domain open — purana tab cache ho sakta hai.
-
-**Chat 500:** jab `api.openai.com` reachable ho jaye, `neo-api` restart ke baad chat stable hona chahiye. Agar key galat ho to alag error aayegi (401/402), `ConnectError` nahi.
+*Local dev se automatic deploy nahi hota — `git push` + server par **B** (ya **E**) chalana zaroori hai.*
