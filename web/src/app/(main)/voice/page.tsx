@@ -30,6 +30,10 @@ import {
   type TtsSpeedPreset,
   type TtsVoiceGender,
 } from "@/lib/voiceChat";
+import { useWakeLock } from "@/lib/useWakeLock";
+
+const VOICE_HISTORY_PREFIX = "neo-voice-history-";
+const VOICE_USE_WEB_KEY = "neo-voice-use-web";
 
 type Turn = { role: "user" | "assistant"; content: string };
 
@@ -48,6 +52,8 @@ export default function VoicePage() {
   const [speechSupported, setSpeechSupported] = useState<boolean | null>(null);
   const [ttsSupported, setTtsSupported] = useState<boolean | null>(null);
   const [replyMood, setReplyMood] = useState<VoiceReplyMood>("neutral");
+  const [useWeb, setUseWeb] = useState(false);
+  const transcriptRef = useRef<HTMLDivElement>(null);
 
   const sessionOnRef = useRef(false);
   const recRef = useRef<SpeechRecognition | null>(null);
@@ -68,7 +74,59 @@ export default function VoicePage() {
 
   useEffect(() => {
     setPersonaId(readStoredVoicePersonaId());
+    try {
+      const w = localStorage.getItem(VOICE_USE_WEB_KEY);
+      if (w === "1") setUseWeb(true);
+    } catch {
+      /* ignore */
+    }
   }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(VOICE_USE_WEB_KEY, useWeb ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }, [useWeb]);
+
+  useWakeLock(sessionOn);
+
+  useEffect(() => {
+    const uid = getStoredUser()?.id ?? "anon";
+    try {
+      const raw = localStorage.getItem(`${VOICE_HISTORY_PREFIX}${uid}`);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Turn[];
+      if (!Array.isArray(parsed) || parsed.length === 0) return;
+      const clean = parsed.filter(
+        (x) =>
+          x &&
+          (x.role === "user" || x.role === "assistant") &&
+          typeof x.content === "string",
+      );
+      if (clean.length === 0) return;
+      historyRef.current = clean;
+      setHistory(clean);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    const uid = getStoredUser()?.id ?? "anon";
+    try {
+      localStorage.setItem(`${VOICE_HISTORY_PREFIX}${uid}`, JSON.stringify(history));
+    } catch {
+      /* ignore */
+    }
+  }, [history]);
+
+  useEffect(() => {
+    const el = transcriptRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [history, thinking]);
 
   useEffect(() => {
     let cancelled = false;
@@ -159,7 +217,10 @@ export default function VoicePage() {
         const user = getStoredUser();
         const uid = user?.id ?? "default";
         const msgs = [...historyRef.current, { role: "user" as const, content: t }];
-        const { reply } = await postChat(msgs, uid, { source: "voice" });
+        const { reply } = await postChat(msgs, uid, {
+          source: "voice",
+          useWeb,
+        });
         const next: Turn[] = [...msgs, { role: "assistant", content: reply }];
         historyRef.current = next;
         setHistory(next);
@@ -198,7 +259,7 @@ export default function VoicePage() {
         queueMicrotask(() => beginListeningRef.current());
       }
     },
-    [lang, ttsGender, ttsSpeed]
+    [lang, ttsGender, ttsSpeed, useWeb]
   );
 
   const beginListening = useCallback(() => {
@@ -348,12 +409,23 @@ export default function VoicePage() {
                 Talk to NeoXAI
               </h1>
             </div>
-            <Link
-              href="/voice-personas"
-              className="neo-glass shrink-0 rounded-xl border border-white/[0.1] bg-black/30 px-3 py-2 text-[11px] font-semibold text-[#00D4FF]/90 transition hover:border-[#00D4FF]/35 hover:text-[#00D4FF]"
-            >
-              Speaker
-            </Link>
+            <div className="flex shrink-0 items-center gap-2">
+              <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-white/[0.08] bg-black/30 px-2 py-1.5 text-[10px] font-medium text-white/65">
+                <input
+                  type="checkbox"
+                  checked={useWeb}
+                  onChange={(e) => setUseWeb(e.target.checked)}
+                  className="h-3.5 w-3.5 accent-[#00D4FF]"
+                />
+                Web
+              </label>
+              <Link
+                href="/voice-personas"
+                className="neo-glass rounded-xl border border-white/[0.1] bg-black/30 px-3 py-2 text-[11px] font-semibold text-[#00D4FF]/90 transition hover:border-[#00D4FF]/35 hover:text-[#00D4FF]"
+              >
+                Speaker
+              </Link>
+            </div>
           </div>
           <div className="mt-3 flex justify-center md:justify-end">
             <select
@@ -367,6 +439,34 @@ export default function VoicePage() {
             </select>
           </div>
         </header>
+
+        {history.length > 0 ? (
+          <div
+            ref={transcriptRef}
+            className="neo-glass mb-4 max-h-[min(38vh,22rem)] overflow-y-auto rounded-2xl border border-white/[0.08] px-3 py-2.5 ring-1 ring-white/[0.04]"
+          >
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-white/35">
+              Conversation
+            </p>
+            <div className="flex flex-col gap-2.5">
+              {history.map((turn, i) => (
+                <div
+                  key={i}
+                  className={`rounded-xl px-2.5 py-2 text-[13px] leading-relaxed ${
+                    turn.role === "user"
+                      ? "border border-[#00D4FF]/20 bg-[#00D4FF]/10 text-white/90"
+                      : "border border-white/[0.06] bg-white/[0.04] text-white/85"
+                  }`}
+                >
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-white/40">
+                    {turn.role === "user" ? "You" : "Assistant"}
+                  </span>
+                  <p className="mt-1 whitespace-pre-wrap break-words">{turn.content}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         <div className="mb-6 flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2">

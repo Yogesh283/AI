@@ -23,6 +23,7 @@ export function ChatAssistantAvatar({ className = "" }: { className?: string }) 
         width={36}
         height={36}
         className="h-full w-full object-cover object-top"
+        unoptimized={p.imageSrc.endsWith(".svg")}
       />
     </div>
   );
@@ -46,6 +47,7 @@ export function ChatUserAvatar({ className = "" }: { className?: string }) {
         width={36}
         height={36}
         className="h-full w-full object-cover object-top"
+        unoptimized={a.imageSrc.endsWith(".svg")}
       />
     </div>
   );

@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from app.db_mysql import insert_chat_messages, insert_usage_transaction, pool_ready
 from app.routers.auth import optional_user
 from app.services.ai import chat_completion
+from app.services.web_search import fetch_google_snippets
 from app.store import add_memory_fact, get_memory, get_profile
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -23,6 +24,8 @@ class ChatRequest(BaseModel):
     user_id: str = "default"
     # Memory API lists only chat + voice; tools excluded.
     source: Literal["chat", "voice", "tools"] = "chat"
+    # When True and GOOGLE_CSE_* are set, last user message is used for Google Custom Search snippets.
+    use_web: bool = False
 
 
 class ChatResponse(BaseModel):
@@ -39,6 +42,12 @@ async def post_chat(
     uid = str(user["id"]) if user else body.user_id
     profile = get_profile(uid)
     mem = get_memory(uid)
+    last_user = next((m.content for m in reversed(body.messages) if m.role == "user"), "")
+
+    web_block = ""
+    if body.use_web and last_user.strip():
+        web_block = await fetch_google_snippets(last_user)
+
     system_extra = (
         f"User display name: {profile.get('display_name', 'User')}. "
         f"You are NeoXAI — this user's personal AI assistant (not a generic chatbot). "
@@ -46,6 +55,12 @@ async def post_chat(
         f"Bilingual Hindi/English as the user prefers. "
         f"Known preferences / memory hints: {mem[-5:] if mem else 'none yet'}."
     )
+    if web_block:
+        system_extra += (
+            "\n\n--- Web search (user turned this on; use for current facts, news, prices). "
+            "Summarize in your own words; do not dump raw links. If snippets are empty or irrelevant, say so briefly.\n"
+            f"{web_block}"
+        )
     msgs: list[dict[str, str]] = [{"role": "system", "content": system_extra}]
     for m in body.messages:
         msgs.append({"role": m.role, "content": m.content})
@@ -53,7 +68,6 @@ async def post_chat(
     result = await chat_completion(msgs, user_id=uid)
     reply = result.text
 
-    last_user = next((m.content for m in reversed(body.messages) if m.role == "user"), "")
     if "schedule" in last_user.lower() or "समय" in last_user:
         add_memory_fact(uid, "interest", "asks about schedule")
 

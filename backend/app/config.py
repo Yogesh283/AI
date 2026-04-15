@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     mysql_user: str = "root"
     mysql_password: str = ""
     mysql_database: str = ""
+    # Optional: Google Programmable Search (Custom Search JSON API) for live web context
+    google_cse_api_key: str = ""
+    google_cse_cx: str = ""
 
 
 settings = Settings()

@@ -121,7 +121,8 @@ export function rateForSpeedPreset(p: TtsSpeedPreset): number {
     case "fast":
       return 1.02;
     default:
-      return 0.9;
+      /* Slightly slower = clearer, less “robot” */
+      return 0.88;
   }
 }
 
@@ -265,15 +266,15 @@ function utterancePitch(
   const wobble = Math.sin((chunkIdx + 1) * 1.63) * 0.02;
   const moodBias =
     mood === "laugh"
-      ? 0.085
+      ? 0.06
       : mood === "excited"
-        ? 0.055
+        ? 0.04
         : mood === "question"
-          ? 0.035
+          ? 0.025
           : mood === "think"
-            ? -0.055
+            ? -0.04
             : mood === "sympathy"
-              ? -0.045
+              ? -0.03
               : 0;
 
   const p = base + moodBias + wobble;
@@ -350,7 +351,7 @@ export async function speakText(
       const u = new SpeechSynthesisUtterance(chunk);
       u.lang = lang;
       u.volume = 1;
-      const rateWobble = 1 + Math.sin(chunkIdx * 0.9) * 0.028;
+      const rateWobble = 1 + Math.sin(chunkIdx * 0.9) * 0.012;
       u.rate = Math.min(1.18, Math.max(0.72, baseRate * rateWobble));
       u.pitch = utterancePitch(mood, lang, opts?.voiceGender, chunkIdx);
       if (voice) u.voice = voice;

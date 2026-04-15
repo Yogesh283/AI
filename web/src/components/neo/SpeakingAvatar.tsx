@@ -161,6 +161,7 @@ export function SpeakingAvatar({
                 className="object-cover object-top"
                 sizes="280px"
                 priority
+                unoptimized={imageSrc.endsWith(".svg")}
               />
             </motion.div>
 

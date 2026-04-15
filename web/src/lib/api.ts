@@ -11,19 +11,20 @@ export type ChatSource = "chat" | "voice" | "tools";
 export async function postChat(
   messages: { role: "user" | "assistant" | "system"; content: string }[],
   userId = "default",
-  opts?: { source?: ChatSource }
+  opts?: { source?: ChatSource; useWeb?: boolean }
 ) {
   const token = getStoredToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token) headers.Authorization = `Bearer ${token}`;
   const url = chatUrl();
   const source = opts?.source ?? "chat";
+  const use_web = opts?.useWeb ?? false;
   let r: Response;
   try {
     r = await fetch(url, {
       method: "POST",
       headers,
-      body: JSON.stringify({ messages, user_id: userId, source }),
+      body: JSON.stringify({ messages, user_id: userId, source, use_web }),
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

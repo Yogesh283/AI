@@ -24,12 +24,15 @@ function initialMsgs(brandName: string): Msg[] {
   ];
 }
 
+const CHAT_USE_WEB_KEY = "neo-chat-use-web";
+
 function ChatPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { brandName } = useSiteBrand();
   const [input, setInput] = useState("");
   const [msgs, setMsgs] = useState<Msg[]>(() => initialMsgs(brandName));
+  const [useWeb, setUseWeb] = useState(false);
   const [loading, setLoading] = useState(false);
   const [voiceListening, setVoiceListening] = useState(false);
   const [voiceHint, setVoiceHint] = useState<string | null>(null);
@@ -43,6 +46,22 @@ function ChatPageInner() {
     setMsgs(initialMsgs(brandName));
     setInput("");
   }, [brandName]);
+
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(CHAT_USE_WEB_KEY) === "1") setUseWeb(true);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CHAT_USE_WEB_KEY, useWeb ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }, [useWeb]);
 
   useEffect(() => {
     if (searchParams.get("new") === "1") {
@@ -160,7 +179,7 @@ function ChatPageInner() {
         content: m.content,
       }));
       const uid = getStoredUser()?.id ?? "default";
-      const { reply } = await postChat(apiMsgs, uid);
+      const { reply } = await postChat(apiMsgs, uid, { useWeb });
       setMsgs([...next, { role: "assistant", content: reply }]);
     } catch (e) {
       const hint =
@@ -293,7 +312,18 @@ function ChatPageInner() {
               }}
               disabled={voiceListening}
             />
-            <div className="flex shrink-0 items-center gap-1 pb-0.5 sm:gap-1.5">
+            <div className="mb-2 flex items-center justify-between gap-2 px-0.5">
+            <label className="flex cursor-pointer items-center gap-2 text-[11px] text-white/45">
+              <input
+                type="checkbox"
+                checked={useWeb}
+                onChange={(e) => setUseWeb(e.target.checked)}
+                className="h-4 w-4 accent-[#00D4FF]"
+              />
+              <span title="Backend: GOOGLE_CSE_API_KEY + GOOGLE_CSE_CX">Web answers</span>
+            </label>
+          </div>
+          <div className="flex shrink-0 items-center gap-1 pb-0.5 sm:gap-1.5">
               <button
                 type="button"
                 onClick={() => toggleVoice()}
