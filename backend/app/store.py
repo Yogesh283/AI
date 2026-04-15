@@ -122,3 +122,37 @@ def get_recent_chat_history(user_id: str, limit: int = 24) -> list[dict[str, Any
     hist = _chat_history.get(user_id, [])
     lim = max(1, min(int(limit), 80))
     return hist[-lim:]
+
+
+def get_chat_history_for_memory(user_id: str, limit: int = 500) -> list[dict[str, Any]]:
+    """
+    Chat + Voice turns for Memory UI when MySQL is unavailable or has no rows yet.
+    Uses the same in-memory buffer as /api/chat (lost on server restart).
+    """
+    hist = _chat_history.get(user_id, [])
+    filtered = [
+        h
+        for h in hist
+        if str(h.get("source") or "chat") in ("chat", "voice")
+    ]
+    lim = max(1, min(int(limit), 500))
+    slice_hist = filtered[-lim:]
+    out: list[dict[str, Any]] = []
+    for i, row in enumerate(slice_hist):
+        ts = row.get("created_at")
+        if isinstance(ts, str):
+            created = ts
+        elif hasattr(ts, "isoformat"):
+            created = ts.isoformat(timespec="seconds")
+        else:
+            created = str(ts or "")
+        out.append(
+            {
+                "id": -(i + 1),
+                "role": str(row.get("role") or "user"),
+                "content": str(row.get("content") or ""),
+                "source": str(row.get("source") or "chat"),
+                "created_at": created,
+            }
+        )
+    return out

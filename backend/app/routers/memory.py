@@ -5,7 +5,13 @@ from pydantic import BaseModel
 
 from app.db_mysql import fetch_chat_messages_for_user, pool_ready
 from app.routers.auth import optional_user
-from app.store import add_memory_fact, get_memory, get_profile, set_profile
+from app.store import (
+    add_memory_fact,
+    get_chat_history_for_memory,
+    get_memory,
+    get_profile,
+    set_profile,
+)
 
 router = APIRouter(prefix="/api/memory", tags=["memory"])
 
@@ -31,6 +37,8 @@ async def list_memory(
     chat_messages: list[dict] = []
     if user and pool_ready():
         chat_messages = await fetch_chat_messages_for_user(uid)
+    if user and not chat_messages:
+        chat_messages = get_chat_history_for_memory(uid)
     return {
         "user_id": uid,
         "profile": profile,

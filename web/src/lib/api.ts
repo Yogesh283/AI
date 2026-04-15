@@ -53,6 +53,8 @@ export type MemoryChatRow = {
   role: string;
   content: string;
   created_at: string;
+  /** `chat` | `voice` when provided by API */
+  source?: string;
 };
 
 export async function getMemory(userId = "default") {

@@ -228,7 +228,7 @@ async def fetch_chat_messages_for_user(user_id: str, limit: int = 500) -> list[d
         async with _pool.acquire() as conn:
             async with conn.cursor(aiomysql.DictCursor) as cur:
                 await cur.execute(
-                    "SELECT id, role, content, created_at FROM chat_messages "
+                    "SELECT id, role, content, source, created_at FROM chat_messages "
                     "WHERE user_id = %s AND source IN ('chat', 'voice') "
                     "ORDER BY created_at ASC, id ASC LIMIT %s",
                     (user_id, limit),
@@ -243,6 +243,7 @@ async def fetch_chat_messages_for_user(user_id: str, limit: int = 500) -> list[d
                     "id": int(r["id"]),
                     "role": str(r["role"]),
                     "content": str(r["content"] or ""),
+                    "source": str(r.get("source") or "chat"),
                     "created_at": created,
                 }
             )

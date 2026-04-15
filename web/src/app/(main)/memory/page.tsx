@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { GradientButton } from "@/components/neo/GradientButton";
+import { useSiteBrand } from "@/components/SiteBrandProvider";
 import { getMemory, type MemoryChatRow } from "@/lib/api";
 import { getStoredUser } from "@/lib/auth";
 
@@ -21,6 +22,7 @@ function formatChatTime(iso: string) {
 }
 
 export default function MemoryPage() {
+  const { brandName } = useSiteBrand();
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [chats, setChats] = useState<MemoryChatRow[]>([]);
@@ -138,8 +140,10 @@ export default function MemoryPage() {
               </p>
             ) : chats.length === 0 ? (
               <p className="text-sm text-white/55">
-                Abhi koi Chat/Voice save nahi. NeoXAI se Chat ya Voice mein baat karein —
-                MySQL on ho to wahi yahan dikhega (Tools alag).
+                Abhi koi entry nahi. Pehle <strong className="text-white/75">Chat</strong> ya{" "}
+                <strong className="text-white/75">Voice</strong> mein message bhejein — phir yahan
+                history dikhegi. Server par MySQL on ho to data restart ke baad bhi rehta hai; bina
+                MySQL ke jo is server process ne yaad rakha hai woh yahan aa sakta hai (Tools alag).
               </p>
             ) : (
               chats.map((m) => (
@@ -152,7 +156,10 @@ export default function MemoryPage() {
                   }`}
                 >
                   <div className="mb-1 flex items-center justify-between gap-2 text-[10px] font-semibold uppercase tracking-wide text-white/40">
-                    <span>{m.role === "user" ? "You" : "NeoXAI"}</span>
+                    <span>
+                      {(m.source === "voice" ? "Voice" : "Chat")} ·{" "}
+                      {m.role === "user" ? "You" : brandName}
+                    </span>
                     <span className="font-normal normal-case text-white/35">
                       {formatChatTime(m.created_at)}
                     </span>
