@@ -11,6 +11,7 @@ import {
   speechRecognitionErrorMessage,
 } from "@/lib/voiceChat";
 import { useSiteBrand } from "@/components/SiteBrandProvider";
+import { ChatAssistantAvatar, ChatUserAvatar } from "@/components/neo/ChatThreadAvatars";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -21,28 +22,6 @@ function initialMsgs(brandName: string): Msg[] {
       content: `Good morning! Main ${brandName} hoon — aapka AI assistant. Jo bhi kaam ya sawaal ho, Hindi ya English mein poochho; main aapki madad ke liye yahan hoon.`,
     },
   ];
-}
-
-function AvatarNeo({ className = "" }: { className?: string }) {
-  return (
-    <div
-      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/[0.08] bg-gradient-to-br from-[#1a2842] to-[#0c121c] text-base shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] ring-1 ring-[#00D4FF]/20 ${className}`}
-      aria-hidden
-    >
-      🤖
-    </div>
-  );
-}
-
-function AvatarUser({ className = "" }: { className?: string }) {
-  return (
-    <div
-      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/[0.1] bg-gradient-to-br from-[#00D4FF]/25 to-[#6b21a8]/35 text-base shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] ${className}`}
-      aria-hidden
-    >
-      👤
-    </div>
-  );
 }
 
 function ChatPageInner() {
@@ -208,7 +187,7 @@ function ChatPageInner() {
       {/* Header */}
       <header className="sticky top-0 z-40 flex h-[52px] shrink-0 items-center justify-between gap-2 border-b border-white/[0.07] bg-[#0b0e14]/98 px-3 backdrop-blur-xl sm:h-14 sm:gap-3 sm:px-5 md:px-6">
         <div className="flex min-w-0 items-center gap-3">
-          <AvatarNeo />
+          <ChatAssistantAvatar />
           <div className="min-w-0">
             <h1 className="truncate font-semibold leading-tight tracking-tight text-white">
               {brandName}
@@ -242,7 +221,7 @@ function ChatPageInner() {
         <div className="mx-auto flex w-full max-w-[44rem] flex-col gap-5 md:gap-6">
           {/* Opening message */}
           <article className="flex gap-3 sm:gap-4">
-            <AvatarNeo className="mt-0.5" />
+            <ChatAssistantAvatar className="mt-0.5" />
             <div className="min-w-0 flex-1">
               <div className="rounded-2xl rounded-tl-md border border-white/[0.07] bg-[#10151f] px-4 py-3.5 shadow-[0_2px_24px_rgba(0,0,0,0.35)] ring-1 ring-inset ring-white/[0.03] sm:px-5 sm:py-4">
                 <p className="text-[15px] leading-[1.6] text-white/[0.92]">
@@ -258,9 +237,9 @@ function ChatPageInner() {
               className={`flex gap-3 sm:gap-4 ${m.role === "user" ? "flex-row-reverse" : ""}`}
             >
               {m.role === "user" ? (
-                <AvatarUser className="mt-0.5" />
+                <ChatUserAvatar className="mt-0.5" />
               ) : (
-                <AvatarNeo className="mt-0.5" />
+                <ChatAssistantAvatar className="mt-0.5" />
               )}
               <div
                 className={`min-w-0 ${m.role === "user" ? "ml-auto max-w-[min(100%,85%)] sm:max-w-[75%]" : "max-w-[min(100%,90%)] sm:max-w-[85%]"}`}
@@ -280,7 +259,7 @@ function ChatPageInner() {
 
           {loading ? (
             <div className="flex items-center gap-3 pl-1 sm:pl-2">
-              <AvatarNeo />
+              <ChatAssistantAvatar />
               <div className="flex items-center gap-1.5 rounded-full border border-white/[0.06] bg-[#10151f] px-4 py-2.5">
                 <span className="sr-only">{brandName} typing</span>
                 {[0, 1, 2].map((d) => (

@@ -14,13 +14,13 @@ export const VOICE_PERSONAS: VoicePersona[] = [
   {
     id: "arjun",
     name: "Arjun",
-    imageSrc: "/avatars/persona-arjun.png",
+    imageSrc: "/avatars/persona-arjun.svg",
     ttsGender: "male",
   },
   {
     id: "sara",
     name: "Sara",
-    imageSrc: "/avatars/persona-sara.png",
+    imageSrc: "/avatars/persona-sara.svg",
     ttsGender: "female",
   },
 ];

@@ -139,6 +139,39 @@ export async function fetchMe(): Promise<AuthUser> {
   return j.user;
 }
 
+export async function patchMe(body: {
+  display_name?: string;
+  current_password?: string;
+  new_password?: string;
+}): Promise<AuthUser> {
+  const token = getStoredToken();
+  if (!token) throw new Error("Not authenticated");
+  const r = await fetch(`${base()}/api/auth/me`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) {
+    let msg = await r.text();
+    try {
+      const j = JSON.parse(msg) as { detail?: string | { msg?: string } };
+      msg =
+        typeof j.detail === "string"
+          ? j.detail
+          : JSON.stringify(j.detail ?? msg);
+    } catch {
+      /* raw */
+    }
+    throw new Error(msg || `HTTP ${r.status}`);
+  }
+  const j = (await r.json()) as { user: AuthUser };
+  saveSession(token, j.user);
+  return j.user;
+}
+
 export async function patchVoicePersona(voice_persona_id: string): Promise<AuthUser> {
   const token = getStoredToken();
   if (!token) throw new Error("Not authenticated");

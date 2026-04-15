@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { GradientButton } from "@/components/neo/GradientButton";
 import { NeoPublicShell } from "@/components/neo/NeoPublicShell";
@@ -80,8 +81,14 @@ export default function AvatarsPage() {
                   ✓
                 </span>
               )}
-              <div className="mb-3 flex h-28 items-center justify-center rounded-2xl bg-gradient-to-br from-[#152238] to-[#0a0f1c] text-5xl ring-1 ring-white/10">
-                {getNeoAvatar(a.id).emoji}
+              <div className="relative mb-3 aspect-square w-full overflow-hidden rounded-2xl bg-[#0a0f1c] ring-1 ring-white/10">
+                <Image
+                  src={getNeoAvatar(a.id).imageSrc}
+                  alt=""
+                  fill
+                  className="object-cover object-top"
+                  sizes="(max-width: 640px) 45vw, 220px"
+                />
               </div>
               <div className="flex items-start justify-between gap-1 pr-2">
                 <span className="font-semibold">{a.name}</span>

@@ -192,6 +192,34 @@ async def update_voice_persona_id(user_id: str, persona_id: str) -> bool:
         return False
 
 
+async def update_user_display_name(user_id: str, display_name: str) -> None:
+    if _pool is None:
+        return
+    try:
+        async with _pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "UPDATE users SET display_name = %s WHERE id = %s",
+                    (display_name, user_id),
+                )
+    except Exception as e:
+        logger.warning("update_user_display_name failed: %s", e)
+
+
+async def update_user_password_hash(user_id: str, password_hash_b64: str) -> None:
+    if _pool is None:
+        return
+    try:
+        async with _pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "UPDATE users SET password_hash_b64 = %s WHERE id = %s",
+                    (password_hash_b64, user_id),
+                )
+    except Exception as e:
+        logger.warning("update_user_password_hash failed: %s", e)
+
+
 async def fetch_chat_messages_for_user(user_id: str, limit: int = 500) -> list[dict[str, Any]]:
     """Chronological rows for Memory UI — Chat + Voice only (excludes Tools, etc.)."""
     if _pool is None:

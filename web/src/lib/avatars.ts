@@ -3,18 +3,20 @@ export const NEO_AVATAR_STORAGE_KEY = "neo-avatar-id";
 export type NeoAvatar = {
   id: string;
   name: string;
+  /** Legacy / fallback */
   emoji: string;
+  /** Illustrated human portrait (public/) */
+  imageSrc: string;
 };
 
-/** Placeholder “faces” per companion — swap for real images later */
 export const NEO_AVATARS: NeoAvatar[] = [
-  { id: "neo-core", name: "NeoXAI Core", emoji: "🤖" },
-  { id: "nova", name: "Nova", emoji: "✨" },
-  { id: "atlas", name: "Atlas", emoji: "🛡️" },
-  { id: "spark", name: "Spark", emoji: "⚡" },
-  { id: "luna", name: "Luna", emoji: "🌙" },
-  { id: "astra", name: "Astra", emoji: "🌟" },
-  { id: "yuna", name: "Yuna", emoji: "👩" },
+  { id: "neo-core", name: "NeoXAI Core", emoji: "🤖", imageSrc: "/avatars/human-neo-core.svg" },
+  { id: "nova", name: "Nova", emoji: "✨", imageSrc: "/avatars/human-nova.svg" },
+  { id: "atlas", name: "Atlas", emoji: "🛡️", imageSrc: "/avatars/human-atlas.svg" },
+  { id: "spark", name: "Spark", emoji: "⚡", imageSrc: "/avatars/human-spark.svg" },
+  { id: "luna", name: "Luna", emoji: "🌙", imageSrc: "/avatars/human-luna.svg" },
+  { id: "astra", name: "Astra", emoji: "🌟", imageSrc: "/avatars/human-astra.svg" },
+  { id: "yuna", name: "Yuna", emoji: "👩", imageSrc: "/avatars/human-yuna.svg" },
 ];
 
 export function getNeoAvatar(id: string | null | undefined): NeoAvatar {

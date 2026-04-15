@@ -14,6 +14,8 @@ from app.db_mysql import (
     fetch_voice_persona_id,
     normalize_voice_persona_id,
     sync_user_record,
+    update_user_display_name,
+    update_user_password_hash,
     update_voice_persona_id,
 )
 from app.google_verify import verify_google_id_token
@@ -21,6 +23,7 @@ from app.store import (
     create_registered_user,
     get_user_by_email,
     get_user_by_id,
+    set_profile,
     upsert_google_user,
     user_public,
 )
@@ -52,6 +55,12 @@ class GoogleTokenBody(BaseModel):
 
 class VoicePersonaBody(BaseModel):
     voice_persona_id: str = Field(..., min_length=1, max_length=32)
+
+
+class PatchMeBody(BaseModel):
+    display_name: str | None = Field(None, max_length=80)
+    current_password: str | None = Field(None, max_length=128)
+    new_password: str | None = Field(None, min_length=6, max_length=128)
 
 
 async def _enrich_user(rec: dict[str, Any]) -> dict[str, Any]:
@@ -156,6 +165,49 @@ async def me(user: dict[str, Any] | None = Depends(optional_user)) -> dict[str, 
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return {"user": user}
+
+
+@router.patch("/me")
+async def patch_me(
+    body: PatchMeBody,
+    user: dict[str, Any] = Depends(require_user),
+) -> dict[str, Any]:
+    uid = str(user["id"])
+    u = get_user_by_id(uid)
+    if not u:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    changed = False
+
+    if body.new_password is not None:
+        if not body.current_password:
+            raise HTTPException(
+                status_code=400,
+                detail="current_password is required to change password",
+            )
+        if u.get("auth_provider") != "password" or not u.get("password_hash_b64"):
+            raise HTTPException(
+                status_code=400,
+                detail="Password change is not available for this account",
+            )
+        if not _verify_password(body.current_password, u["password_hash_b64"]):
+            raise HTTPException(status_code=400, detail="Current password is incorrect")
+        u["password_hash_b64"] = _hash_password(body.new_password)
+        await update_user_password_hash(uid, u["password_hash_b64"])
+        changed = True
+
+    if body.display_name is not None:
+        raw = body.display_name.strip()
+        dn = raw[:80] if raw else str(u.get("email", "user")).split("@")[0]
+        u["display_name"] = dn
+        set_profile(uid, {"display_name": dn})
+        await update_user_display_name(uid, dn)
+        changed = True
+
+    if changed:
+        await sync_user_record(u)
+
+    return {"user": await _enrich_user(u)}
 
 
 @router.patch("/me/voice-persona")
