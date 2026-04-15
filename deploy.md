@@ -116,3 +116,44 @@ pm2 logs neo-web --lines 15
 ```
 
 `next start` default **3000** par sunta hai. CloudPanel / Nginx mein jo **reverse proxy** domain → `127.0.0.1:XXXX` hai, wahi port hona chahiye jahan `neo-web` bind ho raha hai (often `3000`). Agar Nginx 3001 ko point kar raha ho aur PM2 3000 par ho, to purana process / galat site dikh sakti hai.
+
+---
+
+## 4) `git pull` → GitHub `port 443` / connection failed
+
+Server se **bahar** HTTPS band ho to `git pull` kabhi kaam nahi karega — naya code GitHub se aayega hi nahi.
+
+**Check:**
+
+```bash
+curl -sI --connect-timeout 5 https://github.com | head -3
+```
+
+- Agar yeh fail ho → hosting **outbound firewall**, DNS, ya network policy. CloudPanel / Hetzner / provider panel se **outbound HTTPS (443)** allow karo, ya support se puchho.
+- **Workaround (jab tak Git fix na ho):** apne **PC** se repo zip / `rsync` / `scp` karke server par `/home/myneoxai/apps/neoxai` mein copy karo, phir `web` mein `npm run build` + `pm2 restart`.
+
+---
+
+## 5) `ECONNREFUSED 127.0.0.1:8010` (login / API fail)
+
+Next.js **`/neo-api/*`** ko andar se **FastAPI** par bhejta hai (`NEO_API_INTERNAL_URL`, default `http://127.0.0.1:8010`). Agar port **8010** par koi process sun na raha ho to yeh error aayegi.
+
+**Check:**
+
+```bash
+curl -sS http://127.0.0.1:8010/health
+# ya
+curl -sS http://127.0.0.1:8010/docs | head -5
+ss -tlnp | grep 8010
+pm2 logs neo-api --lines 40
+```
+
+**Fix (typical):** backend folder se API dubara start — repo mein `backend/start-neo-api.sh` **127.0.0.1:8010** par uvicorn chalata hai. PM2 mein `neo-api` is script / `uvicorn` ko point kare, phir:
+
+```bash
+pm2 restart neo-api
+```
+
+Agar `curl` ab bhi fail ho → `pm2 describe neo-api` se dekho **script path / cwd** sahi `.../neoxai/backend` hai ya nahi, aur `.venv` exists hai. Python error ke liye `pm2 logs neo-api` dekho.
+
+**Order:** pehle **neo-api** healthy (`8010` OK), phir **neo-web** — warna login/chat proxy fail rahega.
