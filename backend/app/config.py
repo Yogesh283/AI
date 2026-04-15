@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from dotenv import load_dotenv
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Always load backend/.env even if uvicorn is started from repo root or another cwd
@@ -8,6 +9,29 @@ _BACKEND_DIR = Path(__file__).resolve().parent.parent
 
 # Windows env can have OPENAI_API_KEY="" which overrides pydantic's .env — force file values
 load_dotenv(_BACKEND_DIR / ".env", override=True)
+
+
+def _last_nonempty_google_client_ids_from_env_file() -> str:
+    """
+    Duplicate `GOOGLE_CLIENT_IDS=` lines (especially an empty one in the middle) can make
+    pydantic/dotenv resolve to ''. Scan the file and use the last non-empty assignment.
+    """
+    path = _BACKEND_DIR / ".env"
+    if not path.is_file():
+        return ""
+    last = ""
+    for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[7:].strip()
+        if not line.upper().startswith("GOOGLE_CLIENT_IDS="):
+            continue
+        val = line.split("=", 1)[1].strip().strip('"').strip("'")
+        if val:
+            last = val
+    return last
 
 
 class Settings(BaseSettings):
@@ -29,6 +53,8 @@ class Settings(BaseSettings):
     jwt_expire_hours: int = 168
     # Comma-separated OAuth 2.0 Client IDs (Web, Android, iOS) from Google Cloud Console
     google_client_ids: str = ""
+    # Single Web client ID (optional). Used if GOOGLE_CLIENT_IDS is empty — easier for small deploys.
+    google_client_id: str = ""
     # MySQL (XAMPP): leave host empty to disable DB persistence
     mysql_host: str = ""
     mysql_port: int = 3306
@@ -38,6 +64,18 @@ class Settings(BaseSettings):
     # Optional: Google Programmable Search (Custom Search JSON API) for live web context
     google_cse_api_key: str = ""
     google_cse_cx: str = ""
+
+    @model_validator(mode="after")
+    def _merge_google_client_id(self):
+        ids = (self.google_client_ids or "").strip()
+        single = (self.google_client_id or "").strip()
+        if not ids:
+            from_file = _last_nonempty_google_client_ids_from_env_file()
+            if from_file:
+                object.__setattr__(self, "google_client_ids", from_file)
+            elif single:
+                object.__setattr__(self, "google_client_ids", single)
+        return self
 
 
 settings = Settings()

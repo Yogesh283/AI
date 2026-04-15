@@ -134,7 +134,11 @@ async def google_auth(body: GoogleTokenBody) -> TokenResponse:
     if not settings.google_client_ids.strip():
         raise HTTPException(
             status_code=503,
-            detail="Google sign-in is not configured (set GOOGLE_CLIENT_IDS)",
+            detail=(
+                "Google sign-in is not configured on the server. "
+                "Set GOOGLE_CLIENT_IDS (comma-separated) or GOOGLE_CLIENT_ID in backend/.env "
+                "(same Web OAuth client ID as NEXT_PUBLIC_GOOGLE_CLIENT_ID), then: pm2 restart neo-api"
+            ),
         )
     try:
         info = verify_google_id_token(body.id_token)

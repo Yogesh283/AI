@@ -73,6 +73,44 @@ Backend mein pehle se `GOOGLE_CLIENT_IDS` (same client ID allowed) hona chahiye.
 cd /home/myneoxai/apps/neoxai/web && rm -rf .next && npm ci && npm run build -- --webpack && PORT=3000 pm2 restart neo-web
 ```
 
+### Live error: `Google sign-in is not configured (set GOOGLE_CLIENT_IDS)`
+
+Iska matlab **frontend** mein button on hai, lekin **backend** (`neo-api`) ko verify karne ke liye client ID nahi mil rahi.
+
+Server par:
+
+```bash
+nano /home/myneoxai/apps/neoxai/backend/.env
+```
+
+Ye line add/update karo (**Web application** wala OAuth Client ID — wahi jo `NEXT_PUBLIC_GOOGLE_CLIENT_ID` hai):
+
+```bash
+GOOGLE_CLIENT_IDS=YOUR_CLIENT_ID.apps.googleusercontent.com
+```
+
+Ya single-ID shorthand:
+
+```bash
+GOOGLE_CLIENT_ID=YOUR_CLIENT_ID.apps.googleusercontent.com
+```
+
+Phir backend restart:
+
+```bash
+pm2 restart neo-api
+# agar PM2 ecosystem mein env alag ho:
+# pm2 restart neo-api --update-env
+```
+
+Check (optional): `grep GOOGLE /home/myneoxai/apps/neoxai/backend/.env`
+
+**Duplicate / empty lines:** agar `grep` mein `GOOGLE_CLIENT_IDS=` (khali) bhi dikhe to hata do — warna kuch parsers pe value empty ho sakti hai. Sirf **ek** non-empty line rakho, ya code update ke baad last non-empty line auto pick ho jayegi.
+
+```bash
+sed -i '/^GOOGLE_CLIENT_IDS=$/d' /home/myneoxai/apps/neoxai/backend/.env
+```
+
 ---
 
 ## C) Sirf **frontend** dubara build (backend same rakho)

@@ -74,7 +74,7 @@ function textForTts(raw: string): string {
 /**
  * Chrome often returns [] until voices load; poll getVoices() so Hindi/English voices appear.
  */
-async function waitForVoices(maxMs = 3000): Promise<void> {
+async function waitForVoices(maxMs = 5500): Promise<void> {
   if (typeof window === "undefined" || !window.speechSynthesis) return;
   const synth = window.speechSynthesis;
   const start = Date.now();
@@ -175,6 +175,16 @@ function effectiveSpeechLang(text: string, requestedLang: string): string {
     return "hi-IN";
   }
   return requestedLang;
+}
+
+/** Assigning a voice whose language does not match the utterance often yields silence (esp. Windows / Edge). */
+function voiceMatchesUtteranceLang(v: SpeechSynthesisVoice, utteranceLang: string): boolean {
+  const want = primaryLangCode(utteranceLang);
+  const got = primaryLangCode(v.lang);
+  if (want === got) return true;
+  if (want === "en" && got === "en") return true;
+  if (want === "hi" && got === "hi") return true;
+  return false;
 }
 
 function langRank(v: SpeechSynthesisVoice, want: string, primary: string): number {
@@ -333,7 +343,10 @@ function pauseAfterChunkMs(chunk: string, preset: TtsSpeedPreset): number {
 }
 
 export function prepareSpeechText(raw: string, maxChars = 540): string {
-  const cleaned = textForTts(raw);
+  let cleaned = textForTts(raw);
+  if (!cleaned) {
+    cleaned = (raw || "").replace(/\s+/g, " ").trim();
+  }
   if (!cleaned) return "";
   if (cleaned.length <= maxChars) return cleaned;
 
@@ -374,7 +387,10 @@ export async function speakText(
     onSpeechBoundary?: () => void;
   }
 ): Promise<void> {
-  const trimmed = textForTts(text);
+  let trimmed = textForTts(text);
+  if (!trimmed) {
+    trimmed = (text || "").replace(/\s+/g, " ").trim();
+  }
   if (!trimmed) return;
 
   if (typeof window === "undefined" || !window.speechSynthesis) {
@@ -383,6 +399,7 @@ export async function speakText(
 
   const synth = window.speechSynthesis;
   await waitForVoices();
+  primeSpeechVoices();
 
   synth.cancel();
   try {
@@ -391,8 +408,6 @@ export async function speakText(
     /* ignore */
   }
 
-  const speakLang = effectiveSpeechLang(trimmed, lang);
-  const voice = pickVoice(speakLang, opts?.voiceGender);
   const preset = opts?.speedPreset ?? readTtsSpeedPreset();
   const baseRate = rateForSpeedPreset(preset);
   const mood = opts?.replyMood ?? "neutral";
@@ -400,13 +415,17 @@ export async function speakText(
 
   const speakChunk = (chunk: string, chunkIdx: number) =>
     new Promise<void>((resolve, reject) => {
+      const chunkLang = effectiveSpeechLang(chunk, lang);
+      const voice = pickVoice(chunkLang, opts?.voiceGender);
       const u = new SpeechSynthesisUtterance(chunk);
-      u.lang = speakLang;
+      u.lang = chunkLang;
       u.volume = 1;
       const rateWobble = 1 + Math.sin(chunkIdx * 0.9) * 0.005;
       u.rate = Math.min(1.18, Math.max(0.72, baseRate * rateWobble));
-      u.pitch = utterancePitch(mood, speakLang, opts?.voiceGender, chunkIdx);
-      if (voice) u.voice = voice;
+      u.pitch = utterancePitch(mood, chunkLang, opts?.voiceGender, chunkIdx);
+      if (voice && voiceMatchesUtteranceLang(voice, chunkLang)) {
+        u.voice = voice;
+      }
       u.onboundary = () => {
         opts?.onSpeechBoundary?.();
       };

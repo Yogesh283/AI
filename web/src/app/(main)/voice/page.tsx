@@ -33,6 +33,9 @@ import { useWakeLock } from "@/lib/useWakeLock";
 
 const VOICE_HISTORY_PREFIX = "neo-voice-history-";
 
+/** Let TTS finish routing audio before restarting mic (fixes many Chrome / Android “silent mic” cases). */
+const MIC_RESUME_AFTER_TTS_MS = 520;
+
 type Turn = { role: "user" | "assistant"; content: string };
 
 export default function VoicePage() {
@@ -63,6 +66,12 @@ export default function VoicePage() {
   const interimRef = useRef("");
   const historyRef = useRef<Turn[]>([]);
   const beginListeningRef = useRef<() => void>(() => {});
+
+  const scheduleResumeListening = useCallback(() => {
+    window.setTimeout(() => {
+      if (sessionOnRef.current) beginListeningRef.current();
+    }, MIC_RESUME_AFTER_TTS_MS);
+  }, []);
 
   useEffect(() => {
     historyRef.current = history;
@@ -251,10 +260,10 @@ export default function VoicePage() {
       }
 
       if (sessionOnRef.current) {
-        queueMicrotask(() => beginListeningRef.current());
+        scheduleResumeListening();
       }
     },
-    [lang, ttsGender]
+    [lang, ttsGender, scheduleResumeListening]
   );
 
   const beginListening = useCallback(() => {
@@ -378,7 +387,11 @@ export default function VoicePage() {
       } finally {
         setSpeaking(false);
       }
-      if (sessionOnRef.current) beginListening();
+      if (sessionOnRef.current) {
+        window.setTimeout(() => {
+          if (sessionOnRef.current) beginListening();
+        }, MIC_RESUME_AFTER_TTS_MS);
+      }
     })();
   }, [beginListening, stopSession, lang, ttsGender]);
 
