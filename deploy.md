@@ -22,6 +22,20 @@ git push origin main
 
 ## 2) Server → Git pull + live (4 commands)
 
+### Pehle: `fatal: detected dubious ownership` (bahut common)
+
+Repo folder **dusre user** (jaise `myneoxai`) ka ho aur tum **`root`** se `git pull` chalao — to Git pull **block** kar deta hai. Bina iske **naya code server par aata hi nahi**; sirf purana code build hota rahega.
+
+**Ek baar yeh chalao (root SSH par):**
+
+```bash
+git config --global --add safe.directory /home/myneoxai/apps/neoxai
+```
+
+Phir `git pull` dubara try karo. Verify: `git log -1 --oneline` GitHub jaisa latest commit dikhaye.
+
+---
+
 SSH ke baad:
 
 ```bash
@@ -91,3 +105,14 @@ pm2 logs neo-web --lines 40
 ```
 
 Build ke baad bhi purana UI ho to almost hamesha **(B)** ya **(C)** fix karta hai.
+
+### F) Nginx sahi port par hai? (site purani lagti hai lekin build naya hai)
+
+Server par:
+
+```bash
+curl -sI http://127.0.0.1:3000 | head -5
+pm2 logs neo-web --lines 15
+```
+
+`next start` default **3000** par sunta hai. CloudPanel / Nginx mein jo **reverse proxy** domain → `127.0.0.1:XXXX` hai, wahi port hona chahiye jahan `neo-web` bind ho raha hai (often `3000`). Agar Nginx 3001 ko point kar raha ho aur PM2 3000 par ho, to purana process / galat site dikh sakti hai.
