@@ -34,7 +34,16 @@ export async function postChat(
   }
   if (!r.ok) {
     const t = (await r.text()).trim();
-    throw new Error(t || `HTTP ${r.status} ${r.statusText}`);
+    let msg = t;
+    try {
+      const j = JSON.parse(t) as { detail?: string | string[] };
+      const d = j.detail;
+      if (typeof d === "string" && d) msg = d;
+      else if (Array.isArray(d) && d.length) msg = d.map(String).join("; ");
+    } catch {
+      /* plain text / HTML error body */
+    }
+    throw new Error(msg || `HTTP ${r.status} ${r.statusText}`);
   }
   return r.json() as Promise<{ reply: string; memory_snippets?: string[] }>;
 }

@@ -144,8 +144,37 @@ async def _openai_chat(messages: list[dict[str, str]], api_key: str) -> ChatComp
                 ),
                 model="gpt-4o-mini",
             )
-        data = r.json()
-        text = data["choices"][0]["message"]["content"].strip()
+        except httpx.RequestError as e:
+            logger.warning("OpenAI request/network error: %s", e)
+            return ChatCompletionResult(
+                text=(
+                    f"[OpenAI network] {type(e).__name__}: {e}\n\n"
+                    "Server se api.openai.com reach ho raha hai ya nahi check karein (firewall / DNS / outbound HTTPS)."
+                ),
+                model="gpt-4o-mini",
+            )
+        try:
+            data = r.json()
+        except ValueError as e:
+            logger.warning("OpenAI invalid JSON: %s", e)
+            return ChatCompletionResult(
+                text="[OpenAI] Invalid response — dubara try karein.",
+                model="gpt-4o-mini",
+            )
+        try:
+            choices = data.get("choices")
+            if not isinstance(choices, list) or not choices:
+                raise ValueError("no choices")
+            msg = choices[0].get("message") if isinstance(choices[0], dict) else None
+            if not isinstance(msg, dict):
+                raise ValueError("no message")
+            text = (msg.get("content") or "").strip()
+        except (TypeError, ValueError, KeyError, IndexError) as e:
+            logger.warning("OpenAI unexpected response shape: %s", e)
+            return ChatCompletionResult(
+                text="[OpenAI] Unexpected reply format — dubara try karein.",
+                model="gpt-4o-mini",
+            )
         usage = data.get("usage") or {}
         pt = usage.get("prompt_tokens")
         ct = usage.get("completion_tokens")

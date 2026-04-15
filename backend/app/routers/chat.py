@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import logging
 import re
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -22,6 +23,7 @@ from app.store import add_chat_turn, add_memory_fact, get_memory, get_profile, g
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 IST = ZoneInfo("Asia/Kolkata")
+logger = logging.getLogger(__name__)
 
 
 def _is_live_datetime_query(text: str) -> bool:
@@ -277,22 +279,34 @@ async def post_chat(
     for m in body.messages:
         msgs.append({"role": m.role, "content": m.content})
 
-    result = await chat_completion(msgs, user_id=uid)
-    reply = result.text
-    if not web_block and last_user and _looks_like_no_live_access(reply):
-        # Retry once with forced web fetch so the user gets concrete live data when possible.
-        forced_block = await fetch_google_snippets(last_user)
-        if forced_block:
-            retry_system = (
-                f"{system_extra}\n\n--- Live web results (forced retry for current facts).\n"
-                f"{forced_block}"
-            )
-            retry_msgs: list[dict[str, str]] = [{"role": "system", "content": retry_system}]
-            for m in body.messages:
-                retry_msgs.append({"role": m.role, "content": m.content})
-            retry = await chat_completion(retry_msgs, user_id=uid)
-            result = retry
-            reply = retry.text
+    try:
+        result = await chat_completion(msgs, user_id=uid)
+        reply = result.text
+        if not web_block and last_user and _looks_like_no_live_access(reply):
+            # Retry once with forced web fetch so the user gets concrete live data when possible.
+            forced_block = await fetch_google_snippets(last_user)
+            if forced_block:
+                retry_system = (
+                    f"{system_extra}\n\n--- Live web results (forced retry for current facts).\n"
+                    f"{forced_block}"
+                )
+                retry_msgs: list[dict[str, str]] = [{"role": "system", "content": retry_system}]
+                for m in body.messages:
+                    retry_msgs.append({"role": m.role, "content": m.content})
+                retry = await chat_completion(retry_msgs, user_id=uid)
+                result = retry
+                reply = retry.text
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("post_chat completion failed")
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"Chat AI error ({type(e).__name__}): {e}. "
+                "Check backend OPENAI_API_KEY, billing, outbound HTTPS, and: pm2 logs neo-api"
+            ),
+        ) from e
 
     if "schedule" in last_user.lower() or "समय" in last_user:
         add_memory_fact(uid, "interest", "asks about schedule")
