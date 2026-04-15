@@ -157,3 +157,37 @@ pm2 restart neo-api
 Agar `curl` ab bhi fail ho → `pm2 describe neo-api` se dekho **script path / cwd** sahi `.../neoxai/backend` hai ya nahi, aur `.venv` exists hai. Python error ke liye `pm2 logs neo-api` dekho.
 
 **Order:** pehle **neo-api** healthy (`8010` OK), phir **neo-web** — warna login/chat proxy fail rahega.
+
+---
+
+## 6) GitHub / OpenAI dono par HTTPS fail (design update + chat 500)
+
+Agar server par:
+
+```bash
+curl -sI --connect-timeout 8 https://github.com | head -2
+curl -sI --connect-timeout 8 https://api.openai.com | head -2
+```
+
+**output bilkul khali** ya timeout ho → VPS se **bahar HTTPS (443)** blocked / broken hai (firewall, routing, DNS, provider policy).
+
+| Symptom | Reason |
+|--------|--------|
+| Live **design / UI** purana | `git pull` kaam nahi karta → server par **purana code** hi build ho raha hai |
+| **`/api/chat` kabhi 500**, logs mein `httpx.ConnectError` / OpenAI | Backend **api.openai.com** tak connect nahi kar pa raha — wahi network issue |
+
+**Pehla fix (hosting):** provider panel / firewall mein **egress HTTPS 443** allow karo; DNS check (`ping -c1 github.com`). Jab `curl` se GitHub headers dikhne lagen, tab `git pull` + `npm run build` se design update hoga.
+
+**Jab tak network fix na ho — design deploy bina Git:**
+
+1. PC par latest code rakho (`git pull` on PC works).
+2. Poora project ya kam se kam `web/` (src, public, package.json, configs) **zip / WinSCP / `scp`** se server par `.../neoxai` mein copy karo (overwrite).
+3. Server:
+
+```bash
+cd /home/myneoxai/apps/neoxai/web && rm -rf .next && npm ci && npm run build && pm2 restart neo-web
+```
+
+4. Confirm: browser **Incognito** + domain open — purana tab cache ho sakta hai.
+
+**Chat 500:** jab `api.openai.com` reachable ho jaye, `neo-api` restart ke baad chat stable hona chahiye. Agar key galat ho to alag error aayegi (401/402), `ConnectError` nahi.
