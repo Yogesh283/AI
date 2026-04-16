@@ -234,7 +234,10 @@ async def post_chat(
             "Prefer short, clear spoken sentences (no dense paragraphs). "
             "Avoid markdown, bullets, tables, and code formatting unless user explicitly asks for code. "
             "Mirror the user's language style from their latest message (Hindi, English, or mixed Hinglish) "
-            "and keep default replies concise (around 2-4 short lines) unless they ask for detail."
+            "and keep default replies concise (around 2-4 short lines) unless they ask for detail. "
+            "Listen-first: let the user finish; do not talk over them or fill silence unnecessarily; "
+            "acknowledge briefly then answer in a calm, attentive way, matching the assistant persona "
+            "(warm professional woman vs steady professional man) without being loud or domineering."
         )
 
     system_extra = (

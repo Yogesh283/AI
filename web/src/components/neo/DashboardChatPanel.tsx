@@ -11,6 +11,7 @@ import {
   speechRecognitionErrorMessage,
 } from "@/lib/voiceChat";
 import { useSiteBrand } from "@/components/SiteBrandProvider";
+import { NEO_ASSISTANT_NAME, shortDisplayNameForGreeting } from "@/lib/siteBranding";
 import { ChatAssistantAvatar, ChatUserAvatar } from "@/components/neo/ChatThreadAvatars";
 import {
   clearChatMessages,
@@ -20,11 +21,11 @@ import {
 
 type Msg = { role: "user" | "assistant"; content: string };
 
-function initialMsgs(brandName: string, displayName?: string | null): Msg[] {
-  const name = displayName?.trim() ?? "";
+function initialMsgs(displayName?: string | null): Msg[] {
+  const name = shortDisplayNameForGreeting(displayName ?? undefined);
   const line = name
-    ? `Hello ${name}! Main ${brandName} hoon — aapka personal assistant. Market, news, aaj ki baat — jo bhi ho, Hindi ya English mein; main yahan hoon.`
-    : `Good morning! Main ${brandName} hoon — aapka personal assistant. Jo bhi kaam ya sawaal ho, Hindi ya English mein poochho; main yahan hoon.`;
+    ? `Hello ${name}! Main ${NEO_ASSISTANT_NAME} hoon — aapka personal assistant. Market, news, aaj ki baat — jo bhi ho, Hindi ya English mein; main yahan hoon.`
+    : `Good morning! Main ${NEO_ASSISTANT_NAME} hoon — aapka personal assistant. Jo bhi kaam ya sawaal ho, Hindi ya English mein poochho; main yahan hoon.`;
   return [{ role: "assistant", content: line }];
 }
 
@@ -35,7 +36,7 @@ export function DashboardChatPanel() {
   const searchParams = useSearchParams();
   const { brandName } = useSiteBrand();
   const [input, setInput] = useState("");
-  const [msgs, setMsgs] = useState<Msg[]>(() => initialMsgs(brandName, null));
+  const [msgs, setMsgs] = useState<Msg[]>(() => initialMsgs(null));
   const [profileName, setProfileName] = useState("");
   const msgsRef = useRef(msgs);
   msgsRef.current = msgs;
@@ -55,7 +56,7 @@ export function DashboardChatPanel() {
   const resetConversation = useCallback(() => {
     const uid = getStoredUser()?.id ?? "anon";
     clearChatMessages(uid);
-    setMsgs(initialMsgs(brandName, getStoredUser()?.display_name));
+    setMsgs(initialMsgs(getStoredUser()?.display_name));
     setInput("");
   }, [brandName]);
 
@@ -69,7 +70,7 @@ export function DashboardChatPanel() {
     if (loaded && loaded.length > 0) {
       setMsgs(loaded);
     } else {
-      setMsgs(initialMsgs(brandName, u?.display_name));
+      setMsgs(initialMsgs(u?.display_name));
     }
     setHistoryReady(true);
   }, [brandName]);
@@ -206,7 +207,8 @@ export function DashboardChatPanel() {
         content: m.content,
       }));
       const uid = getStoredUser()?.id ?? "default";
-      const { reply } = await postChat(apiMsgs, uid, { useWeb: true });
+      /* useWeb false: avoid blocking every turn on Google/RSS; backend still fetches when should_auto_fetch_web matches */
+      const { reply } = await postChat(apiMsgs, uid, { useWeb: false });
       const withReply: Msg[] = [...next, { role: "assistant", content: reply }];
       setMsgs(withReply);
       msgsRef.current = withReply;
@@ -243,7 +245,7 @@ export function DashboardChatPanel() {
     if (isNew) {
       resetConversation();
     }
-    router.replace("/dashboard", { scroll: false });
+    router.replace(pathname || "/chat", { scroll: false });
     if (q) {
       const run = () => void sendMessage(q);
       if (isNew) {
@@ -306,7 +308,7 @@ export function DashboardChatPanel() {
             <div className="flex items-center gap-3 pl-1 sm:pl-2">
               <ChatAssistantAvatar />
               <div className="flex items-center gap-1.5 rounded-full border border-white/[0.06] bg-[#10151f] px-4 py-2.5">
-                <span className="sr-only">{brandName} typing</span>
+                <span className="sr-only">{NEO_ASSISTANT_NAME} typing</span>
                 {[0, 1, 2].map((d) => (
                   <span
                     key={d}

@@ -11,7 +11,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { getStoredUser, type AuthUser } from "../lib/auth";
+import { clearSession, getStoredUser, type AuthUser } from "../lib/auth";
 
 /** Bar row: minHeight 44 + paddingBottom 12 — use with `useSafeAreaInsets().top` for content padding. */
 export const APP_HEADER_BAR_HEIGHT = 56;
@@ -169,6 +169,27 @@ export function AppHeader() {
                   </Pressable>
                 );
               })}
+              <View style={styles.menuDivider} />
+              <Pressable
+                onPress={() => {
+                  closeMenu();
+                  void clearSession().then(() => {
+                    setUser(null);
+                    router.replace("/login");
+                  });
+                }}
+                style={({ pressed }) => [
+                  styles.menuRow,
+                  styles.menuRowLogout,
+                  pressed && styles.menuRowPressed,
+                ]}
+                accessibilityLabel="Log out"
+                accessibilityRole="button"
+              >
+                <Ionicons name="log-out-outline" size={22} color="#fca5a5" />
+                <Text style={[styles.menuLabel, styles.menuLabelLogout]}>Log out</Text>
+                <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.15)" />
+              </Pressable>
             </ScrollView>
           </View>
         </View>
@@ -311,5 +332,17 @@ const styles = StyleSheet.create({
   },
   menuLabelActive: {
     color: "#ffffff",
+  },
+  menuDivider: {
+    marginTop: 4,
+    marginHorizontal: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(255,255,255,0.1)",
+  },
+  menuRowLogout: {
+    borderLeftColor: "transparent",
+  },
+  menuLabelLogout: {
+    color: "#fca5a5",
   },
 });

@@ -5,6 +5,21 @@
 
 const DEFAULT_BRAND = "NeoXAI";
 
+/**
+ * Name the assistant uses in chat/voice copy. Kept separate from {@link resolveSiteDisplayName}
+ * so a domain like `amanworld.com` does not become “Aman World” in messages.
+ */
+export const NEO_ASSISTANT_NAME = DEFAULT_BRAND;
+
+/** First word of display name for “Hello …” / “Namaste …” (avoids awkward long names in voice). */
+export function shortDisplayNameForGreeting(name: string | undefined | null): string | undefined {
+  const t = name?.trim();
+  if (!t) return undefined;
+  const first = t.split(/\s+/)[0]?.trim();
+  if (!first) return undefined;
+  return first.length > 48 ? `${first.slice(0, 45)}…` : first;
+}
+
 /** Production hosts that should keep product name instead of deriving from the domain label. */
 const HOST_BRAND_OVERRIDES: Record<string, string> = {
   "myneoxai.com": DEFAULT_BRAND,

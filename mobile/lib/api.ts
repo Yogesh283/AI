@@ -5,6 +5,12 @@ const API = () => process.env.EXPO_PUBLIC_API_URL ?? "http://127.0.0.1:8010";
 export type ChatMsg = { role: "user" | "assistant" | "system"; content: string };
 
 export type ChatSource = "chat" | "voice";
+const MAX_CHAT_CONTEXT_MESSAGES = 12;
+
+function trimChatContext(messages: ChatMsg[]): ChatMsg[] {
+  if (messages.length <= MAX_CHAT_CONTEXT_MESSAGES) return messages;
+  return messages.slice(-MAX_CHAT_CONTEXT_MESSAGES);
+}
 
 /**
  * Sends Bearer JWT when logged in so the backend resolves the real user id and
@@ -21,10 +27,11 @@ export async function postChat(
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token) headers.Authorization = `Bearer ${token}`;
 
+  const trimmedMessages = trimChatContext(messages);
   const r = await fetch(`${API()}/api/chat/`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ messages, user_id: userId, source, use_web }),
+    body: JSON.stringify({ messages: trimmedMessages, user_id: userId, source, use_web }),
   });
   if (!r.ok) {
     const t = (await r.text()).trim();

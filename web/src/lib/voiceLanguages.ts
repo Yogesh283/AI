@@ -117,20 +117,9 @@ export function voiceSessionWelcomeLines(
 ): { isHindi: boolean; withName: string; withoutName: string } {
   const isHindi = lang === "hi-IN";
   const nm = displayName?.trim();
-  if (isHindi) {
-    return {
-      isHindi: true,
-      withName: nm
-        ? `Namaste ${nm}, main yahan hoon — aapke saath. Boliye, main sun raha hoon.`
-        : `Namaste, main sun raha hoon. Boliye.`,
-      withoutName: `Namaste, main sun raha hoon. Boliye.`,
-    };
-  }
   return {
-    isHindi: false,
-    withName: nm
-      ? `Hello ${nm}, I'm right here with you. Go ahead — I'm listening.`
-      : `Hello, I'm listening.`,
-    withoutName: `Hello, I'm listening.`,
+    isHindi,
+    withName: nm ? `Hello ${nm}.` : "Hello.",
+    withoutName: "Hello.",
   };
 }

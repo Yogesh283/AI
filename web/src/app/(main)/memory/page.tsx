@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { GradientButton } from "@/components/neo/GradientButton";
-import { useSiteBrand } from "@/components/SiteBrandProvider";
+import { NEO_ASSISTANT_NAME } from "@/lib/siteBranding";
 import { getMemory, type MemoryChatRow } from "@/lib/api";
 import { getStoredUser } from "@/lib/auth";
 
@@ -22,7 +22,6 @@ function formatChatTime(iso: string) {
 }
 
 export default function MemoryPage() {
-  const { brandName } = useSiteBrand();
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [chats, setChats] = useState<MemoryChatRow[]>([]);
@@ -158,7 +157,7 @@ export default function MemoryPage() {
                   <div className="mb-1 flex items-center justify-between gap-2 text-[10px] font-semibold uppercase tracking-wide text-white/40">
                     <span>
                       {(m.source === "voice" ? "Voice" : "Chat")} ·{" "}
-                      {m.role === "user" ? "You" : brandName}
+                      {m.role === "user" ? "You" : NEO_ASSISTANT_NAME}
                     </span>
                     <span className="font-normal normal-case text-white/35">
                       {formatChatTime(m.created_at)}

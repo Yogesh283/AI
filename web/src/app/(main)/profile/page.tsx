@@ -12,8 +12,8 @@ import {
   patchMe,
   type AuthUser,
 } from "@/lib/auth";
+import { ProfileVoiceSettings } from "@/components/neo/ProfileVoiceSettings";
 import { getNeoAvatar, readStoredAvatarId } from "@/lib/avatars";
-import { getVoicePersona } from "@/lib/voicePersonas";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -68,7 +68,6 @@ export default function ProfilePage() {
   }, [refreshLocal]);
 
   const avatar = getNeoAvatar(readStoredAvatarId());
-  const voice = getVoicePersona(user?.voice_persona_id);
 
   useEffect(() => {
     if (user?.display_name !== undefined) {
@@ -269,27 +268,36 @@ export default function ProfilePage() {
           </div>
         </section>
 
-        {/* Avatar & Voice */}
+        <ProfileVoiceSettings
+          user={user}
+          onUserUpdated={(u) => setUser(u)}
+          onMessage={(ok, err) => {
+            if (err) {
+              setOkMsg(null);
+              setErr(err);
+            } else if (ok) {
+              setErr(null);
+              setOkMsg(ok);
+            } else {
+              setOkMsg(null);
+              setErr(null);
+            }
+          }}
+        />
+
         <section className="neo-glass overflow-hidden rounded-[22px] ring-1 ring-white/[0.06]">
           <div className="border-b border-white/[0.07] px-5 py-3.5">
-            <h2 className="text-sm font-semibold text-white/90">Avatar &amp; Voice</h2>
+            <h2 className="text-sm font-semibold text-white/90">Avatar</h2>
             <p className="mt-0.5 text-xs text-white/40">
-              Avatar: <span className="text-white/70">{avatar.name}</span> · Voice:{" "}
-              <span className="text-white/70">{voice.name}</span>
+              Current: <span className="text-white/70">{avatar.name}</span>
             </p>
           </div>
-          <div className="flex flex-col gap-2 px-5 py-4 sm:flex-row">
+          <div className="px-5 py-4">
             <Link
               href="/avatars"
-              className="flex flex-1 items-center justify-center rounded-xl border border-white/[0.1] bg-white/[0.05] py-3 text-sm font-medium text-white/90 transition hover:bg-white/[0.09]"
+              className="flex w-full items-center justify-center rounded-xl border border-white/[0.1] bg-white/[0.05] py-3 text-sm font-medium text-white/90 transition hover:bg-white/[0.09]"
             >
               Change avatar
-            </Link>
-            <Link
-              href="/voice-personas"
-              className="flex flex-1 items-center justify-center rounded-xl border border-[#00D4FF]/25 bg-[#00D4FF]/10 py-3 text-sm font-medium text-[#00D4FF] transition hover:bg-[#00D4FF]/15"
-            >
-              Voice persona
             </Link>
           </div>
         </section>

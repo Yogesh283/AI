@@ -31,6 +31,11 @@ export function getVoicePersona(id: string | null | undefined): VoicePersona {
   return found ?? VOICE_PERSONAS[0];
 }
 
+/** Only `arjun` and `sara` are supported end-to-end (API + TTS). */
+export function normalizeVoicePersonaId(raw: string | null | undefined): "arjun" | "sara" {
+  return raw === "arjun" ? "arjun" : "sara";
+}
+
 export function readStoredVoicePersonaId(): string | null {
   if (typeof window === "undefined") return null;
   try {

@@ -12,7 +12,7 @@ import {
 import { NeoLogoMark } from "@/components/neo/NeoLogoHead";
 
 const nav = [
-  { href: "/dashboard", label: "Chat", kind: "chat" as const },
+  { href: "/chat", label: "Chat", kind: "chat" as const },
   { href: "/memory", label: "Memory", Icon: IconMemory },
   { href: "/voice", label: "Voice", kind: "voice" as const },
   { href: "/profile", label: "Profile", Icon: IconUser },

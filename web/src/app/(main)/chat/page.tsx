@@ -1,35 +1,29 @@
 "use client";
 
-import { Suspense, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense } from "react";
+import { DashboardChatPanel } from "@/components/neo/DashboardChatPanel";
+import { MainTopNav } from "@/components/neo/MainTopNav";
 
-/** Legacy /chat URLs redirect to /dashboard (single chat home). */
-function ChatRedirectInner() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-
-  useEffect(() => {
-    const q = searchParams.toString();
-    router.replace(q ? `/dashboard?${q}` : "/dashboard");
-  }, [router, searchParams]);
-
+function ChatShell() {
   return (
-    <div className="flex min-h-[40vh] flex-1 items-center justify-center bg-[#080a0f] text-sm text-white/45">
-      Redirecting…
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <MainTopNav />
+
+      <div className="flex min-h-0 flex-1 flex-col">
+        <Suspense
+          fallback={
+            <div className="flex flex-1 items-center justify-center bg-[#080a0f] p-12 text-sm text-white/45">
+              Loading…
+            </div>
+          }
+        >
+          <DashboardChatPanel />
+        </Suspense>
+      </div>
     </div>
   );
 }
 
-export default function ChatRedirectPage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="flex min-h-[40vh] flex-1 items-center justify-center bg-[#080a0f] text-sm text-white/45">
-          Loading…
-        </div>
-      }
-    >
-      <ChatRedirectInner />
-    </Suspense>
-  );
+export default function ChatPage() {
+  return <ChatShell />;
 }

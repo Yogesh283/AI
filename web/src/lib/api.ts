@@ -7,6 +7,12 @@ function chatUrl(): string {
 }
 
 export type ChatSource = "chat" | "voice";
+const MAX_CHAT_CONTEXT_MESSAGES = 12;
+
+function trimChatContext(messages: { role: "user" | "assistant" | "system"; content: string }[]) {
+  if (messages.length <= MAX_CHAT_CONTEXT_MESSAGES) return messages;
+  return messages.slice(-MAX_CHAT_CONTEXT_MESSAGES);
+}
 
 export async function postChat(
   messages: { role: "user" | "assistant" | "system"; content: string }[],
@@ -21,10 +27,11 @@ export async function postChat(
   const use_web = opts?.useWeb ?? false;
   let r: Response;
   try {
+    const trimmedMessages = trimChatContext(messages);
     r = await fetch(url, {
       method: "POST",
       headers,
-      body: JSON.stringify({ messages, user_id: userId, source, use_web }),
+      body: JSON.stringify({ messages: trimmedMessages, user_id: userId, source, use_web }),
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
-import { usePathname } from "next/navigation";
-import { getStoredUser } from "@/lib/auth";
+import { usePathname, useRouter } from "next/navigation";
+import { clearSession, getStoredUser } from "@/lib/auth";
 
 function initialsFromName(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -14,7 +14,7 @@ function initialsFromName(name: string) {
 
 export const MAIN_NAV_MENU: { href: string; label: string }[] = [
   { href: "/dashboard", label: "Home" },
-  { href: "/dashboard?new=1", label: "New chat" },
+  { href: "/chat?new=1", label: "New chat" },
   { href: "/memory", label: "Memory" },
   { href: "/voice", label: "Voice" },
   { href: "/profile", label: "Profile" },
@@ -31,6 +31,7 @@ type Props = {
 
 export function MainTopNav({ center, trailingBeforeProfile }: Props) {
   const pathname = usePathname();
+  const router = useRouter();
   const [displayName, setDisplayName] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -106,6 +107,19 @@ export function MainTopNav({ center, trailingBeforeProfile }: Props) {
                     </li>
                   );
                 })}
+                <li className="mt-1 border-t border-white/[0.08] pt-1">
+                  <button
+                    type="button"
+                    className="block w-full rounded-lg border-l-2 border-transparent px-3 py-2.5 pl-[10px] text-left text-sm font-medium text-rose-300/95 transition hover:bg-rose-500/10 hover:text-rose-200"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      clearSession();
+                      router.replace("/login");
+                    }}
+                  >
+                    Log out
+                  </button>
+                </li>
               </ul>
             </nav>
           </>

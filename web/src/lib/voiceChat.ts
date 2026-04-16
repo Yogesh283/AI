@@ -114,6 +114,31 @@ export function writeTtsSpeedPreset(p: TtsSpeedPreset): void {
   }
 }
 
+/** Warmer / “heavier” vs brighter / “thinner” TTS pitch bias (browser SpeechSynthesis). */
+export type TtsTonePreset = "warm" | "bright";
+
+const TTS_TONE_STORAGE_KEY = "neo-tts-tone";
+
+export function readTtsTonePreset(): TtsTonePreset {
+  if (typeof window === "undefined") return "warm";
+  try {
+    const v = localStorage.getItem(TTS_TONE_STORAGE_KEY);
+    if (v === "warm" || v === "bright") return v;
+  } catch {
+    /* ignore */
+  }
+  return "warm";
+}
+
+export function writeTtsTonePreset(p: TtsTonePreset): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(TTS_TONE_STORAGE_KEY, p);
+  } catch {
+    /* ignore */
+  }
+}
+
 export function rateForSpeedPreset(p: TtsSpeedPreset): number {
   switch (p) {
     case "slow":
@@ -156,9 +181,9 @@ export function writeTtsGender(g: TtsVoiceGender): void {
 function prefersVoiceGender(name: string): "f" | "m" | "u" {
   const n = name.toLowerCase();
   const femaleHints =
-    /\bfemale\b|\bzira\b|\bsamantha\b|\bvictoria\b|\bfiona\b|\bjenny\b|\bhazel\b|\bheera\b|\bveena\b|\bswara\b|\bkalpana\b|\bpriya\b|\bsonia\b|\bneerja\b|\bananya\b|\barya\b|\bmadhur\b|\baria\b|\bnova\b|\btessa\b|\bkaren\b|\bsusan\b|\blinda\b|google uk english female|google us english|natural.*female|hindi.*female|india.*english.*female/i;
+    /\bfemale\b|\bzira\b|\bsamantha\b|\bvictoria\b|\bfiona\b|\bjenny\b|\bhazel\b|\bheera\b|\bveena\b|\bswara\b|\bkalpana\b|\bshruti\b|\bpriya\b|\bsonia\b|\bneerja\b|\bananya\b|\barya\b|\baria\b|\bnova\b|\btessa\b|\bkaren\b|\bsusan\b|\blinda\b|\bcatherine\b|\bmichelle\b|\bamy\b|\bemma\b|\bhannah\b|google uk english female|google us english|natural.*female|hindi.*female|india.*english.*female|microsoft.*female/i;
   const maleHints =
-    /\bmale\b|\bdavid\b|\bgeorge\b|\bguy\b|\bfred\b|\bdaniel\b|\bjames\b|\brishi\b|\baarav\b|\barjun\b|\bprabhat\b|\bmicrosoft mark|google uk english male|natural.*male|hindi.*male|india.*english.*male/i;
+    /\bmale\b|\bdavid\b|\bgeorge\b|\bguy\b|\bfred\b|\bdaniel\b|\bjames\b|\brishi\b|\baarav\b|\barjun\b|\bprabhat\b|\bhemant\b|\bmadhur\b|\bravi\b|\bjitendra\b|\bmanish\b|\brahul\b|\bamit\b|\bmark\b|\bthomas\b|\bryan\b|\bsteven\b|\bmicrosoft mark\b|\bgoogle uk english male\b|natural.*male|hindi.*male|india.*english.*male|microsoft.*male/i;
   const f = femaleHints.test(n);
   const m = maleHints.test(n);
   if (f && !m) return "f";
@@ -183,8 +208,11 @@ function effectiveSpeechLang(text: string, requestedLang: string): string {
 
 /** Assigning a voice whose language does not match the utterance often yields silence (esp. Windows / Edge). */
 function voiceMatchesUtteranceLang(v: SpeechSynthesisVoice, utteranceLang: string): boolean {
+  const raw = (v.lang || "").trim();
+  /* Many engines leave lang empty; skipping assignment then falls back to one default voice (gender ignored). */
+  if (!raw) return true;
   const want = primaryLangCode(utteranceLang);
-  const got = primaryLangCode(v.lang);
+  const got = primaryLangCode(raw);
   if (want === got) return true;
   if (want === "en" && got === "en") return true;
   if (want === "hi" && got === "hi") return true;
@@ -288,6 +316,7 @@ function utterancePitch(
   lang: string,
   gender: TtsVoiceGender | undefined,
   chunkIdx: number,
+  tone: TtsTonePreset,
 ): number {
   const primary = primaryLangCode(lang);
   let base = primary === "hi" ? 1.02 : 1;
@@ -308,8 +337,24 @@ function utterancePitch(
               ? -0.03
               : 0;
 
-  const p = base + moodBias + wobble;
+  const toneBias = tone === "bright" ? 0.08 : -0.05;
+  const p = base + moodBias + wobble + toneBias;
   return Math.min(1.34, Math.max(0.72, p));
+}
+
+/** Drop known opposite-gender voices when the list still has alternatives (Windows often names voices clearly). */
+function voicesEligibleForGender(
+  voices: SpeechSynthesisVoice[],
+  gender?: TtsVoiceGender,
+): SpeechSynthesisVoice[] {
+  if (!gender || voices.length === 0) return voices;
+  const filtered = voices.filter((v) => {
+    const p = prefersVoiceGender(v.name);
+    if (gender === "female") return p !== "m";
+    if (gender === "male") return p !== "f";
+    return true;
+  });
+  return filtered.length > 0 ? filtered : voices;
 }
 
 function pickVoice(lang: string, gender?: TtsVoiceGender): SpeechSynthesisVoice | undefined {
@@ -317,13 +362,15 @@ function pickVoice(lang: string, gender?: TtsVoiceGender): SpeechSynthesisVoice 
   const voices = window.speechSynthesis.getVoices();
   if (voices.length === 0) return undefined;
 
+  const pool = voicesEligibleForGender(voices, gender);
   const want = lang.replace("_", "-").toLowerCase();
   const primary = want.split("-")[0] || want;
 
   let best: SpeechSynthesisVoice | undefined;
   let bestScore = -1;
-  for (const v of voices) {
-    let s = langRank(v, want, primary) * 10 + genderRank(v, gender) * 4;
+  for (const v of pool) {
+    /* Stronger gender weight so Man/Woman beats “best neural” when both are same language tier */
+    let s = langRank(v, want, primary) * 10 + genderRank(v, gender) * 9;
     if (v.name.includes("Google") && langRank(v, want, primary) >= 4) s += 2;
     s += voiceClarityBonus(v);
     if (primary === "hi" && /hindi|hi-in|indic|devanagari/i.test(`${v.name} ${v.lang}`)) s += 2;
@@ -332,7 +379,7 @@ function pickVoice(lang: string, gender?: TtsVoiceGender): SpeechSynthesisVoice 
       best = v;
     }
   }
-  return best ?? voices.find((x) => x.default) ?? voices[0];
+  return best ?? pool.find((x) => x.default) ?? pool[0];
 }
 
 /** Short pause between phrase chunks — closer to how people speak. */
@@ -423,6 +470,7 @@ export async function speakText(
   const preset = opts?.speedPreset ?? readTtsSpeedPreset();
   const baseRate = rateForSpeedPreset(preset);
   const mood = opts?.replyMood ?? "neutral";
+  const tone = readTtsTonePreset();
   /* Fewer, longer chunks for clear/fast = less inter-chunk delay, speech starts sooner overall */
   const chunkMaxLen = preset === "clear" || preset === "fast" ? 300 : 220;
   const chunks = splitTtsChunks(trimmed, chunkMaxLen);
@@ -436,7 +484,7 @@ export async function speakText(
       u.volume = 1;
       const rateWobble = 1 + Math.sin(chunkIdx * 0.9) * 0.005;
       u.rate = Math.min(1.18, Math.max(0.72, baseRate * rateWobble));
-      u.pitch = utterancePitch(mood, chunkLang, opts?.voiceGender, chunkIdx);
+      u.pitch = utterancePitch(mood, chunkLang, opts?.voiceGender, chunkIdx, tone);
       if (voice && voiceMatchesUtteranceLang(voice, chunkLang)) {
         u.voice = voice;
       }
