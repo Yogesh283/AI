@@ -143,7 +143,7 @@ export default function MemoryPage() {
                 Abhi koi entry nahi. Pehle <strong className="text-white/75">Chat</strong> ya{" "}
                 <strong className="text-white/75">Voice</strong> mein message bhejein — phir yahan
                 history dikhegi. Server par MySQL on ho to data restart ke baad bhi rehta hai; bina
-                MySQL ke jo is server process ne yaad rakha hai woh yahan aa sakta hai (Tools alag).
+                MySQL ke jo is server process ne yaad rakha hai woh yahan aa sakta hai.
               </p>
             ) : (
               chats.map((m) => (

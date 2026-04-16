@@ -1,9 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
-import { IconBack } from "@/components/neo/NeoIcons";
+import { MainTopNav } from "@/components/neo/MainTopNav";
 import {
   fetchMe,
   getStoredToken,
@@ -67,27 +66,12 @@ export default function VoicePersonasPage() {
   }, []);
 
   return (
-    <div className="relative z-[1] mx-auto flex min-h-screen max-w-3xl flex-col px-4 pb-28 pt-4 md:min-h-0 md:flex-1 md:px-8 md:pb-12 md:pt-6">
-      <header className="mb-6 flex items-center gap-3">
-        <Link
-          href="/voice"
-          className="neo-glass flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/[0.07] transition hover:border-[#00D4FF]/25"
-          aria-label="Back to Voice"
-        >
-          <IconBack />
-        </Link>
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/35">
-            Voice
-          </p>
-          <h1 className="bg-gradient-to-r from-white to-white/75 bg-clip-text text-lg font-semibold tracking-tight text-transparent">
-            Voice avatar
-          </h1>
-          <p className="mt-1 max-w-md text-[12px] leading-relaxed text-white/45">
-            Select how your assistant appears in voice mode.
-          </p>
-        </div>
-      </header>
+    <div className="relative z-[1] mx-auto flex min-h-screen max-w-3xl flex-col bg-[#080a0f] px-4 pb-28 pt-0 md:min-h-0 md:flex-1 md:px-8 md:pb-12 md:pt-0">
+      <MainTopNav center={<span className="text-white">Voice avatar</span>} />
+
+      <p className="mb-6 mt-4 max-w-md text-[12px] leading-relaxed text-white/45">
+        Select how your assistant appears in voice mode.
+      </p>
 
       <section className="mb-8">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
@@ -109,14 +93,20 @@ export default function VoicePersonasPage() {
                     src={p.imageSrc}
                     alt={p.name}
                     fill
-                    className="object-cover object-top"
+                    className="object-cover object-center"
                     sizes="(max-width:640px) 50vw, 280px"
+                    unoptimized={p.imageSrc.endsWith(".svg")}
                   />
                 </div>
                 <div className="flex items-center justify-between gap-2 px-3 py-2.5">
-                  <span className="text-sm font-semibold text-white/90">{p.name}</span>
-                  <span className="text-[10px] font-medium uppercase tracking-wide text-white/50">
-                    Assistant voice
+                  <div className="min-w-0">
+                    <span className="block text-sm font-semibold text-white/90">{p.name}</span>
+                    <span className="text-[11px] text-white/45">
+                      {p.ttsGender === "female" ? "Woman" : "Man"} · Human style
+                    </span>
+                  </div>
+                  <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-white/50">
+                    Voice
                   </span>
                 </div>
                 {on ? (

@@ -181,8 +181,8 @@ pm2 logs neo-api --lines 30
 
 
 ## cd /home/myneoxai/apps/neoxai && git pull origin main
+ 
 
-<!-- 
 cd /home/myneoxai/apps/neoxai
 git pull origin main
 git -C /home/myneoxai/apps/neoxai log -1 --oneline
@@ -193,4 +193,4 @@ rm -rf .next && npm run build -- --webpack
 PORT=3000 pm2 restart neo-web
 Optional check (code aaya ya nahi):
 
-grep -n "HOST_BRAND_OVERRIDES" /home/myneoxai/apps/neoxai/web/src/lib/siteBrand -->
+grep -n "HOST_BRAND_OVERRIDES" /home/myneoxai/apps/neoxai/web/src/lib/siteBrand

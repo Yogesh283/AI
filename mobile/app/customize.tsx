@@ -8,7 +8,10 @@ import {
   Text,
   View,
 } from "react-native";
-import { NEO } from "../constants/theme";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { AppHeader, APP_HEADER_BAR_HEIGHT } from "../components/AppHeader";
+import { NEO, neoGradientPrimary } from "../constants/theme";
+import { neoUi } from "../constants/neoUi";
 
 const voices = [
   { id: "male", label: "Male", sub: "Deep" },
@@ -18,6 +21,7 @@ const voices = [
 const chips = ["Friendly", "Professional", "Motivational", "Funny"];
 
 export default function Customize() {
+  const insets = useSafeAreaInsets();
   const [voice, setVoice] = useState("male");
   const [picked, setPicked] = useState<string[]>(["Friendly"]);
 
@@ -28,9 +32,22 @@ export default function Customize() {
   }
 
   return (
-    <View style={styles.root}>
+    <View style={{ flex: 1, backgroundColor: "#0c1018" }}>
+      <AppHeader />
+      <View
+        style={[
+          neoUi.screen,
+          { paddingTop: insets.top + APP_HEADER_BAR_HEIGHT + 8 },
+        ]}
+      >
       <LinearGradient colors={["#0B0E14", "#05070C"]} style={StyleSheet.absoluteFill} />
-      <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
+      <ScrollView
+        contentContainerStyle={[
+          neoUi.padScreen,
+          { paddingBottom: 120, paddingTop: 0 },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
         <Pressable onPress={() => router.back()}>
           <Text style={styles.back}>← Back</Text>
         </Pressable>
@@ -67,7 +84,7 @@ export default function Customize() {
           })}
         </View>
 
-        <View style={styles.sliders}>
+        <View style={[styles.sliders, neoUi.glassCardGlow]}>
           <Text style={styles.sliderLabel}>Speaking speed</Text>
           <View style={styles.fakeBar} />
           <Text style={styles.sliderLabel}>Response detail</Text>
@@ -76,17 +93,17 @@ export default function Customize() {
       </ScrollView>
       <View style={styles.footer}>
         <Pressable onPress={() => router.replace("/(tabs)")}>
-          <LinearGradient colors={[NEO.cyan, NEO.magenta]} style={styles.cta}>
+          <LinearGradient colors={[...neoGradientPrimary]} style={styles.cta}>
             <Text style={styles.ctaText}>Save & Continue</Text>
           </LinearGradient>
         </Pressable>
+      </View>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: NEO.bg, paddingTop: 52, paddingHorizontal: 20 },
   back: { color: NEO.cyan, marginBottom: 12, fontSize: 14 },
   h1: { fontSize: 24, fontWeight: "800", color: "#fff" },
   sub: { marginTop: 6, color: NEO.muted, fontSize: 14 },
@@ -109,7 +126,7 @@ const styles = StyleSheet.create({
     borderColor: NEO.border,
     alignItems: "center",
   },
-  voiceOn: { borderColor: NEO.cyan },
+  voiceOn: { borderColor: NEO.borderGlow, backgroundColor: "rgba(0,212,255,0.08)" },
   voiceL: { color: "#fff", fontWeight: "800" },
   voiceS: { marginTop: 4, fontSize: 11, color: "rgba(255,255,255,0.4)" },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
@@ -121,16 +138,12 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.12)",
     backgroundColor: "rgba(255,255,255,0.04)",
   },
-  chipOn: { borderColor: "rgba(0,212,255,0.45)", backgroundColor: "rgba(0,212,255,0.12)" },
+  chipOn: { borderColor: NEO.borderGlow, backgroundColor: "rgba(0,212,255,0.14)" },
   chipT: { color: "rgba(255,255,255,0.55)", fontWeight: "600" },
   chipTon: { color: NEO.cyan },
   sliders: {
     marginTop: 24,
     padding: 18,
-    borderRadius: 24,
-    backgroundColor: NEO.glass,
-    borderWidth: 1,
-    borderColor: NEO.border,
     gap: 10,
   },
   sliderLabel: { color: "rgba(255,255,255,0.65)", fontSize: 13 },
@@ -145,11 +158,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    padding: 20,
-    paddingBottom: 32,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.08)",
-    backgroundColor: "rgba(6,9,16,0.96)",
+    ...neoUi.footerDock,
   },
   cta: { paddingVertical: 16, borderRadius: 18, alignItems: "center" },
   ctaText: { color: "#050912", fontWeight: "900", fontSize: 16 },

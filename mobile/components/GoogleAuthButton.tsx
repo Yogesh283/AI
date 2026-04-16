@@ -63,7 +63,7 @@ function GoogleAuthButtonInner({ mode }: { mode: "login" | "register" }) {
         disabled={loading}
         style={({ pressed }) => [{ opacity: pressed ? 0.85 : 1 }]}
       >
-        <LinearGradient colors={["#1a2332", "#121820"]} style={styles.googleBtn}>
+        <LinearGradient colors={["#1a2842", "#0f1522"]} style={styles.googleBtn}>
           <Text style={styles.googleBtnT}>
             {loading ? "Connecting…" : "Continue with Google"}
           </Text>
@@ -81,7 +81,11 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: "center",
     borderWidth: 1,
-    borderColor: NEO.border,
+    borderColor: NEO.borderGlow,
+    shadowColor: NEO.cyan,
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 4,
   },
   googleBtnT: { color: "rgba(255,255,255,0.92)", fontWeight: "800", fontSize: 15 },
 });

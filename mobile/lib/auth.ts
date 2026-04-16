@@ -8,6 +8,8 @@ export type AuthUser = {
   email: string;
   display_name: string;
   auth_provider?: string;
+  /** Matches web voice persona (`sara` = woman, `arjun` = man). */
+  voice_persona_id?: string;
 };
 
 const apiBase = () =>
@@ -75,6 +77,26 @@ export async function loginApi(body: { email: string; password: string }) {
     access_token: string;
     user: AuthUser;
   }>;
+}
+
+export async function patchVoicePersona(voice_persona_id: string): Promise<AuthUser> {
+  const token = await getStoredToken();
+  if (!token) throw new Error("Not authenticated");
+  const r = await fetch(`${apiBase()}/api/auth/me/voice-persona`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ voice_persona_id }),
+  });
+  if (!r.ok) {
+    const t = (await r.text()).trim();
+    throw new Error(t || `HTTP ${r.status}`);
+  }
+  const j = (await r.json()) as { user: AuthUser };
+  await saveSession(token, j.user);
+  return j.user;
 }
 
 export async function googleLoginApi(idToken: string) {

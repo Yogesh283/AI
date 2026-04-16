@@ -1,23 +1,26 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { NEO } from "../constants/theme";
+import { NEO, neoGradientPrimary } from "../constants/theme";
+import { neoUi } from "../constants/neoUi";
 
 const features = [
   { t: "Chat & Voice", d: "Hindi / English companion", i: "💬" },
   { t: "Smart Memory", d: "NeoXAI remembers what matters", i: "🧠" },
-  { t: "AI Tools", d: "Writer, image, code, planner", i: "✨" },
+  { t: "Your space", d: "Profile, voice persona, and settings", i: "✨" },
 ];
 
 export default function Onboarding() {
   return (
-    <View style={styles.root}>
+    <View style={neoUi.screen}>
       <LinearGradient colors={["#0B0E14", "#05070C"]} style={StyleSheet.absoluteFill} />
       <ScrollView contentContainerStyle={styles.scroll}>
-        <Text style={styles.title}>Meet NeoXAI — Your Personal AI Companion</Text>
-        <Text style={styles.sub}>Real-time · Personalized · Smart</Text>
+        <Text style={styles.title}>Meet NeoXAI</Text>
+        <Text style={styles.subhead}>Your personal AI companion</Text>
+        <View style={neoUi.dividerGrad} />
+        <Text style={styles.tagline}>Real-time · Personalized · Smart</Text>
         {features.map((f) => (
-          <View key={f.t} style={styles.card}>
+          <View key={f.t} style={[styles.card, neoUi.glassCardGlow]}>
             <Text style={styles.emoji}>{f.i}</Text>
             <View style={{ flex: 1 }}>
               <Text style={styles.cardTitle}>{f.t}</Text>
@@ -27,12 +30,12 @@ export default function Onboarding() {
         ))}
       </ScrollView>
       <View style={styles.actions}>
-        <Pressable style={styles.outline} onPress={() => router.replace("/(tabs)")}>
-          <Text style={styles.outlineText}>Skip</Text>
+        <Pressable style={[neoUi.outlineCta, styles.actionBtn]} onPress={() => router.replace("/(tabs)")}>
+          <Text style={neoUi.outlineCtaText}>Skip</Text>
         </Pressable>
-        <Pressable onPress={() => router.push("/avatars")}>
-          <LinearGradient colors={[NEO.cyan, NEO.magenta]} style={styles.solid}>
-            <Text style={styles.solidText}>Next</Text>
+        <Pressable onPress={() => router.push("/avatars")} style={styles.actionBtn}>
+          <LinearGradient colors={[...neoGradientPrimary]} style={[neoUi.primaryCta, { marginTop: 0 }]}>
+            <Text style={neoUi.primaryCtaText}>Next</Text>
           </LinearGradient>
         </Pressable>
       </View>
@@ -41,50 +44,38 @@ export default function Onboarding() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: NEO.bg, paddingTop: 56 },
-  scroll: { paddingHorizontal: 24, paddingBottom: 120 },
+  scroll: { paddingHorizontal: 24, paddingTop: 56, paddingBottom: 120 },
   title: {
-    fontSize: 22,
-    fontWeight: "700",
+    fontSize: 28,
+    fontWeight: "800",
     color: "#fff",
     textAlign: "center",
+    letterSpacing: -0.5,
   },
-  sub: { marginTop: 10, color: NEO.muted, textAlign: "center", fontSize: 14 },
+  subhead: {
+    marginTop: 8,
+    color: NEO.cyan,
+    textAlign: "center",
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  tagline: { marginTop: 14, color: NEO.muted, textAlign: "center", fontSize: 13 },
   card: {
     flexDirection: "row",
     gap: 14,
-    marginTop: 16,
+    marginTop: 14,
     padding: 18,
-    borderRadius: 24,
-    backgroundColor: NEO.glass,
-    borderWidth: 1,
-    borderColor: NEO.border,
   },
   emoji: { fontSize: 26 },
-  cardTitle: { color: NEO.cyan, fontWeight: "700", fontSize: 16 },
-  cardDesc: { marginTop: 4, color: "rgba(255,255,255,0.55)", fontSize: 14 },
+  cardTitle: { color: "#fff", fontWeight: "800", fontSize: 16 },
+  cardDesc: { marginTop: 4, color: "rgba(255,255,255,0.52)", fontSize: 14, lineHeight: 20 },
   actions: {
     position: "absolute",
-    bottom: 32,
-    left: 24,
-    right: 24,
+    bottom: 28,
+    left: 20,
+    right: 20,
     flexDirection: "row",
     gap: 12,
   },
-  outline: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
-    alignItems: "center",
-  },
-  outlineText: { color: "#fff", fontWeight: "600" },
-  solid: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 18,
-    alignItems: "center",
-  },
-  solidText: { color: "#050912", fontWeight: "800", fontSize: 15 },
+  actionBtn: { flex: 1 },
 });

@@ -6,7 +6,7 @@ function chatUrl(): string {
   return `${b}/api/chat`;
 }
 
-export type ChatSource = "chat" | "voice" | "tools";
+export type ChatSource = "chat" | "voice";
 
 export async function postChat(
   messages: { role: "user" | "assistant" | "system"; content: string }[],

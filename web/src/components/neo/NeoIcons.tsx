@@ -40,20 +40,6 @@ export function IconMemory({ active }: { active?: boolean }) {
   );
 }
 
-export function IconTools({ active }: { active?: boolean }) {
-  const c = active ? "#00D4FF" : "rgba(255,255,255,0.4)";
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.35 6.35a1 1 0 0 1-1.42 0l-2.8-2.8a1 1 0 0 1 0-1.42l6.35-6.35a6 6 0 0 1 7.94-7.94l-3.77 3.77Z"
-        stroke={c}
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 export function IconUser({ active }: { active?: boolean }) {
   const c = active ? "#00D4FF" : "rgba(255,255,255,0.4)";
   return (

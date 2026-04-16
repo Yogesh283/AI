@@ -7,6 +7,10 @@ import type { VoiceReplyMood } from "@/lib/voiceReplyMood";
 type Props = {
   imageSrc: string;
   name: string;
+  /** Where to anchor portrait crops (PNG photos often need `center`). */
+  imageObjectPosition?: "top" | "center";
+  /** Show name caption under the frame. */
+  showCaption?: boolean;
   speaking: boolean;
   /** Incremented on TTS boundary events to sync movement with spoken words. */
   speechBeat?: number;
@@ -27,6 +31,8 @@ type Props = {
 export function SpeakingAvatar({
   imageSrc,
   name,
+  imageObjectPosition = "top",
+  showCaption = true,
   speaking,
   speechBeat = 0,
   listening,
@@ -161,7 +167,7 @@ export function SpeakingAvatar({
                 src={imageSrc}
                 alt={name}
                 fill
-                className="object-cover object-top"
+                className={`object-cover ${imageObjectPosition === "center" ? "object-center" : "object-top"}`}
                 sizes="280px"
                 priority
                 unoptimized={imageSrc.endsWith(".svg")}
@@ -276,9 +282,11 @@ export function SpeakingAvatar({
         />
       </div>
 
-      <span className="mt-3 max-w-[14rem] truncate text-center text-[11px] font-semibold uppercase tracking-wider text-white/45">
-        {name}
-      </span>
+      {showCaption ? (
+        <span className="mt-3 max-w-[14rem] truncate text-center text-[11px] font-semibold uppercase tracking-wider text-white/45">
+          {name}
+        </span>
+      ) : null}
     </div>
   );
 }

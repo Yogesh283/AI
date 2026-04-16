@@ -1,13 +1,14 @@
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as WebBrowser from "expo-web-browser";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { NEO } from "../constants/theme";
 
 WebBrowser.maybeCompleteAuthSession();
 
 export default function RootLayout() {
   return (
-    <>
+    <SafeAreaProvider>
       <StatusBar style="light" />
       <Stack
         screenOptions={{
@@ -22,9 +23,10 @@ export default function RootLayout() {
         <Stack.Screen name="onboarding" />
         <Stack.Screen name="avatars" />
         <Stack.Screen name="customize" />
+        <Stack.Screen name="voice-persona" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="chat" options={{ animation: "slide_from_right" }} />
       </Stack>
-    </>
+    </SafeAreaProvider>
   );
 }

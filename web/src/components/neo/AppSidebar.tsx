@@ -7,16 +7,14 @@ import {
   IconChat,
   IconMemory,
   IconMicCenter,
-  IconTools,
   IconUser,
 } from "@/components/neo/NeoIcons";
 import { NeoLogoMark } from "@/components/neo/NeoLogoHead";
 
 const nav = [
-  { href: "/chat", label: "Chat", kind: "chat" as const },
+  { href: "/dashboard", label: "Chat", kind: "chat" as const },
   { href: "/memory", label: "Memory", Icon: IconMemory },
   { href: "/voice", label: "Voice", kind: "voice" as const },
-  { href: "/tools", label: "Tools", Icon: IconTools },
   { href: "/profile", label: "Profile", Icon: IconUser },
 ] as const;
 

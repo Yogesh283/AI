@@ -1,22 +1,36 @@
+import { getStoredToken } from "./auth";
+
 const API = () => process.env.EXPO_PUBLIC_API_URL ?? "http://127.0.0.1:8010";
 
 export type ChatMsg = { role: "user" | "assistant" | "system"; content: string };
 
-export type ChatSource = "chat" | "voice" | "tools";
+export type ChatSource = "chat" | "voice";
 
+/**
+ * Sends Bearer JWT when logged in so the backend resolves the real user id and
+ * persists turns to MySQL (`chat_messages` with `user_id`).
+ */
 export async function postChat(
   messages: ChatMsg[],
   userId = "default",
-  opts?: { source?: ChatSource }
+  opts?: { source?: ChatSource; useWeb?: boolean }
 ) {
   const source = opts?.source ?? "chat";
+  const use_web = opts?.useWeb ?? false;
+  const token = await getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
   const r = await fetch(`${API()}/api/chat/`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ messages, user_id: userId, source }),
+    headers,
+    body: JSON.stringify({ messages, user_id: userId, source, use_web }),
   });
-  if (!r.ok) throw new Error(await r.text());
-  return r.json() as Promise<{ reply: string }>;
+  if (!r.ok) {
+    const t = (await r.text()).trim();
+    throw new Error(t || `HTTP ${r.status}`);
+  }
+  return r.json() as Promise<{ reply: string; memory_snippets?: string[] }>;
 }
 
 /** Upload recorded audio; requires OpenAI key on backend for Whisper. */

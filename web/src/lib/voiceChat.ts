@@ -74,14 +74,14 @@ function textForTts(raw: string): string {
 /**
  * Chrome often returns [] until voices load; poll getVoices() so Hindi/English voices appear.
  */
-async function waitForVoices(maxMs = 5500): Promise<void> {
+async function waitForVoices(maxMs = 1800): Promise<void> {
   if (typeof window === "undefined" || !window.speechSynthesis) return;
   const synth = window.speechSynthesis;
   const start = Date.now();
   while (Date.now() - start < maxMs) {
     synth.getVoices();
     if (synth.getVoices().length > 0) return;
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 50));
   }
 }
 
@@ -121,11 +121,15 @@ export function rateForSpeedPreset(p: TtsSpeedPreset): number {
     case "natural":
       /* Closer to conversational speech; pauses between chunks do the rest */
       return 0.8;
+    case "clear":
+      /* Voice page — brisk but still clear */
+      return 0.92;
     case "fast":
       return 1.02;
-    default:
-      /* Slightly slower = clearer, less “robot” */
-      return 0.82;
+    default: {
+      const _x: never = p;
+      return _x;
+    }
   }
 }
 
@@ -336,7 +340,15 @@ function pauseAfterChunkMs(chunk: string, preset: TtsSpeedPreset): number {
   const t = chunk.trimEnd();
   const last = t.slice(-1);
   const mult =
-    preset === "natural" ? 1.45 : preset === "slow" ? 1.25 : preset === "fast" ? 0.78 : 1;
+    preset === "natural"
+      ? 1.45
+      : preset === "slow"
+        ? 1.25
+        : preset === "fast"
+          ? 0.78
+          : preset === "clear"
+            ? 0.48 /* snappier flow — less “late” gap between sentences */
+            : 1;
   if (/[.!?…]/.test(last)) return Math.round(260 * mult);
   if (/[,;:]/.test(last)) return Math.round(140 * mult);
   return Math.round(90 * mult);
@@ -411,7 +423,9 @@ export async function speakText(
   const preset = opts?.speedPreset ?? readTtsSpeedPreset();
   const baseRate = rateForSpeedPreset(preset);
   const mood = opts?.replyMood ?? "neutral";
-  const chunks = splitTtsChunks(trimmed);
+  /* Fewer, longer chunks for clear/fast = less inter-chunk delay, speech starts sooner overall */
+  const chunkMaxLen = preset === "clear" || preset === "fast" ? 300 : 220;
+  const chunks = splitTtsChunks(trimmed, chunkMaxLen);
 
   const speakChunk = (chunk: string, chunkIdx: number) =>
     new Promise<void>((resolve, reject) => {

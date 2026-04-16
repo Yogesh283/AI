@@ -1,21 +1,29 @@
 "use client";
 
-import Link from "next/link";
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useSiteBrand } from "@/components/SiteBrandProvider";
-import { SpeakingAvatar } from "@/components/neo/SpeakingAvatar";
-import { fetchMe, getStoredToken, getStoredUser, saveSession } from "@/lib/auth";
+import { MainTopNav } from "@/components/neo/MainTopNav";
+import { fetchMe, getStoredToken, getStoredUser, patchVoicePersona, saveSession } from "@/lib/auth";
 import { postChat } from "@/lib/api";
+import {
+  mergeVoicePreferences,
+  stripVoicePreferencePhrases,
+} from "@/lib/voicePreferenceCommands";
+import {
+  ackPhraseForLang,
+  DEFAULT_VOICE_SPEECH_LANG,
+  normalizeVoiceSpeechLang,
+  readStoredVoiceSpeechLang,
+  voiceSessionWelcomeLines,
+  writeStoredVoiceSpeechLang,
+  type VoiceSpeechLangCode,
+} from "@/lib/voiceLanguages";
 import {
   getVoicePersona,
   readStoredVoicePersonaId,
   writeStoredVoicePersonaId,
 } from "@/lib/voicePersonas";
-import {
-  inferVoiceReplyMood,
-  type VoiceReplyMood,
-} from "@/lib/voiceReplyMood";
+import { inferVoiceReplyMood } from "@/lib/voiceReplyMood";
 import {
   createSpeechRecognition,
   isSpeechRecognitionSupported,
@@ -27,44 +35,63 @@ import {
   speechRecognitionErrorMessage,
   stopSpeaking,
   writeTtsGender,
+  type TtsSpeedPreset,
   type TtsVoiceGender,
 } from "@/lib/voiceChat";
 import { useWakeLock } from "@/lib/useWakeLock";
 
 const VOICE_HISTORY_PREFIX = "neo-voice-history-";
 
-/** Let TTS finish routing audio before restarting mic (fixes many Chrome / Android “silent mic” cases). */
-const MIC_RESUME_AFTER_TTS_MS = 520;
+/**
+ * Pause after assistant audio ends before opening the mic again — hand-to-hand turns,
+ * avoids echo / clipped first syllable on many devices.
+ */
+const MIC_RESUME_AFTER_TTS_MS = 420;
+
+/** Voice page: slightly slower, cleaner articulation (browser TTS). */
+const VOICE_TTS_PRESET: TtsSpeedPreset = "clear";
+
+function IconMic({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M12 14a3 3 0 003-3V5a3 3 0 10-6 0v6a3 3 0 003 3zm5-3a5 5 0 01-10 0M12 19v3m-4 0h8"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
 type Turn = { role: "user" | "assistant"; content: string };
 
 export default function VoicePage() {
-  const { brandName } = useSiteBrand();
   const [listening, setListening] = useState(false);
   const [sessionOn, setSessionOn] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [speaking, setSpeaking] = useState(false);
-  const [speechBeat, setSpeechBeat] = useState(0);
   const [personaId, setPersonaId] = useState<string | null>(null);
   const [interim, setInterim] = useState("");
   const [err, setErr] = useState<string | null>(null);
-  const [lang, setLang] = useState<"en-IN" | "hi-IN">("en-IN");
-  const [ttsGender, setTtsGender] = useState<TtsVoiceGender>(() =>
-    typeof window === "undefined" ? "female" : readTtsGender(),
-  );
+  /** Must match SSR + first client paint — hydrate from storage in useEffect (avoids mismatch). */
+  const [lang, setLang] = useState<VoiceSpeechLangCode>(DEFAULT_VOICE_SPEECH_LANG);
+  const [ttsGender, setTtsGender] = useState<TtsVoiceGender>("female");
   const [history, setHistory] = useState<Turn[]>([]);
   const [speechSupported, setSpeechSupported] = useState<boolean | null>(null);
   const [ttsSupported, setTtsSupported] = useState<boolean | null>(null);
-  const [replyMood, setReplyMood] = useState<VoiceReplyMood>("neutral");
   /** Bumps when `/api/auth/me` refreshes local profile (display name, etc.). */
   const [, setProfileSync] = useState(0);
-  const transcriptRef = useRef<HTMLDivElement>(null);
 
   const sessionOnRef = useRef(false);
+  const thinkingRef = useRef(false);
+  const speakingRef = useRef(false);
   const recRef = useRef<SpeechRecognition | null>(null);
   const finalBuf = useRef("");
   const interimRef = useRef("");
   const historyRef = useRef<Turn[]>([]);
+  const transcriptRef = useRef<HTMLDivElement>(null);
   const beginListeningRef = useRef<() => void>(() => {});
 
   const scheduleResumeListening = useCallback(() => {
@@ -81,7 +108,19 @@ export default function VoicePage() {
     sessionOnRef.current = sessionOn;
   }, [sessionOn]);
 
-  const persona = getVoicePersona(personaId ?? undefined);
+  useEffect(() => {
+    thinkingRef.current = thinking;
+  }, [thinking]);
+
+  useEffect(() => {
+    speakingRef.current = speaking;
+  }, [speaking]);
+
+  useEffect(() => {
+    const el = transcriptRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [history]);
 
   useEffect(() => {
     setPersonaId(readStoredVoicePersonaId());
@@ -120,12 +159,6 @@ export default function VoicePage() {
   }, [history]);
 
   useEffect(() => {
-    const el = transcriptRef.current;
-    if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [history, thinking]);
-
-  useEffect(() => {
     let cancelled = false;
     const token = getStoredToken();
     if (!token) return;
@@ -159,6 +192,7 @@ export default function VoicePage() {
   }, []);
 
   useEffect(() => {
+    setLang(readStoredVoiceSpeechLang());
     setTtsGender(readTtsGender());
   }, []);
 
@@ -167,6 +201,9 @@ export default function VoicePage() {
       if (e.key === "neo-voice-persona-id" || e.key === "neo-tts-gender") {
         setPersonaId(readStoredVoicePersonaId());
         setTtsGender(readTtsGender());
+      }
+      if (e.key === "neo-voice-speech-lang" && e.newValue) {
+        setLang(normalizeVoiceSpeechLang(e.newValue));
       }
     };
     window.addEventListener("storage", onStorage);
@@ -208,17 +245,85 @@ export default function VoicePage() {
       const t = text.trim();
       if (!t) {
         if (sessionOnRef.current) {
-          queueMicrotask(() => beginListeningRef.current());
+          queueMicrotask(() => {
+            if (!thinkingRef.current && !speakingRef.current) beginListeningRef.current();
+          });
         }
         return;
       }
       setErr(null);
-      setThinking(true);
+      stopRecognitionOnly();
       stopSpeaking();
+
+      const { cleaned, prefs } = stripVoicePreferencePhrases(t);
+      const merged = mergeVoicePreferences(prefs);
+      const nextLang = merged.lang ? normalizeVoiceSpeechLang(merged.lang) : undefined;
+      const langChanged = Boolean(nextLang && nextLang !== lang);
+      const personaChanged = Boolean(
+        merged.personaId && merged.personaId !== (personaId ?? readStoredVoicePersonaId() ?? "sara"),
+      );
+
+      let speakLang: VoiceSpeechLangCode = lang;
+      let speakGender: TtsVoiceGender = ttsGender;
+      if (nextLang) {
+        speakLang = nextLang;
+        setLang(nextLang);
+        writeStoredVoiceSpeechLang(nextLang);
+      }
+      if (merged.personaId) {
+        const p = getVoicePersona(merged.personaId);
+        speakGender = p.ttsGender;
+        writeStoredVoicePersonaId(merged.personaId);
+        writeTtsGender(p.ttsGender);
+        setPersonaId(merged.personaId);
+        setTtsGender(p.ttsGender);
+        const token = getStoredToken();
+        if (token) {
+          void patchVoicePersona(merged.personaId).catch(() => {
+            /* offline — local choice still applies */
+          });
+        }
+      }
+
+      const toSend = cleaned.trim();
+      const prefsOnly = toSend.length === 0 && (langChanged || personaChanged);
+
+      if (prefsOnly) {
+        const bits: string[] = [];
+        if (langChanged) bits.push(ackPhraseForLang(speakLang));
+        if (personaChanged)
+          bits.push(merged.personaId === "arjun" ? "Male voice." : "Female voice.");
+        const ack = bits.join(" ") || "Okay.";
+        setSpeaking(true);
+        try {
+          await speakText(ack, speakLang, {
+            voiceGender: speakGender,
+            speedPreset: VOICE_TTS_PRESET,
+            replyMood: "neutral",
+          });
+        } catch {
+          /* ignore */
+        } finally {
+          setSpeaking(false);
+        }
+        if (sessionOnRef.current) scheduleResumeListening();
+        return;
+      }
+
+      if (!toSend) {
+        if (sessionOnRef.current) {
+          queueMicrotask(() => {
+            if (!thinkingRef.current && !speakingRef.current) beginListeningRef.current();
+          });
+        }
+        return;
+      }
+
+      setThinking(true);
       try {
         const user = getStoredUser();
         const uid = user?.id ?? "default";
-        const msgs = [...historyRef.current, { role: "user" as const, content: t }];
+        const msgs = [...historyRef.current, { role: "user" as const, content: toSend }];
         const { reply } = await postChat(msgs, uid, {
           source: "voice",
           useWeb: true,
@@ -229,16 +334,13 @@ export default function VoicePage() {
         setThinking(false);
 
         const mood = inferVoiceReplyMood(reply);
-        setReplyMood(mood);
 
         setSpeaking(true);
-        setSpeechBeat(0);
         try {
-          await speakText(prepareSpeechText(reply), lang, {
-            voiceGender: ttsGender,
-            speedPreset: "natural",
+          await speakText(prepareSpeechText(reply), speakLang, {
+            voiceGender: speakGender,
+            speedPreset: VOICE_TTS_PRESET,
             replyMood: mood,
-            onSpeechBoundary: () => setSpeechBeat((n) => n + 1),
           });
         } catch (ttsErr) {
           const msg =
@@ -263,11 +365,13 @@ export default function VoicePage() {
         scheduleResumeListening();
       }
     },
-    [lang, ttsGender, scheduleResumeListening]
+    [lang, ttsGender, personaId, scheduleResumeListening, stopRecognitionOnly]
   );
 
   const beginListening = useCallback(() => {
     if (!sessionOnRef.current) return;
+    /* Mic only while assistant is idle — strict turn-taking. */
+    if (thinkingRef.current || speakingRef.current) return;
     if (!isSpeechRecognitionSupported()) {
       setErr("Is browser mein voice support nahi (Chrome/Edge try karein).");
       return;
@@ -318,7 +422,9 @@ export default function VoicePage() {
         return;
       }
       if (sessionOnRef.current) {
-        queueMicrotask(() => beginListeningRef.current());
+        queueMicrotask(() => {
+          if (!thinkingRef.current && !speakingRef.current) beginListeningRef.current();
+        });
       }
     };
 
@@ -335,7 +441,9 @@ export default function VoicePage() {
       if (said) {
         void sendText(said);
       } else {
-        queueMicrotask(() => beginListeningRef.current());
+        queueMicrotask(() => {
+          if (!thinkingRef.current && !speakingRef.current) beginListeningRef.current();
+        });
       }
     };
 
@@ -359,28 +467,22 @@ export default function VoicePage() {
       return;
     }
     primeSpeechVoices();
+    stopRecognitionOnly();
+    stopSpeaking();
     sessionOnRef.current = true;
     setSessionOn(true);
     void (async () => {
       const u = getStoredUser();
       const nm = u?.display_name?.trim() ?? "";
-      const hi = lang.startsWith("hi");
-      const line = nm
-        ? hi
-          ? `Namaste ${nm}, main yahan hoon — aapke saath. Boliye, main sun raha hoon.`
-          : `Hello ${nm}, I'm right here with you. Go ahead — I'm listening.`
-        : hi
-          ? `Namaste, main sun raha hoon. Boliye.`
-          : `Hello, I'm listening.`;
+      const welcome = voiceSessionWelcomeLines(lang, u?.display_name);
+      const line = nm ? welcome.withName : welcome.withoutName;
       setErr(null);
       setSpeaking(true);
-      setSpeechBeat(0);
       try {
         await speakText(line, lang, {
           voiceGender: ttsGender,
-          speedPreset: "natural",
+          speedPreset: VOICE_TTS_PRESET,
           replyMood: "neutral",
-          onSpeechBoundary: () => setSpeechBeat((n) => n + 1),
         });
       } catch {
         /* still open mic */
@@ -410,221 +512,123 @@ export default function VoicePage() {
 
   const pulse = listening || speaking || sessionOn;
 
-  const statusLine = !sessionOn
-    ? "Tap mic to start session"
-    : thinking
-      ? "Thinking…"
-      : speaking
-        ? "Speaking reply…"
-        : listening
-          ? "Listening — go ahead"
+  const profileName = getStoredUser()?.display_name?.trim() || "You";
+
+  const clearHistory = useCallback(() => {
+    const uid = getStoredUser()?.id ?? "anon";
+    historyRef.current = [];
+    setHistory([]);
+    try {
+      localStorage.removeItem(`${VOICE_HISTORY_PREFIX}${uid}`);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const headerTitle = !sessionOn
+    ? "Voice chat"
+    : listening
+      ? "Listening…"
+      : thinking
+        ? "Thinking…"
+        : speaking
+          ? "Speaking…"
           : "Ready";
 
-  const statePill = !sessionOn
-    ? "off"
-    : thinking
-      ? "think"
-      : speaking
-        ? "speak"
-        : listening
-          ? "listen"
-          : "idle";
-
-  const profileName = getStoredUser()?.display_name?.trim() ?? "";
-
   return (
-    <div className="relative z-[1] flex min-h-screen flex-col px-4 pb-36 pt-4 md:min-h-0 md:flex-1 md:px-8 md:pb-10 md:pt-6">
-      <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col">
-        <header className="-mx-4 sticky top-0 z-30 mb-5 border-b border-white/[0.1] bg-[#0b0e14]/96 px-4 pb-3 pt-2 backdrop-blur-xl md:static md:z-auto md:mx-0 md:border-white/[0.06] md:bg-transparent md:pb-4 md:pt-0 md:backdrop-blur-none">
-          <div className="flex items-center justify-between gap-2">
-            <div className="min-w-0 flex-1 text-left">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/35">
-                Voice
-              </p>
-              <h1 className="bg-gradient-to-r from-white via-white to-white/70 bg-clip-text text-base font-semibold tracking-tight text-transparent sm:text-lg md:text-xl">
-                {profileName || `Talk to ${brandName}`}
-              </h1>
-              {profileName ? (
-                <p className="mt-0.5 truncate text-[12px] font-medium text-white/50">
-                  with {brandName}
-                </p>
-              ) : null}
-            </div>
-          </div>
-          <div className="mt-3 flex justify-center md:justify-end">
-            <select
-              value={lang}
-              onChange={(e) => setLang(e.target.value as "en-IN" | "hi-IN")}
-              className="cursor-pointer rounded-xl border border-white/[0.1] bg-black/35 px-2.5 py-2 text-[11px] font-semibold text-white/85 outline-none ring-1 ring-white/[0.04] transition hover:border-[#00D4FF]/30"
-              aria-label="Speech language"
-            >
-              <option value="en-IN">EN</option>
-              <option value="hi-IN">HI</option>
-            </select>
-          </div>
-        </header>
+    <div className="relative z-[1] flex min-h-0 flex-1 flex-col bg-[#080a0f] md:min-h-0">
+      <div
+        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_85%_55%_at_50%_18%,rgba(0,180,220,0.14),transparent_55%),radial-gradient(ellipse_70%_50%_at_80%_70%,rgba(124,58,237,0.12),transparent_50%),linear-gradient(180deg,#080a0f_0%,#070b12_45%,#080a0f_100%)]"
+        aria-hidden
+      />
+      <MainTopNav center={headerTitle} />
 
+      <div className="mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col px-4 py-6 md:max-w-xl">
         {history.length > 0 ? (
-          <div
-            ref={transcriptRef}
-            className="neo-glass mb-4 max-h-[min(38vh,22rem)] overflow-y-auto rounded-2xl border border-white/[0.08] px-3 py-2.5 ring-1 ring-white/[0.04]"
-          >
-            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-white/35">
-              Conversation
-            </p>
-            <div className="flex flex-col gap-2.5">
+          <div className="mb-4 shrink-0">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-white/40">
+                Saved conversation
+              </p>
+              <button
+                type="button"
+                onClick={clearHistory}
+                className="rounded-lg border border-white/[0.1] bg-white/[0.05] px-2.5 py-1 text-[10px] font-semibold text-white/70 transition hover:border-white/20 hover:text-white"
+              >
+                Clear
+              </button>
+            </div>
+            <div
+              ref={transcriptRef}
+              className="max-h-36 space-y-2 overflow-y-auto rounded-xl border border-white/[0.08] bg-black/25 px-3 py-2 ring-1 ring-white/[0.04]"
+            >
               {history.map((turn, i) => (
                 <div
                   key={i}
-                  className={`rounded-xl px-2.5 py-2 text-[13px] leading-relaxed ${
+                  className={`rounded-lg px-2.5 py-1.5 text-[12px] leading-snug ${
                     turn.role === "user"
-                      ? "border border-[#00D4FF]/20 bg-[#00D4FF]/10 text-white/90"
-                      : "border border-white/[0.06] bg-white/[0.04] text-white/85"
+                      ? "border border-[#00D4FF]/20 bg-[#00D4FF]/8 text-white/90"
+                      : "border border-white/[0.06] bg-white/[0.04] text-white/82"
                   }`}
                 >
-                  <span className="text-[10px] font-bold uppercase tracking-wide text-white/40">
-                    {turn.role === "user"
-                      ? profileName || "You"
-                      : brandName}
+                  <span className="text-[9px] font-bold uppercase tracking-wide text-white/35">
+                    {turn.role === "user" ? profileName : "Assistant"}
                   </span>
-                  <p className="mt-1 whitespace-pre-wrap break-words">{turn.content}</p>
+                  <p className="mt-0.5 whitespace-pre-wrap break-words">{turn.content}</p>
                 </div>
               ))}
             </div>
           </div>
         ) : null}
 
-        <div className="mb-6 flex flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span
-              className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-                statePill === "listen"
-                  ? "bg-[#00D4FF]/15 text-[#00D4FF]"
-                  : statePill === "think"
-                    ? "bg-amber-500/15 text-amber-300/95"
-                    : statePill === "speak"
-                      ? "bg-[#BD00FF]/15 text-[#e9c2ff]"
-                      : statePill === "idle"
-                        ? "bg-emerald-500/15 text-emerald-300/90"
-                        : "bg-white/[0.06] text-white/40"
-              }`}
-            >
-              {statePill === "listen"
-                ? "Listening"
-                : statePill === "think"
-                  ? "Processing"
-                  : statePill === "speak"
-                    ? "Voice out"
-                    : statePill === "idle"
-                      ? "Ready"
-                      : "Off"}
-            </span>
-            {sessionOn ? (
-              <span className="text-[10px] text-emerald-400/90">● Session live</span>
-            ) : null}
-          </div>
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center">
+        {ttsSupported === false || speechSupported === false ? (
+          <p className="mb-8 max-w-sm text-center text-[11px] leading-relaxed text-white/35">
+            {speechSupported === false
+              ? "Voice input needs Chrome or Edge on desktop."
+              : "Speech output works best in Chrome or Edge."}
+          </p>
+        ) : null}
 
-          <div className="neo-glass flex max-w-xl flex-col gap-2 rounded-2xl border border-white/[0.08] px-4 py-3.5 ring-1 ring-[#00D4FF]/10">
-            <div className="flex items-start gap-3">
-              <motion.span
-                className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
-                  listening
-                    ? "bg-[#00D4FF]"
-                    : thinking
-                      ? "bg-amber-400"
-                      : speaking
-                        ? "bg-[#BD00FF]"
-                        : sessionOn
-                          ? "bg-emerald-400"
-                          : "bg-white/25"
-                }`}
-                animate={{ opacity: pulse ? [1, 0.35, 1] : 0.55 }}
-                transition={{ duration: 1.1, repeat: pulse ? Infinity : 0 }}
-              />
-              <span className="text-[15px] font-medium leading-snug text-white/90">
-                {statusLine}
+        <div className="relative flex flex-col items-center">
+          <motion.div
+            className="pointer-events-none absolute left-1/2 top-1/2 -z-10 h-44 w-44 -translate-x-1/2 -translate-y-1/2 rounded-full bg-gradient-to-br from-[#00a8cc]/35 to-[#6d28d9]/28 blur-3xl md:h-52 md:w-52"
+            animate={{ scale: pulse ? [1, 1.12, 1] : 1, opacity: pulse ? [0.65, 1, 0.65] : 0.45 }}
+            transition={{ duration: 2.2, repeat: pulse ? Infinity : 0 }}
+          />
+          <button
+            type="button"
+            onClick={toggleMic}
+            className={`relative flex h-[88px] w-[88px] shrink-0 items-center justify-center rounded-full text-white shadow-[0_0_48px_rgba(0,212,255,0.32)] transition active:scale-[0.97] ${
+              sessionOn
+                ? "bg-gradient-to-br from-emerald-400 to-teal-700 ring-[4px] ring-emerald-300/35"
+                : "bg-gradient-to-br from-[#00D4FF] to-[#6366f1] ring-[4px] ring-[#00D4FF]/40"
+            }`}
+            aria-pressed={sessionOn}
+            aria-label={sessionOn ? "End voice session" : "Start voice session"}
+          >
+            {sessionOn ? (
+              <span className="text-2xl" aria-hidden>
+                &#x23FB;
               </span>
-            </div>
-            {interim && listening ? (
-              <p className="border-l-2 border-[#00D4FF]/35 pl-3 text-[13px] italic leading-relaxed text-white/55">
-                {interim}
-              </p>
-            ) : null}
-            {err ? (
-              <p className="text-xs leading-relaxed text-amber-400/95" role="alert">
-                {err}
-              </p>
-            ) : null}
-          </div>
+            ) : (
+              <span className="text-[#050912]">
+                <IconMic />
+              </span>
+            )}
+          </button>
         </div>
 
-        <div className="relative flex flex-1 flex-col items-center">
-          <div className="relative mb-10">
-            <motion.div
-              className="absolute inset-0 -z-10 rounded-full bg-gradient-to-br from-[#00D4FF]/20 to-[#BD00FF]/15 blur-3xl"
-              animate={{ scale: pulse ? [1, 1.05, 1] : 1 }}
-              transition={{ duration: 1.8, repeat: pulse ? Infinity : 0 }}
-            />
-            <SpeakingAvatar
-              imageSrc={persona.imageSrc}
-              name={persona.name}
-              speaking={speaking}
-              speechBeat={speechBeat}
-              listening={listening}
-              sessionOn={sessionOn}
-              replyMood={replyMood}
-              thinking={thinking}
-              userTalking={!!interim && listening}
-            />
-          </div>
-
-          <p className="mb-8 text-center text-[11px] text-white/35">
-            <Link href="/voice-personas" className="text-[#00D4FF]/75 hover:text-[#00D4FF] hover:underline">
-              Avatar →
-            </Link>
+        {interim && listening ? (
+          <p className="mt-8 max-w-md border-l-2 border-[#00D4FF]/35 pl-3 text-center text-[13px] italic text-white/55 md:text-left">
+            {interim}
           </p>
-
-          <div className="flex flex-col items-center">
-            <motion.div
-              className="relative"
-              animate={
-                sessionOn && !thinking && !speaking
-                  ? { scale: [1, 1.02, 1] }
-                  : {}
-              }
-              transition={{ duration: 2, repeat: Infinity }}
-            >
-              {sessionOn ? (
-                <div className="absolute inset-[-6px] rounded-full bg-gradient-to-br from-emerald-400/30 to-teal-600/20 opacity-60 blur-md" />
-              ) : (
-                <div className="absolute inset-[-6px] rounded-full bg-gradient-to-br from-[#00D4FF]/25 to-[#BD00FF]/20 opacity-50 blur-md" />
-              )}
-              <button
-                type="button"
-                onClick={toggleMic}
-                className={`relative flex h-[92px] w-[92px] items-center justify-center rounded-full text-3xl shadow-[0_12px_40px_rgba(0,0,0,0.45)] transition active:scale-[0.98] ${
-                  sessionOn
-                    ? "bg-gradient-to-br from-emerald-400 to-teal-700 text-white ring-[3px] ring-emerald-300/35"
-                    : "bg-gradient-to-br from-[#00D4FF] to-[#7c3aed] text-white ring-[3px] ring-[#00D4FF]/25"
-                }`}
-                aria-pressed={sessionOn}
-                aria-label={sessionOn ? "Session band karein" : "Session shuru — mic ON"}
-              >
-                <span className="drop-shadow-md">{sessionOn ? "⏻" : "🎙"}</span>
-              </button>
-            </motion.div>
-            <p className="mt-4 max-w-[280px] text-center text-[12px] leading-relaxed text-white/45">
-              {ttsSupported === false
-                ? `Is browser mein ${brandName} ki awaaz (TTS) support nahi — Chrome / Edge use karein.`
-                : sessionOn
-                  ? `Session on — tap again to stop. Mic pauses while ${brandName} replies.`
-                  : speechSupported === null
-                    ? "Chrome / Edge: mic + speakers / volume on rakhein."
-                    : speechSupported
-                      ? "One tap = session ON. Avatar selection: link upar."
-                      : "Speech ke liye Chrome ya Edge."}
-            </p>
-          </div>
+        ) : null}
+        {err ? (
+          <p className="mt-6 max-w-md text-center text-xs leading-relaxed text-amber-400/95" role="alert">
+            {err}
+          </p>
+        ) : null}
         </div>
       </div>
     </div>

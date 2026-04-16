@@ -8,12 +8,14 @@ import {
   Text,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   getNeoAvatar,
   readStoredAvatarId,
   writeStoredAvatarId,
 } from "../constants/avatars";
-import { NEO } from "../constants/theme";
+import { AppHeader, APP_HEADER_BAR_HEIGHT } from "../components/AppHeader";
+import { NEO, neoGradientPrimary } from "../constants/theme";
 
 const avatars = [
   { id: "neo-core", name: "NeoXAI Core", tag: "Smart & Balanced", premium: false },
@@ -25,6 +27,7 @@ const avatars = [
 ];
 
 export default function Avatars() {
+  const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<"all" | "free" | "premium">("all");
   const [sel, setSel] = useState("neo-core");
 
@@ -45,7 +48,14 @@ export default function Avatars() {
   });
 
   return (
-    <View style={styles.root}>
+    <View style={styles.outer}>
+      <AppHeader />
+      <View
+        style={[
+          styles.root,
+          { paddingTop: insets.top + APP_HEADER_BAR_HEIGHT + 8 },
+        ]}
+      >
       <LinearGradient colors={["#0B0E14", "#05070C"]} style={StyleSheet.absoluteFill} />
       <Text style={styles.h1}>Choose Your Neo</Text>
       <Text style={styles.sub}>Select your personal AI companion.</Text>
@@ -73,7 +83,7 @@ export default function Avatars() {
             >
               {on && (
                 <LinearGradient
-                  colors={[NEO.cyan, NEO.magenta]}
+                  colors={[...neoGradientPrimary]}
                   style={styles.check}
                 >
                   <Text style={styles.checkTxt}>✓</Text>
@@ -98,17 +108,19 @@ export default function Avatars() {
             router.push("/customize");
           }}
         >
-          <LinearGradient colors={[NEO.cyan, NEO.magenta]} style={styles.cta}>
+          <LinearGradient colors={[...neoGradientPrimary]} style={styles.cta}>
             <Text style={styles.ctaText}>Continue with Neo</Text>
           </LinearGradient>
         </Pressable>
+      </View>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: NEO.bg, paddingTop: 52, paddingHorizontal: 20 },
+  outer: { flex: 1, backgroundColor: "#0c1018" },
+  root: { flex: 1, backgroundColor: NEO.bg, paddingHorizontal: 20 },
   h1: { fontSize: 24, fontWeight: "800", color: "#fff" },
   sub: { marginTop: 6, color: NEO.muted, fontSize: 14 },
   tabs: {
@@ -121,7 +133,11 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   tab: { flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: "center" },
-  tabOn: { backgroundColor: "rgba(0,212,255,0.2)" },
+  tabOn: {
+    backgroundColor: "rgba(0,212,255,0.16)",
+    borderWidth: 1,
+    borderColor: "rgba(0,212,255,0.35)",
+  },
   tabText: { color: "rgba(255,255,255,0.4)", fontSize: 12, fontWeight: "700", textTransform: "capitalize" },
   tabTextOn: { color: "#fff" },
   grid: {

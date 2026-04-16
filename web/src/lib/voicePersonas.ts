@@ -10,12 +10,19 @@ export type VoicePersona = {
   ttsGender: TtsVoiceGender;
 };
 
+/** Woman / man voice faces — IDs must match backend `ALLOWED_VOICE_PERSONA_IDS`. */
 export const VOICE_PERSONAS: VoicePersona[] = [
   {
     id: "sara",
     name: "Sara",
-    imageSrc: "/avatars/persona-sara.svg",
+    imageSrc: "/avatars/voice-care-hero.png",
     ttsGender: "female",
+  },
+  {
+    id: "arjun",
+    name: "Arjun",
+    imageSrc: "/avatars/persona-arjun.svg",
+    ttsGender: "male",
   },
 ];
 

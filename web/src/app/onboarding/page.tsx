@@ -15,8 +15,8 @@ const features = [
     icon: "🧠",
   },
   {
-    title: "AI Tools",
-    desc: "Writer, image, code, planner & more.",
+    title: "Your space",
+    desc: "Profile, voice persona, and settings — under your control.",
     icon: "✨",
   },
 ];
