@@ -8,6 +8,108 @@
 
 import type { VoiceReplyMood } from "@/lib/voiceReplyMood";
 
+type NativeSpeechPlugin = {
+  available: () => Promise<{ available: boolean }>;
+  checkPermissions: () => Promise<{ speechRecognition: "granted" | "denied" | "prompt" }>;
+  requestPermissions: () => Promise<{ speechRecognition: "granted" | "denied" | "prompt" }>;
+  start: (opts: {
+    language?: string;
+    maxResults?: number;
+    partialResults?: boolean;
+    popup?: boolean;
+    prompt?: string;
+  }) => Promise<void>;
+  stop: () => Promise<void>;
+  addListener: (
+    eventName: "partialResults",
+    listenerFunc: (data: { matches?: string[] }) => void,
+  ) => Promise<{ remove: () => Promise<void> }>;
+};
+
+async function getNativeSpeechPlugin(): Promise<NativeSpeechPlugin | null> {
+  if (typeof window === "undefined") return null;
+  const { Capacitor } = await import("@capacitor/core");
+  if (!Capacitor.isNativePlatform()) return null;
+  const { SpeechRecognition } = await import("@capacitor-community/speech-recognition");
+  return SpeechRecognition as unknown as NativeSpeechPlugin;
+}
+
+export async function isNativeSpeechRecognitionSupported(): Promise<boolean> {
+  try {
+    const plugin = await getNativeSpeechPlugin();
+    if (!plugin) return false;
+    const a = await plugin.available();
+    return !!a.available;
+  } catch {
+    return false;
+  }
+}
+
+export type NativeSpeechResult = { text: string; error: string | null };
+
+/**
+ * Native fallback for Android/iOS Capacitor builds where WebView speech can be blocked.
+ * Captures one short utterance and returns best transcript.
+ */
+export async function captureNativeSpeechOnce(
+  lang = "en-IN",
+  onInterim?: (text: string) => void,
+): Promise<NativeSpeechResult> {
+  try {
+    const plugin = await getNativeSpeechPlugin();
+    if (!plugin) {
+      return { text: "", error: "Native speech plugin unavailable." };
+    }
+
+    const avail = await plugin.available();
+    if (!avail.available) {
+      return { text: "", error: "Speech service unavailable on this device." };
+    }
+
+    let perms = await plugin.checkPermissions();
+    if (perms.speechRecognition !== "granted") {
+      perms = await plugin.requestPermissions();
+    }
+    if (perms.speechRecognition !== "granted") {
+      return { text: "", error: "Mic blocked — app permission settings mein allow karein." };
+    }
+
+    let best = "";
+    const handle = await plugin.addListener("partialResults", (data) => {
+      const t = (data.matches?.[0] || "").trim();
+      if (!t) return;
+      best = t;
+      onInterim?.(t);
+    });
+
+    try {
+      await plugin.start({
+        language: lang,
+        maxResults: 1,
+        partialResults: true,
+        popup: false,
+        prompt: "Speak now",
+      });
+      await new Promise((r) => setTimeout(r, 3600));
+    } finally {
+      try {
+        await plugin.stop();
+      } catch {
+        /* ignore */
+      }
+      try {
+        await handle.remove();
+      } catch {
+        /* ignore */
+      }
+    }
+
+    return { text: best.trim(), error: null };
+  } catch (e) {
+    return { text: "", error: e instanceof Error ? e.message : "Native speech failed." };
+  }
+}
+
 export function isSpeechRecognitionSupported(): boolean {
   if (typeof window === "undefined") return false;
   const w = window as Window & {

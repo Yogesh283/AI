@@ -28,8 +28,10 @@ import { inferVoiceReplyMood } from "@/lib/voiceReplyMood";
 import type { KalidokitMouthShape } from "@/lib/vrmKalidokitMouth";
 import { speakTextWithAvatarLipSync, stopAvatarTtsAudio } from "@/lib/voiceAvatarTts";
 import {
+  captureNativeSpeechOnce,
   createSpeechRecognition,
   isSpeechRecognitionSupported,
+  isNativeSpeechRecognitionSupported,
   isSpeechSynthesisSupported,
   prepareSpeechText,
   primeSpeechVoices,
@@ -263,6 +265,10 @@ export default function VoicePage() {
     const synth = window.speechSynthesis;
     const onVoices = () => primeSpeechVoices();
     synth?.addEventListener?.("voiceschanged", onVoices);
+    void (async () => {
+      const nativeOk = await isNativeSpeechRecognitionSupported();
+      if (nativeOk) setSpeechSupported(true);
+    })();
     return () => synth?.removeEventListener?.("voiceschanged", onVoices);
   }, []);
 
@@ -473,7 +479,40 @@ export default function VoicePage() {
     if (thinkingRef.current || speakingRef.current) return;
     if (listeningActiveRef.current) return;
     if (!isSpeechRecognitionSupported()) {
-      setErr("Is browser mein voice support nahi (Chrome/Edge try karein).");
+      listeningActiveRef.current = true;
+      setListening(true);
+      setInterim("");
+      setErr(null);
+      void (async () => {
+        const { text, error } = await captureNativeSpeechOnce(lang, (it) => {
+          const now = Date.now();
+          if (now - lastInterimUiMs.current >= 90) {
+            lastInterimUiMs.current = now;
+            interimRef.current = it;
+            setInterim(it);
+          }
+        });
+        listeningActiveRef.current = false;
+        setListening(false);
+        setInterim("");
+        interimRef.current = "";
+        lastInterimUiMs.current = 0;
+
+        if (!sessionOnRef.current) return;
+        if (error) {
+          setErr(error);
+          sessionOnRef.current = false;
+          setSessionOn(false);
+          return;
+        }
+        if (text.trim()) {
+          void sendText(text.trim());
+          return;
+        }
+        queueMicrotask(() => {
+          if (!thinkingRef.current && !speakingRef.current) beginListeningRef.current();
+        });
+      })();
       return;
     }
 
