@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { getStoredToken, patchVoicePersona, saveSession, type AuthUser } from "@/lib/auth";
 import {
   readTtsSpeedPreset,
@@ -43,10 +43,6 @@ export function ProfileVoiceSettings({ user, onUserUpdated, onMessage }: Props) 
   const [speed, setSpeed] = useState<TtsSpeedPreset>(() => readTtsSpeedPreset());
   const [tone, setTone] = useState<TtsTonePreset>(() => readTtsTonePreset());
   const [savingPersona, setSavingPersona] = useState(false);
-
-  useEffect(() => {
-    setPersona(normalizeVoicePersonaId(user.voice_persona_id));
-  }, [user.voice_persona_id]);
 
   const applyPersona = useCallback(
     async (id: "arjun" | "sara") => {

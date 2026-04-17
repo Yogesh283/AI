@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, File, UploadFile
-from pydantic import BaseModel
+from fastapi import APIRouter, File, HTTPException, Response, UploadFile
+from pydantic import BaseModel, Field
 
-from app.services.ai import _openai_api_key, transcribe_audio_whisper
+from app.services.ai import _openai_api_key, synthesize_openai_tts, transcribe_audio_whisper
 
 router = APIRouter(prefix="/api/voice", tags=["voice"])
 
@@ -52,3 +52,37 @@ async def tts_stub(payload: TtsBody) -> dict:
         "hint": "Web uses speechSynthesis; mobile uses expo-speech.",
         "chars": len(text),
     }
+
+
+class TtsAudioBody(BaseModel):
+    text: str = ""
+    voice: str = Field(default="nova", description="OpenAI TTS voice (e.g. nova, alloy, shimmer)")
+    model: str = Field(default="tts-1", description="tts-1 | tts-1-hd")
+
+
+@router.post("/tts-audio")
+async def tts_audio(payload: TtsAudioBody) -> Response:
+    """
+    MP3 bytes for native clients (browser can use `<audio src=blob:...>` too).
+    Requires OPENAI_API_KEY on the backend.
+    """
+    if not _openai_api_key():
+        raise HTTPException(
+            status_code=503,
+            detail="openai_not_configured — set OPENAI_API_KEY in backend/.env",
+        )
+    raw = await synthesize_openai_tts(
+        payload.text,
+        voice=payload.voice,
+        model=payload.model,
+    )
+    if not raw:
+        raise HTTPException(
+            status_code=502,
+            detail="tts_failed — empty text, billing, or model error",
+        )
+    return Response(
+        content=raw,
+        media_type="audio/mpeg",
+        headers={"Cache-Control": "no-store", "Content-Disposition": "inline; filename=neo-tts.mp3"},
+    )

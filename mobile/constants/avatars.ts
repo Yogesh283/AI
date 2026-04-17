@@ -6,6 +6,7 @@ export type NeoAvatar = { id: string; name: string; emoji: string };
 
 export const NEO_AVATARS: NeoAvatar[] = [
   { id: "neo-core", name: "NeoXAI Core", emoji: "🤖" },
+  { id: "arc-hud", name: "Arc HUD", emoji: "◉" },
   { id: "nova", name: "Nova", emoji: "✨" },
   { id: "atlas", name: "Atlas", emoji: "🛡️" },
   { id: "spark", name: "Spark", emoji: "⚡" },

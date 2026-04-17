@@ -7,7 +7,7 @@ const DEFAULT_BRAND = "NeoXAI";
 
 /**
  * Name the assistant uses in chat/voice copy. Kept separate from {@link resolveSiteDisplayName}
- * so a domain like `amanworld.com` does not become “Aman World” in messages.
+ * so a domain label does not become an awkward long phrase in messages.
  */
 export const NEO_ASSISTANT_NAME = DEFAULT_BRAND;
 

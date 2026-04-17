@@ -5,23 +5,29 @@ export const VOICE_PERSONA_STORAGE_KEY = "neo-voice-persona-id";
 export type VoicePersona = {
   id: string;
   name: string;
-  /** Public path under /public */
+  /** Public path under `/public`, or empty when no asset (UI shows initials). */
   imageSrc: string;
   ttsGender: TtsVoiceGender;
 };
+
+/** True when a portrait file exists for this persona. */
+export function voicePersonaHasPortrait(p: VoicePersona): boolean {
+  return Boolean(p.imageSrc?.trim());
+}
 
 /** Woman / man voice faces — IDs must match backend `ALLOWED_VOICE_PERSONA_IDS`. */
 export const VOICE_PERSONAS: VoicePersona[] = [
   {
     id: "sara",
     name: "Sara",
-    imageSrc: "/avatars/voice-care-hero.png",
+    /** Paired illustrated portrait with Arjun — same art on /voice and /voice-personas. */
+    imageSrc: "/avatars/persona-sara-neon.svg",
     ttsGender: "female",
   },
   {
     id: "arjun",
     name: "Arjun",
-    imageSrc: "/avatars/persona-arjun.svg",
+    imageSrc: "",
     ttsGender: "male",
   },
 ];

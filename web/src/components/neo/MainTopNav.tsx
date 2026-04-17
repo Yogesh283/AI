@@ -5,11 +5,12 @@ import { useEffect, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { clearSession, getStoredUser } from "@/lib/auth";
 
-function initialsFromName(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "U";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+/** Single character for the profile chip — first character of display name. */
+function firstCharFromProfileName(name: string) {
+  const t = name.trim();
+  if (!t) return "U";
+  const first = [...t][0] ?? "U";
+  return first.toLocaleUpperCase();
 }
 
 export const MAIN_NAV_MENU: { href: string; label: string }[] = [
@@ -44,10 +45,11 @@ export function MainTopNav({ center, trailingBeforeProfile }: Props) {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- close flyout on client navigation (incl. back/forward)
     setMenuOpen(false);
   }, [pathname]);
 
-  const initials = initialsFromName(displayName);
+  const profileLetter = firstCharFromProfileName(displayName);
 
   return (
     <header className="sticky top-0 z-40 flex h-[52px] shrink-0 items-center justify-between gap-2 border-b border-white/[0.07] bg-[#080a0f]/95 px-4 backdrop-blur-md sm:h-14 sm:gap-3 sm:px-5 md:px-6">
@@ -144,7 +146,7 @@ export function MainTopNav({ center, trailingBeforeProfile }: Props) {
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-500 to-orange-600 text-[10px] font-bold text-white shadow-sm"
             aria-hidden
           >
-            {initials}
+            {profileLetter}
           </span>
           <span className="hidden max-w-[8rem] truncate text-xs font-medium text-white/80 sm:inline">
             {displayName || "Account"}

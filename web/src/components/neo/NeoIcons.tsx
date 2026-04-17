@@ -66,6 +66,29 @@ export function IconMicCenter() {
   );
 }
 
+/** Sidebar: 3D avatar + chat + TTS demo */
+export function IconCube3D({ active }: { active?: boolean }) {
+  const c = active ? "#00D4FF" : "rgba(255,255,255,0.4)";
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M12 2l6.5 3.75v7.5L12 17l-6.5-3.75v-7.5L12 2z"
+        stroke={c}
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M5.5 6.25L12 10l6.5-3.75M12 10v8"
+        stroke={c}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity={0.85}
+      />
+    </svg>
+  );
+}
+
 export function IconBell() {
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>

@@ -40,7 +40,15 @@ function speechRecognitionErrorMessage(code: string): string {
   }
 }
 
-export function createSpeechRecognition(lang = "en-IN"): SpeechRecognition | null {
+export type SpeechRecognitionOptions = {
+  /** `true` = keep mic open across pauses — needed for interrupting assistant TTS (barge-in). */
+  continuous?: boolean;
+};
+
+export function createSpeechRecognition(
+  lang = "en-IN",
+  opts?: SpeechRecognitionOptions,
+): SpeechRecognition | null {
   if (typeof window === "undefined") return null;
   const w = window as Window & {
     SpeechRecognition?: new () => SpeechRecognition;
@@ -50,7 +58,7 @@ export function createSpeechRecognition(lang = "en-IN"): SpeechRecognition | nul
   if (!SR) return null;
   const r = new SR();
   r.lang = lang;
-  r.continuous = false;
+  r.continuous = opts?.continuous ?? false;
   r.interimResults = true;
   r.maxAlternatives = 1;
   return r;
@@ -67,14 +75,23 @@ function textForTts(raw: string): string {
     .replace(/https?:\/\/\S+/gi, " ")
     // Emoji / pictographs — browsers often mumble or skip oddly
     .replace(/\p{Extended_Pictographic}/gu, " ")
-    .replace(/[\uFE0F\u200D]/g, "");
+    .replace(/[\uFE0F\u200D]/g, "")
+    // Cleanup: invisible chars, bullets, dash variants — cleaner, more human read
+    .replace(/[\u200B-\u200D\uFEFF\u00A0]/g, "")
+    .replace(/[—–]/g, " ")
+    .replace(/[•▪‣·]/g, " ")
+    .replace(/[""''„«»‹›]/g, '"')
+    .replace(/…/g, ". ")
+    .replace(/\.{4,}/g, "...")
+    .replace(/[!?]{2,}/g, (m) => m[0] ?? "")
+    .trim();
   return s.replace(/\s+/g, " ").trim();
 }
 
 /**
  * Chrome often returns [] until voices load; poll getVoices() so Hindi/English voices appear.
  */
-async function waitForVoices(maxMs = 1800): Promise<void> {
+async function waitForVoices(maxMs = 2200): Promise<void> {
   if (typeof window === "undefined" || !window.speechSynthesis) return;
   const synth = window.speechSynthesis;
   const start = Date.now();
@@ -142,15 +159,14 @@ export function writeTtsTonePreset(p: TtsTonePreset): void {
 export function rateForSpeedPreset(p: TtsSpeedPreset): number {
   switch (p) {
     case "slow":
-      return 0.78;
+      return 0.82;
     case "natural":
-      /* Closer to conversational speech; pauses between chunks do the rest */
-      return 0.8;
+      /* Default — noticeably quicker while staying clear */
+      return 0.93;
     case "clear":
-      /* Voice page — brisk but still clear */
-      return 0.92;
+      return 0.98;
     case "fast":
-      return 1.02;
+      return 1.08;
     default: {
       const _x: never = p;
       return _x;
@@ -221,9 +237,9 @@ function voiceMatchesUtteranceLang(v: SpeechSynthesisVoice, utteranceLang: strin
 
 function langRank(v: SpeechSynthesisVoice, want: string, primary: string): number {
   const L = v.lang.replace("_", "-").toLowerCase();
-  if (L === want) return 5;
-  if (L.startsWith(`${primary}-`) || L === primary) return 4;
-  if (primary === "hi" && L.startsWith("hi")) return 4;
+  if (L === want) return primary === "hi" ? 8 : 5;
+  if (L.startsWith(`${primary}-`) || L === primary) return primary === "hi" ? 6 : 4;
+  if (primary === "hi" && L.startsWith("hi")) return 5;
   if (primary === "en" && L.startsWith("en")) return 4;
   return 1;
 }
@@ -248,12 +264,19 @@ function genderRank(v: SpeechSynthesisVoice, gender?: TtsVoiceGender): number {
 function voiceClarityBonus(v: SpeechSynthesisVoice): number {
   const n = v.name.toLowerCase();
   let b = 0;
-  if (/\b(neural|natural|wavenet|wave|generative|premium|polly|online)\b/.test(n)) b += 6;
+  if (/\b(neural|natural|wavenet|wave|generative|premium|polly|online|enhanced|multilingual)\b/.test(n))
+    b += 7;
+  if (/\b(hd|studio)\b/.test(n) && !/\bandroid\b/.test(n)) b += 2;
   if (/microsoft\s+.*\s+natural\b/.test(n) || /\bnatural\s*-\s*/.test(n)) b += 5;
+  /* Slightly sweeter / smoother common presets on Windows & Edge */
+  if (/\b(aria|jenny|sonia|neerja|samantha|zira|emma|amy|michelle|linda)\b/.test(n)) b += 2;
+  if (/\b(ryan|guy|mark|david|james|daniel|jason)\b/.test(n)) b += 2;
   if (/\bgoogle\b/.test(n) && (/\bindia\b|\bhindi\b|\bindic\b|\benglish\b/.test(n) || /hi-|en-in/i.test(v.lang)))
     b += 3;
   if (/\bmicrosoft\b/.test(n) && (/hi-in|en-in|hindi|india/i.test(v.lang) || /\bindia\b|\bhindi\b/.test(n)))
     b += 2;
+  /* Strongly prefer Indic/Hindi-capable engines for Devanagari (avoids English voice “reading” Hindi) */
+  if (/hi-in|hi_in|^hi$/i.test(v.lang || "") || /\bhindi\b|devanagari|indic/i.test(n)) b += 12;
   try {
     if ("localService" in v && (v as SpeechSynthesisVoice & { localService?: boolean }).localService === false)
       b += 2;
@@ -264,13 +287,17 @@ function voiceClarityBonus(v: SpeechSynthesisVoice): number {
 }
 
 /** Break speech into phrase-sized chunks so the engine breathes between sentences (more human). */
-function splitTtsChunks(text: string, maxLen = 220): string[] {
+function splitTtsChunks(text: string, maxLen = 220, devanagari = false): string[] {
   const t = text.trim();
   if (!t) return [];
   if (t.length <= maxLen) return [t];
 
+  /* Include Hindi danda (।) and double danda (॥) — otherwise Hindi rarely splits and sounds garbled */
+  const sentenceSplit = devanagari
+    ? /(?<=[\u0964\u0965.!?…])\s+/
+    : /(?<=[.!?…])\s+/;
   const sentences = t
-    .split(/(?<=[.!?…])\s+/)
+    .split(sentenceSplit)
     .map((s) => s.trim())
     .filter(Boolean);
   const out: string[] = [];
@@ -284,7 +311,9 @@ function splitTtsChunks(text: string, maxLen = 220): string[] {
   const flushLong = (s: string) => {
     let rest = s;
     while (rest.length > maxLen) {
-      const cut = rest.lastIndexOf(" ", maxLen);
+      const cut = devanagari
+        ? Math.max(rest.lastIndexOf(" ", maxLen), rest.lastIndexOf(",", maxLen))
+        : rest.lastIndexOf(" ", maxLen);
       const at = cut > 48 ? cut : maxLen;
       out.push(rest.slice(0, at).trim());
       rest = rest.slice(at).trim();
@@ -320,10 +349,12 @@ function utterancePitch(
 ): number {
   const primary = primaryLangCode(lang);
   let base = primary === "hi" ? 1.02 : 1;
-  if (gender === "male") base -= 0.04;
-  if (gender === "female") base += 0.018;
+  /* Warmer, more natural — female slightly sweeter, male less flat */
+  if (gender === "male") base -= 0.032;
+  if (gender === "female") base += 0.028;
 
-  const wobble = Math.sin((chunkIdx + 1) * 1.63) * 0.008;
+  const wobble =
+    Math.sin((chunkIdx + 1) * 1.63) * (primary === "hi" ? 0.0015 : 0.003);
   const moodBias =
     mood === "laugh"
       ? 0.06
@@ -337,7 +368,7 @@ function utterancePitch(
               ? -0.03
               : 0;
 
-  const toneBias = tone === "bright" ? 0.08 : -0.05;
+  const toneBias = tone === "bright" ? 0.065 : -0.028;
   const p = base + moodBias + wobble + toneBias;
   return Math.min(1.34, Math.max(0.72, p));
 }
@@ -362,18 +393,25 @@ function pickVoice(lang: string, gender?: TtsVoiceGender): SpeechSynthesisVoice 
   const voices = window.speechSynthesis.getVoices();
   if (voices.length === 0) return undefined;
 
-  const pool = voicesEligibleForGender(voices, gender);
   const want = lang.replace("_", "-").toLowerCase();
   const primary = want.split("-")[0] || want;
+
+  const hiAll = voices.filter((v) => primaryLangCode(v.lang || "") === "hi");
+  let pool = voicesEligibleForGender(voices, gender);
+  /* Never use an English-only voice for Hindi if any Hindi voice exists — fixes wrong words / accent */
+  if (primary === "hi" && hiAll.length > 0) {
+    const hiGendered = voicesEligibleForGender(hiAll, gender);
+    pool = hiGendered.length > 0 ? hiGendered : hiAll;
+  }
 
   let best: SpeechSynthesisVoice | undefined;
   let bestScore = -1;
   for (const v of pool) {
     /* Stronger gender weight so Man/Woman beats “best neural” when both are same language tier */
-    let s = langRank(v, want, primary) * 10 + genderRank(v, gender) * 9;
+    let s = langRank(v, want, primary) * 10 + genderRank(v, gender) * 11;
     if (v.name.includes("Google") && langRank(v, want, primary) >= 4) s += 2;
     s += voiceClarityBonus(v);
-    if (primary === "hi" && /hindi|hi-in|indic|devanagari/i.test(`${v.name} ${v.lang}`)) s += 2;
+    if (primary === "hi" && /hindi|hi-in|indic|devanagari/i.test(`${v.name} ${v.lang}`)) s += 4;
     if (s > bestScore) {
       bestScore = s;
       best = v;
@@ -388,7 +426,7 @@ function pauseAfterChunkMs(chunk: string, preset: TtsSpeedPreset): number {
   const last = t.slice(-1);
   const mult =
     preset === "natural"
-      ? 1.45
+      ? 1.55
       : preset === "slow"
         ? 1.25
         : preset === "fast"
@@ -396,9 +434,9 @@ function pauseAfterChunkMs(chunk: string, preset: TtsSpeedPreset): number {
           : preset === "clear"
             ? 0.48 /* snappier flow — less “late” gap between sentences */
             : 1;
-  if (/[.!?…]/.test(last)) return Math.round(260 * mult);
-  if (/[,;:]/.test(last)) return Math.round(140 * mult);
-  return Math.round(90 * mult);
+  if (/[.!?…]/.test(last)) return Math.round(275 * mult);
+  if (/[,;:]/.test(last)) return Math.round(150 * mult);
+  return Math.round(95 * mult);
 }
 
 export function prepareSpeechText(raw: string, maxChars = 540): string {
@@ -414,6 +452,7 @@ export function prepareSpeechText(raw: string, maxChars = 540): string {
     clipped.lastIndexOf(". "),
     clipped.lastIndexOf("? "),
     clipped.lastIndexOf("! "),
+    clipped.lastIndexOf("\u0964 "),
   );
   if (sentenceCut > Math.floor(maxChars * 0.6)) {
     clipped = clipped.slice(0, sentenceCut + 1);
@@ -471,9 +510,19 @@ export async function speakText(
   const baseRate = rateForSpeedPreset(preset);
   const mood = opts?.replyMood ?? "neutral";
   const tone = readTtsTonePreset();
-  /* Fewer, longer chunks for clear/fast = less inter-chunk delay, speech starts sooner overall */
-  const chunkMaxLen = preset === "clear" || preset === "fast" ? 300 : 220;
-  const chunks = splitTtsChunks(trimmed, chunkMaxLen);
+  const isDeva = containsDevanagari(trimmed);
+  /* Hindi: longer chunks + danda-aware splits = fewer mid-word glitches; slightly shorter when “slow” */
+  const chunkMaxLen =
+    preset === "clear" || preset === "fast"
+      ? 300
+      : preset === "slow"
+        ? isDeva
+          ? 220
+          : 190
+        : isDeva
+          ? 240
+          : 200;
+  const chunks = splitTtsChunks(trimmed, chunkMaxLen, isDeva);
 
   const speakChunk = (chunk: string, chunkIdx: number) =>
     new Promise<void>((resolve, reject) => {
@@ -482,8 +531,11 @@ export async function speakText(
       const u = new SpeechSynthesisUtterance(chunk);
       u.lang = chunkLang;
       u.volume = 1;
-      const rateWobble = 1 + Math.sin(chunkIdx * 0.9) * 0.005;
-      u.rate = Math.min(1.18, Math.max(0.72, baseRate * rateWobble));
+      const rateWobble = 1 + Math.sin(chunkIdx * 0.9) * 0.001;
+      const isHi = primaryLangCode(chunkLang) === "hi";
+      /* Hindi needs slower rate on most engines — avoids slurred / wrong syllables */
+      const hiRateMul = isHi ? 1.02 : 1;
+      u.rate = Math.min(1.16, Math.max(0.68, baseRate * rateWobble * hiRateMul));
       u.pitch = utterancePitch(mood, chunkLang, opts?.voiceGender, chunkIdx, tone);
       if (voice && voiceMatchesUtteranceLang(voice, chunkLang)) {
         u.voice = voice;

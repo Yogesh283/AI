@@ -192,3 +192,57 @@ body {
   background: rgba(0, 212, 255, 0.22);
   border-radius: 9999px;
 }
+
+/* Voice page waveform — CSS-only (no Framer) to avoid layout thrash / flicker */
+@keyframes neo-voice-bar {
+  0%,
+  100% {
+    transform: scaleY(0.22);
+    opacity: 0.45;
+  }
+  50% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+.neo-voice-bars {
+  display: flex;
+  height: 2.75rem;
+  width: min(280px, 88vw);
+  align-items: flex-end;
+  justify-content: center;
+  gap: 3px;
+  padding-left: 0.25rem;
+  padding-right: 0.25rem;
+  margin-top: 1rem;
+  contain: layout style paint;
+}
+
+.neo-voice-bar {
+  width: 3px;
+  height: 40px;
+  transform-origin: bottom center;
+  border-radius: 9999px;
+  background: linear-gradient(to top, rgb(8 145 178 / 0.25), rgb(207 250 254 / 0.9));
+  box-shadow: 0 0 8px rgb(34 211 238 / 0.35);
+  animation: neo-voice-bar 1.35s ease-in-out infinite;
+  will-change: transform;
+}
+
+.neo-voice-bars[data-voice-mode="speaking"] .neo-voice-bar {
+  animation-duration: 0.42s;
+}
+
+.neo-voice-bars[data-voice-mode="listening"] .neo-voice-bar {
+  animation-duration: 1.2s;
+}
+
+.neo-voice-bars[data-voice-mode="thinking"] .neo-voice-bar {
+  animation-duration: 1.05s;
+}
+
+.neo-voice-bars[data-voice-mode="idle"] .neo-voice-bar {
+  animation-duration: 2.3s;
+  opacity: 0.55;
+}

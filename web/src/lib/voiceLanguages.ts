@@ -110,15 +110,22 @@ export function ackPhraseForLang(code: VoiceSpeechLangCode): string {
   }
 }
 
-/** Greeting when the user starts a voice session (Hindi vs everything else). */
+/** Greeting when the user starts a voice session — short hello + optional name only. */
 export function voiceSessionWelcomeLines(
   lang: VoiceSpeechLangCode,
   displayName: string | undefined,
 ): { isHindi: boolean; withName: string; withoutName: string } {
   const isHindi = lang === "hi-IN";
   const nm = displayName?.trim();
+  if (isHindi) {
+    return {
+      isHindi: true,
+      withName: nm ? `Namaste ${nm}.` : "Namaste.",
+      withoutName: "Namaste.",
+    };
+  }
   return {
-    isHindi,
+    isHindi: false,
     withName: nm ? `Hello ${nm}.` : "Hello.",
     withoutName: "Hello.",
   };

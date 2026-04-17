@@ -1,15 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+<svg xmlns="http://www.w3.org/2000/svg" width="72" height="72" viewBox="0 0 72 72" role="img" aria-label="">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#3b2a4a"/>
-      <stop offset="100%" stop-color="#150a1a"/>
+    <linearGradient id="y" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f472b6"/>
+      <stop offset="100%" stop-color="#be185d"/>
     </linearGradient>
   </defs>
-  <rect width="100" height="100" fill="url(#g)" rx="14"/>
-  <ellipse cx="50" cy="80" rx="16" ry="11" fill="#d9a88f"/>
-  <ellipse cx="50" cy="44" rx="30" ry="34" fill="#f5e0d4"/>
-  <path d="M12 38 Q50 2 88 38 Q86 52 50 56 Q14 52 12 38" fill="#1a1a1a"/>
-  <ellipse cx="38" cy="42" rx="5" ry="5.5" fill="#292524"/>
-  <ellipse cx="62" cy="42" rx="5" ry="5.5" fill="#292524"/>
-  <path d="M40 54 Q50 61 60 54" stroke="#c4a89a" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <rect width="72" height="72" rx="14" fill="#120810"/>
+  <ellipse cx="36" cy="30" rx="16" ry="18" fill="url(#y)" opacity="0.9"/>
+  <ellipse cx="36" cy="54" rx="22" ry="12" fill="url(#y)" opacity="0.4"/>
 </svg>

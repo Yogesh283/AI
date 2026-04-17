@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { GradientButton } from "@/components/neo/GradientButton";
 import { NeoPublicShell } from "@/components/neo/NeoPublicShell";
@@ -8,6 +9,12 @@ import { getNeoAvatar, readStoredAvatarId, writeStoredAvatarId } from "@/lib/ava
 
 const avatars = [
   { id: "neo-core", name: "NeoXAI Core", tag: "Smart & Balanced", premium: false },
+  {
+    id: "arc-hud",
+    name: "Arc HUD",
+    tag: "Sci-fi HUD · arc reactor glow",
+    premium: false,
+  },
   { id: "nova", name: "Nova", tag: "Friendly & Warm", premium: false },
   { id: "atlas", name: "Atlas", tag: "Professional", premium: true },
   { id: "spark", name: "Spark", tag: "Energetic", premium: false },
@@ -45,6 +52,69 @@ export default function AvatarsPage() {
         <p className="mt-1 text-sm text-white/45">
           Select your personal AI assistant style.
         </p>
+        <div className="mt-4 rounded-2xl border border-[#00D4FF]/25 bg-[#00D4FF]/[0.07] p-4 ring-1 ring-[#00D4FF]/15">
+          <p className="text-sm font-semibold text-white/90">3D avatar (Avatar SDK)</p>
+          <p className="mt-1 text-xs leading-relaxed text-white/45">
+            Open MetaPerson Creator in the browser — needs{" "}
+            <code className="text-cyan-300/85">METAPERSON_CLIENT_ID</code> /{" "}
+            <code className="text-cyan-300/85">SECRET</code> in server env.
+          </p>
+          <Link
+            href="/avatars/metaperson"
+            className="mt-3 inline-flex text-sm font-semibold text-[#00D4FF] transition hover:text-[#7eeafc]"
+          >
+            MetaPerson Creator →
+          </Link>
+        </div>
+
+        <details className="mt-4 rounded-2xl border border-white/[0.08] bg-black/25 p-4 text-left ring-1 ring-white/[0.04]">
+          <summary className="cursor-pointer list-none text-sm font-semibold text-white/85 [&::-webkit-details-marker]:hidden">
+            अन्य 3D विकल्प (Unity के अलावा) ▾
+          </summary>
+          <ul className="mt-3 space-y-2.5 text-[12px] leading-relaxed text-white/50">
+            <li>
+              <span className="font-semibold text-white/70">Unreal Engine</span> — शक्तिशाली 3D / एनीमेशन; डेस्कटॉप या बिल्ड टारगेट।{" "}
+              <a
+                href="https://www.unrealengine.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#00D4FF]/90 underline-offset-2 hover:underline"
+              >
+                unrealengine.com
+              </a>
+            </li>
+            <li>
+              <span className="font-semibold text-white/70">Three.js / Babylon.js</span> — ब्राउज़र में WebGL रियल-टाइम 3D (आमतौर पर glTF/GLB)।{" "}
+              <a href="https://threejs.org/" target="_blank" rel="noopener noreferrer" className="text-[#00D4FF]/90 underline-offset-2 hover:underline">
+                threejs.org
+              </a>
+              {" · "}
+              <a
+                href="https://www.babylonjs.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#00D4FF]/90 underline-offset-2 hover:underline"
+              >
+                babylonjs.com
+              </a>
+            </li>
+            <li>
+              <span className="font-semibold text-white/70">Ready Player Me</span> — कम-कोड 3D अवतार + API इंटीग्रेशन।{" "}
+              <a
+                href="https://readyplayer.me/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#00D4FF]/90 underline-offset-2 hover:underline"
+              >
+                readyplayer.me
+              </a>
+            </li>
+          </ul>
+          <p className="mt-3 text-[11px] text-white/35">
+            पूरी तुलना और <code className="text-white/45">model.fbx</code> नोट्स रिपो में{" "}
+            <code className="text-cyan-300/80">avatar/README.md</code> में हैं।
+          </p>
+        </details>
       </header>
       <div className="mb-6 flex gap-2 rounded-2xl bg-black/30 p-1 ring-1 ring-white/10">
         {(["all", "free", "premium"] as const).map((t) => (

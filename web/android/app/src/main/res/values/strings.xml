@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">NeoAssistant</string>
+    <string name="title_activity_main">NeoAssistant</string>
+    <string name="package_name">com.neo.assistant</string>
+    <string name="custom_url_scheme">com.neo.assistant</string>
+</resources>

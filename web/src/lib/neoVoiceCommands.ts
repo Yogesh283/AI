@@ -1,0 +1,215 @@
+/**
+ * Wake: **Neo** / **नियो** (or Hello Neo / हेलो नियो). Routing: WhatsApp / Telegram / tel:.
+ * Example: "Neo open WhatsApp", Hindi wake + commands supported.
+ */
+
+import {
+  buildWhatsAppWebUrl,
+  mentionsWhatsApp,
+  shouldOpenWhatsAppFromCommand,
+} from "@/lib/whatsappOpenCommand";
+import {
+  buildTelegramWebUrl,
+  mentionsTelegram,
+  shouldOpenTelegramFromCommand,
+} from "@/lib/telegramOpenCommand";
+import { tryOpenWhatsAppPopup, navigateToWhatsAppWeb } from "@/lib/whatsappOpenCommand";
+import {
+  clearNeoFollowUpSession,
+  isNeoFollowUpActive,
+  startNeoFollowUpSession,
+} from "@/lib/neoVoiceSession";
+
+export type NeoAction =
+  | { kind: "open_url"; url: string }
+  | { kind: "tel"; href: string };
+
+export type NeoCommandMode = "voice" | "text" | "voice-followup";
+
+/**
+ * Detect wake anywhere (earliest match). English: **Neo** alone or after hello/hi/hey.
+ * Hindi: **नियो** alone or after greeting.
+ */
+export function extractHelloNeoCommand(raw: string): { hadWake: boolean; rest: string } {
+  const t = raw.replace(/\s+/g, " ").trim();
+  const patterns = [
+    /\b(hello|hi|hey)[,!.']*\s+neo\b/i,
+    /\b(hello|hi|hey)[,!.']*\s+new\b/i,
+    /(नमस्ते|हेलो|हाय)[,!.']*\s+नियो/u,
+    /\bneo\b/i,
+    /\bनियो\b/u,
+  ];
+
+  let wake: { index: number; len: number } | null = null;
+  for (const re of patterns) {
+    const m = re.exec(t);
+    if (!m) continue;
+    if (!wake || m.index < wake.index || (m.index === wake.index && m[0].length > wake.len)) {
+      wake = { index: m.index, len: m[0].length };
+    }
+  }
+
+  if (!wake) return { hadWake: false, rest: t };
+
+  const after = t.slice(wake.index + wake.len).replace(/^[,!.]?\s*/, "");
+  return { hadWake: true, rest: after.trim() };
+}
+
+export function stripHelloNeoPrefix(raw: string): { hadWake: boolean; rest: string } {
+  return extractHelloNeoCommand(raw);
+}
+
+export function extractTelHrefFromCommand(text: string): string | null {
+  if (
+    !/\b(call|dial|phone|ring|\u0915\u094C\u0932|\u092B\u094B\u0928)\b/i.test(text) &&
+    !/\u0915\u094C\u0932\s*\u0915\u0930\u094B|\u092B\u094B\u0928\s*\u0932\u0917\u093E\u0913/i.test(text)
+  ) {
+    return null;
+  }
+  const m = text.match(/(\+\d[\d\s\-.]{8,}\d|\d{10,})/);
+  if (!m) return null;
+  let digits = m[1].replace(/\D/g, "");
+  if (digits.length === 10) digits = `91${digits}`;
+  if (digits.length < 11) return null;
+  return `tel:+${digits}`;
+}
+
+/** Core intents on command text only (no wake). `silentReplies`: voice — no TTS when no action. */
+export function runNeoIntents(q: string, silentReplies = false): { reply: string; actions: NeoAction[] } {
+  const trimmed = q.trim();
+  if (!trimmed) {
+    return { reply: "", actions: [] };
+  }
+
+  if (shouldOpenWhatsAppFromCommand(trimmed)) {
+    const url = buildWhatsAppWebUrl(trimmed);
+    return { reply: "Opening WhatsApp.", actions: [{ kind: "open_url", url }] };
+  }
+
+  if (shouldOpenTelegramFromCommand(trimmed)) {
+    const url = buildTelegramWebUrl(trimmed);
+    return { reply: "Opening Telegram.", actions: [{ kind: "open_url", url }] };
+  }
+
+  const telEarly = extractTelHrefFromCommand(trimmed);
+  if (telEarly) {
+    return { reply: "Calling that number.", actions: [{ kind: "tel", href: telEarly }] };
+  }
+
+  const msgIntent = /(read|check|see|inbox|message|chat|who\s*messaged|what\s*message|unread|missed)/i;
+  const asksReadWa = msgIntent.test(trimmed) && mentionsWhatsApp(trimmed);
+  const asksReadTg = msgIntent.test(trimmed) && mentionsTelegram(trimmed);
+
+  const listenWhatsAppRead =
+    /\blisten(?:ing)?\s+to\s+.*(message|chat|inbox).*whatsapp|whatsapp.*\blisten(?:ing)?\s+to\s+.*(message|chat)/i.test(
+      trimmed,
+    );
+
+  if (
+    asksReadWa ||
+    /(read|check|see).*whatsapp|whatsapp.*(message|chat|inbox)|\u092E\u0948\u0938\u0947\u091C.*(\u092A\u0922\u093C|\u0926\u0947\u0916|\u0938\u0941\u0928)/i.test(
+      trimmed,
+    ) ||
+    listenWhatsAppRead
+  ) {
+    return {
+      reply: silentReplies
+        ? ""
+        : "I cannot read your WhatsApp inbox from this app — that needs the WhatsApp app on your phone, like Alexa cannot read a private app for you. Say Neo open WhatsApp to open WhatsApp Web.",
+      actions: [],
+    };
+  }
+
+  if (
+    asksReadTg ||
+    /(read|check|telegram).*message|telegram.*(chat|who)|\u0915\u093F\u0938\u0915\u093E\s*\u092E\u0948\u0938\u0947\u091C/i.test(
+      trimmed,
+    )
+  ) {
+    return {
+      reply: silentReplies
+        ? ""
+        : "I cannot read your Telegram messages here — same limit as Alexa with another company's app. Say Neo open Telegram to open Telegram Web.",
+      actions: [],
+    };
+  }
+
+  if (/\bcall\s+[a-zA-Z\u0900-\u097F]{2,}\b/u.test(trimmed) && !/\d{5,}/.test(trimmed)) {
+    return {
+      reply: silentReplies
+        ? ""
+        : "I don't have that contact's number saved. Say the full number with country code.",
+      actions: [],
+    };
+  }
+
+  return {
+    reply: silentReplies
+      ? ""
+      : "Say: open WhatsApp, open my Telegram channel, or call plus nine one and your number.",
+    actions: [],
+  };
+}
+
+export function processNeoCommandLine(
+  input: string,
+  mode: NeoCommandMode,
+): { reply: string; actions: NeoAction[] } {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return {
+      reply: mode === "voice" || mode === "voice-followup" ? "" : "Say Neo, then your command.",
+      actions: [],
+    };
+  }
+
+  if (mode === "voice-followup") {
+    return runNeoIntents(trimmed, true);
+  }
+
+  if (mode === "text") {
+    const { hadWake, rest } = extractHelloNeoCommand(trimmed);
+    const cmd = hadWake ? rest : trimmed;
+    if (!cmd) {
+      return {
+        reply: 'Examples: "Neo, open WhatsApp" or "open Telegram".',
+        actions: [],
+      };
+    }
+    return runNeoIntents(cmd, false);
+  }
+
+  /* voice */
+  if (isNeoFollowUpActive()) {
+    const r = runNeoIntents(trimmed, true);
+    if (r.actions.length > 0) clearNeoFollowUpSession();
+    return r;
+  }
+
+  const { hadWake, rest } = extractHelloNeoCommand(trimmed);
+  if (!hadWake) {
+    return {
+      reply: "",
+      actions: [],
+    };
+  }
+
+  if (!rest) {
+    startNeoFollowUpSession(18000);
+    return { reply: "", actions: [] };
+  }
+
+  const r = runNeoIntents(rest, true);
+  if (r.actions.length > 0) clearNeoFollowUpSession();
+  return r;
+}
+
+export function executeNeoActions(actions: NeoAction[]): void {
+  for (const a of actions) {
+    if (a.kind === "open_url") {
+      if (!tryOpenWhatsAppPopup(a.url)) navigateToWhatsAppWeb(a.url);
+    } else if (a.kind === "tel") {
+      window.location.href = a.href;
+    }
+  }
+}

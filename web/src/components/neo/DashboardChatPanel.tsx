@@ -18,14 +18,22 @@ import {
   loadChatMessages,
   saveChatMessages,
 } from "@/lib/chatStorage";
+import { readStoredVoiceSpeechLang } from "@/lib/voiceLanguages";
+import {
+  buildWhatsAppWebUrl,
+  navigateToWhatsAppWeb,
+  shouldOpenWhatsAppFromCommand,
+  tryOpenWhatsAppPopup,
+  whatsAppOpenAck,
+} from "@/lib/whatsappOpenCommand";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
 function initialMsgs(displayName?: string | null): Msg[] {
   const name = shortDisplayNameForGreeting(displayName ?? undefined);
   const line = name
-    ? `Hello ${name}! Main ${NEO_ASSISTANT_NAME} hoon — aapka personal assistant. Market, news, aaj ki baat — jo bhi ho, Hindi ya English mein; main yahan hoon.`
-    : `Good morning! Main ${NEO_ASSISTANT_NAME} hoon — aapka personal assistant. Jo bhi kaam ya sawaal ho, Hindi ya English mein poochho; main yahan hoon.`;
+    ? `Hey ${name} — main ${NEO_ASSISTANT_NAME}. Yahan bilkul waise hi baat kar sakte ho jaise kisi insaan se: jo man ho poochho, Hindi ya English, short ya detail; main sun ke saath hoon.`
+    : `Hi — main ${NEO_ASSISTANT_NAME}. Seedha likho jaise chat pe kisi dost se baat karte ho; main yahan hoon.`;
   return [{ role: "assistant", content: line }];
 }
 
@@ -197,6 +205,18 @@ export function DashboardChatPanel() {
     if (!trimmed) return;
     setInput("");
     const cur = msgsRef.current;
+
+    if (shouldOpenWhatsAppFromCommand(trimmed)) {
+      const waUrl = buildWhatsAppWebUrl(trimmed);
+      const popped = tryOpenWhatsAppPopup(waUrl);
+      const ack = whatsAppOpenAck(readStoredVoiceSpeechLang(), popped ? "new-tab" : "same-tab");
+      const next: Msg[] = [...cur, { role: "user", content: trimmed }, { role: "assistant", content: ack }];
+      setMsgs(next);
+      msgsRef.current = next;
+      if (!popped) navigateToWhatsAppWeb(waUrl);
+      return;
+    }
+
     const next: Msg[] = [...cur, { role: "user", content: trimmed }];
     setMsgs(next);
     msgsRef.current = next;
@@ -266,15 +286,13 @@ export function DashboardChatPanel() {
         ref={scrollRef}
         className="neo-chat-scroll min-h-0 flex-1 overflow-y-auto overscroll-y-contain scroll-smooth px-3 py-5 sm:px-5 md:px-8 md:py-6"
       >
-        <div className="mx-auto flex w-full max-w-[44rem] flex-col gap-5 md:gap-6">
+        <div className="mx-auto flex w-full max-w-[44rem] flex-col gap-6 md:gap-7">
           <article className="flex gap-3 sm:gap-4">
             <ChatAssistantAvatar className="mt-0.5" />
-            <div className="min-w-0 flex-1">
-              <div className="rounded-2xl rounded-tl-md border border-white/[0.07] bg-[#10151f] px-4 py-3.5 shadow-[0_2px_24px_rgba(0,0,0,0.35)] ring-1 ring-inset ring-white/[0.03] sm:px-5 sm:py-4">
-                <p className="text-[15px] leading-[1.6] text-white/[0.92]">
-                  {msgs[0]?.content}
-                </p>
-              </div>
+            <div className="min-w-0 flex-1 border-l-2 border-white/[0.1] pl-3 sm:pl-4">
+              <p className="line-clamp-2 text-[15px] leading-relaxed text-white/[0.92] sm:line-clamp-none">
+                {msgs[0]?.content}
+              </p>
             </div>
           </article>
 
@@ -289,16 +307,22 @@ export function DashboardChatPanel() {
                 <ChatAssistantAvatar className="mt-0.5" />
               )}
               <div
-                className={`min-w-0 ${m.role === "user" ? "ml-auto max-w-[min(100%,85%)] sm:max-w-[75%]" : "max-w-[min(100%,90%)] sm:max-w-[85%]"}`}
+                className={`min-w-0 flex-1 ${m.role === "user" ? "text-right" : ""}`}
               >
                 <div
                   className={
                     m.role === "user"
-                      ? "rounded-2xl rounded-tr-md border border-white/[0.1] bg-gradient-to-br from-[#0f3d5c] via-[#1a1f3a] to-[#241438] px-4 py-3.5 text-[15px] leading-[1.6] text-white shadow-[0_4px_28px_rgba(0,212,255,0.12)] ring-1 ring-[#00D4FF]/15 sm:px-5 sm:py-4"
-                      : "rounded-2xl rounded-tl-md border border-white/[0.07] bg-[#10151f] px-4 py-3.5 text-[15px] leading-[1.6] text-white/[0.9] shadow-[0_2px_20px_rgba(0,0,0,0.3)] ring-1 ring-inset ring-white/[0.03] sm:px-5 sm:py-4"
+                      ? "inline-block max-w-[min(100%,92%)] border-r-2 border-[#00D4FF]/30 pr-3 text-right sm:max-w-[85%]"
+                      : "border-l-2 border-white/[0.1] pl-3 sm:pl-4"
                   }
                 >
-                  <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                  <p
+                    className={`whitespace-pre-wrap break-words text-[15px] leading-relaxed ${
+                      m.role === "user" ? "text-white/90" : "text-white/[0.9]"
+                    }`}
+                  >
+                    {m.content}
+                  </p>
                 </div>
               </div>
             </article>
@@ -307,7 +331,7 @@ export function DashboardChatPanel() {
           {loading ? (
             <div className="flex items-center gap-3 pl-1 sm:pl-2">
               <ChatAssistantAvatar />
-              <div className="flex items-center gap-1.5 rounded-full border border-white/[0.06] bg-[#10151f] px-4 py-2.5">
+              <div className="flex items-center gap-1.5 border-l-2 border-[#00D4FF]/25 pl-3">
                 <span className="sr-only">{NEO_ASSISTANT_NAME} typing</span>
                 {[0, 1, 2].map((d) => (
                   <span

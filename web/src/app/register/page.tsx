@@ -89,7 +89,7 @@ export default function RegisterPage() {
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 className="neo-glass w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3.5 text-sm text-white outline-none ring-1 ring-white/[0.06] placeholder:text-white/30 focus:border-[#00D4FF]/40"
-                placeholder="Aman"
+                placeholder="Your name"
               />
             </div>
             <div>

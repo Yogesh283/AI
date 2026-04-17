@@ -12,8 +12,11 @@ import {
   patchMe,
   type AuthUser,
 } from "@/lib/auth";
+import { HelloNeoVoiceStrip } from "@/components/neo/HelloNeoVoiceStrip";
+import { ProfileNeoAssistantToggle } from "@/components/neo/ProfileNeoAssistantToggle";
 import { ProfileVoiceSettings } from "@/components/neo/ProfileVoiceSettings";
 import { getNeoAvatar, readStoredAvatarId } from "@/lib/avatars";
+import { normalizeVoicePersonaId } from "@/lib/voicePersonas";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -27,10 +30,11 @@ export default function ProfilePage() {
   const [savingPw, setSavingPw] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
-  const [, setAvatarTick] = useState(0);
+  /** `null` until mount so avatar image matches SSR + first client paint. */
+  const [avatarId, setAvatarId] = useState<string | null>(null);
 
   const refreshLocal = useCallback(() => {
-    setAvatarTick((t) => t + 1);
+    setAvatarId(readStoredAvatarId());
   }, []);
 
   const loadUser = useCallback(async () => {
@@ -56,6 +60,10 @@ export default function ProfilePage() {
   }, [loadUser]);
 
   useEffect(() => {
+    setAvatarId(readStoredAvatarId());
+  }, []);
+
+  useEffect(() => {
     const onVis = () => {
       if (document.visibilityState === "visible") refreshLocal();
     };
@@ -67,7 +75,7 @@ export default function ProfilePage() {
     };
   }, [refreshLocal]);
 
-  const avatar = getNeoAvatar(readStoredAvatarId());
+  const avatar = getNeoAvatar(avatarId);
 
   useEffect(() => {
     if (user?.display_name !== undefined) {
@@ -159,6 +167,7 @@ export default function ProfilePage() {
               className="object-cover object-top"
               sizes="96px"
               priority
+              unoptimized={avatar.imageSrc.endsWith(".svg")}
             />
           </div>
           <h1 className="text-xl font-bold text-white">{user.display_name || "User"}</h1>
@@ -268,7 +277,12 @@ export default function ProfilePage() {
           </div>
         </section>
 
+        <ProfileNeoAssistantToggle />
+
+        <HelloNeoVoiceStrip variant="profile" />
+
         <ProfileVoiceSettings
+          key={normalizeVoicePersonaId(user.voice_persona_id)}
           user={user}
           onUserUpdated={(u) => setUser(u)}
           onMessage={(ok, err) => {

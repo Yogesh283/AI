@@ -96,7 +96,7 @@ export default function RegisterScreen() {
           <Field label="Display name" />
           <TextInput
             style={styles.input}
-            placeholder="Aman"
+            placeholder="Your name"
             placeholderTextColor="rgba(255,255,255,0.35)"
             autoComplete="name"
             textContentType="name"

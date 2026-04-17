@@ -29,7 +29,7 @@ export default function MainLayout({
               : "overflow-y-auto"
           }`}
         >
-          {children}
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
         </main>
       </div>
     </div>

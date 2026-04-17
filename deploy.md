@@ -193,4 +193,20 @@ rm -rf .next && npm run build -- --webpack
 PORT=3000 pm2 restart neo-web
 Optional check (code aaya ya nahi):
 
+
+
+
+
+
+
+
+
+export APP_ROOT=/home/myneoxai/apps/neoxai
+
+cd "$APP_ROOT" && git pull origin main
+
+cd "$APP_ROOT/backend" && . .venv/bin/activate && pip install -r requirements.txt
+
+pm2 restart neo-api
+
 grep -n "HOST_BRAND_OVERRIDES" /home/myneoxai/apps/neoxai/web/src/lib/siteBrand

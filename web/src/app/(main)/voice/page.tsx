@@ -1,7 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { MainTopNav } from "@/components/neo/MainTopNav";
 import { fetchMe, getStoredToken, getStoredUser, patchVoicePersona, saveSession } from "@/lib/auth";
 import { postChat } from "@/lib/api";
@@ -26,32 +25,36 @@ import {
   writeStoredVoicePersonaId,
 } from "@/lib/voicePersonas";
 import { inferVoiceReplyMood } from "@/lib/voiceReplyMood";
+import type { KalidokitMouthShape } from "@/lib/vrmKalidokitMouth";
+import { speakTextWithAvatarLipSync, stopAvatarTtsAudio } from "@/lib/voiceAvatarTts";
 import {
   createSpeechRecognition,
   isSpeechRecognitionSupported,
   isSpeechSynthesisSupported,
   prepareSpeechText,
   primeSpeechVoices,
-  readTtsGender,
+  readTtsSpeedPreset,
   speakText,
   speechRecognitionErrorMessage,
   stopSpeaking,
   writeTtsGender,
-  type TtsSpeedPreset,
   type TtsVoiceGender,
 } from "@/lib/voiceChat";
 import { useWakeLock } from "@/lib/useWakeLock";
+import {
+  buildWhatsAppWebUrl,
+  navigateToWhatsAppWeb,
+  shouldOpenWhatsAppFromCommand,
+  tryOpenWhatsAppPopup,
+  whatsAppOpenAck,
+} from "@/lib/whatsappOpenCommand";
 
 const VOICE_HISTORY_PREFIX = "neo-voice-history-";
 
 /**
- * Pause after assistant audio ends before opening the mic again — hand-to-hand turns,
- * avoids echo / clipped first syllable on many devices.
+ * Short pause after assistant audio ends before reopening the mic (avoids echo / clipped syllables).
  */
-const MIC_RESUME_AFTER_TTS_MS = 420;
-
-/** Voice page: slightly slower, cleaner articulation (browser TTS). */
-const VOICE_TTS_PRESET: TtsSpeedPreset = "clear";
+const MIC_RESUME_AFTER_TTS_MS = 180;
 
 function IconMic({ className }: { className?: string }) {
   return (
@@ -67,224 +70,25 @@ function IconMic({ className }: { className?: string }) {
   );
 }
 
-type VoiceAvatarState = "idle" | "listening" | "thinking" | "speaking";
-
-function VirtualVoiceAssistant({
-  state,
-  active,
-  personaId,
+/** CSS-only bars — avoids Framer Motion + 22 animated nodes re-rendering every frame (flicker). */
+function VoiceSessionWaveform({
+  sessionOn,
+  speaking,
+  listening,
+  thinking,
 }: {
-  state: VoiceAvatarState;
-  active: boolean;
-  personaId: "arjun" | "sara";
+  sessionOn: boolean;
+  speaking: boolean;
+  listening: boolean;
+  thinking: boolean;
 }) {
-  const speaking = state === "speaking";
-  const listening = state === "listening";
-  const thinking = state === "thinking";
-  const isMale = personaId === "arjun";
-  const hoodieFrom = isMale ? "#1e3a8a" : "#295f73";
-  const hoodieTo = isMale ? "#1e1b4b" : "#1b3f52";
-  const hairColor = isMale ? "#111827" : "#3b0764";
-  const skin = "#f4c8a8";
-  const bodyGradId = isMale ? "va-body-grad-man" : "va-body-grad-woman";
-  const faceGradId = isMale ? "va-face-grad-man" : "va-face-grad-woman";
-  const glowGradId = isMale ? "va-glow-grad-man" : "va-glow-grad-woman";
-  const auraPulse = speaking ? 0.6 : listening ? 0.85 : 1.8;
-
+  if (!sessionOn) return null;
+  const mode = speaking ? "speaking" : listening ? "listening" : thinking ? "thinking" : "idle";
   return (
-    <div className="relative flex h-[330px] w-[245px] items-end justify-center sm:h-[352px] sm:w-[270px]">
-      <motion.div
-        className="pointer-events-none absolute inset-x-2 bottom-8 h-56 rounded-[42%] bg-gradient-to-br from-cyan-400/35 via-indigo-500/30 to-fuchsia-500/35 blur-2xl"
-        animate={{
-          scale: active ? [1, 1.11, 1] : 1,
-          opacity: active ? [0.35, 0.92, 0.35] : 0.22,
-        }}
-        transition={{ duration: auraPulse, repeat: active ? Infinity : 0 }}
-      />
-      <motion.div
-        className="relative"
-        animate={{
-          y: thinking ? [0, -7, 0] : active ? [0, -2, 0] : 0,
-          scale: speaking ? [1, 1.015, 1] : [1, 1.008, 1],
-        }}
-        transition={{
-          duration: thinking ? 1.22 : speaking ? 0.85 : 2.5,
-          repeat: thinking || active ? Infinity : 0,
-        }}
-      >
-        <motion.svg
-          viewBox="0 0 220 320"
-          className="h-[325px] w-[245px] drop-shadow-[0_18px_40px_rgba(0,0,0,0.45)] sm:h-[346px] sm:w-[264px]"
-          role="img"
-          aria-label={isMale ? "Virtual male AI assistant" : "Virtual female AI assistant"}
-        >
-          <defs>
-            <linearGradient id={bodyGradId} x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor={hoodieFrom} />
-              <stop offset="100%" stopColor={hoodieTo} />
-            </linearGradient>
-            <radialGradient id={faceGradId} cx="46%" cy="30%" r="80%">
-              <stop offset="0%" stopColor="#ffd8bb" />
-              <stop offset="100%" stopColor={skin} />
-            </radialGradient>
-            <radialGradient id={glowGradId} cx="50%" cy="50%" r="70%">
-              <stop offset="0%" stopColor="rgba(34,211,238,0.6)" />
-              <stop offset="100%" stopColor="rgba(34,211,238,0)" />
-            </radialGradient>
-          </defs>
-
-          <ellipse cx="110" cy="198" rx="74" ry="62" fill={`url(#${glowGradId})`} opacity={active ? 0.55 : 0.32} />
-          <ellipse cx="110" cy="304" rx="58" ry="12" fill="rgba(56,189,248,0.2)" />
-
-          <motion.circle
-            cx="56"
-            cy="74"
-            r="8"
-            fill={skin}
-            animate={{ scale: listening ? [1, 1.12, 1] : 1 }}
-            transition={{ duration: 0.95, repeat: listening ? Infinity : 0 }}
-          />
-          <motion.circle
-            cx="164"
-            cy="74"
-            r="8"
-            fill={skin}
-            animate={{ scale: listening ? [1, 1.12, 1] : 1 }}
-            transition={{ duration: 0.95, repeat: listening ? Infinity : 0, delay: 0.08 }}
-          />
-
-          <rect x="80" y="226" width="22" height="72" rx="11" fill="#0f172a" />
-          <rect x="118" y="226" width="22" height="72" rx="11" fill="#0f172a" />
-          <rect x="74" y="294" width="34" height="12" rx="6" fill="#111827" />
-          <rect x="112" y="294" width="34" height="12" rx="6" fill="#111827" />
-
-          <motion.g
-            style={{ transformOrigin: "110px 174px" }}
-            animate={{ rotate: speaking ? [0, 1.8, -1.8, 0] : 0 }}
-            transition={{ duration: 0.9, repeat: speaking ? Infinity : 0 }}
-          >
-            {isMale ? (
-              <>
-                <path
-                  d="M62 148c0-20 16-36 36-36h24c20 0 36 16 36 36v82H62z"
-                  fill={`url(#${bodyGradId})`}
-                />
-                <path d="M70 150c8-20 24-30 40-30s32 10 40 30v28H70z" fill="rgba(255,255,255,0.08)" />
-              </>
-            ) : (
-              <>
-                <path d="M60 150c0-21 17-38 38-38h24c21 0 38 17 38 38v82H60z" fill={`url(#${bodyGradId})`} />
-                <path d="M76 154c7-18 20-28 34-28 15 0 28 10 35 28v26H76z" fill="rgba(255,255,255,0.12)" />
-                <rect x="72" y="162" width="76" height="52" rx="18" fill="rgba(10,20,28,0.42)" />
-                <path d="M84 178h52" stroke="rgba(148,220,255,0.55)" strokeWidth="2.5" />
-              </>
-            )}
-            <rect x="94" y="108" width="32" height="24" rx="12" fill={skin} />
-            <path d="M78 152l18 30h28l18-30-14-16H92z" fill={isMale ? "#0f255f" : "#184c60"} />
-            <rect x="104" y="158" width="12" height="34" rx="6" fill="#e5e7eb" />
-            <circle cx="108" cy="172" r="1.8" fill="#94a3b8" />
-            <circle cx="112" cy="186" r="1.8" fill="#94a3b8" />
-          </motion.g>
-
-          <motion.g
-            style={{ transformOrigin: "70px 148px" }}
-            animate={{ rotate: speaking ? [10, 26, 8] : listening ? [10, 16, 10] : 10 }}
-            transition={{ duration: speaking ? 0.55 : 1.3, repeat: speaking || listening ? Infinity : 0 }}
-          >
-            <rect x="52" y="130" width="20" height="78" rx="10" fill={skin} />
-            <rect x="52" y="152" width="20" height="42" rx="10" fill={isMale ? "#1e3a8a" : "#295f73"} />
-            <circle cx="62" cy="214" r="10" fill={skin} />
-          </motion.g>
-
-          <motion.g
-            style={{ transformOrigin: "150px 148px" }}
-            animate={{ rotate: speaking ? [-10, -26, -8] : listening ? [-10, -16, -10] : -10 }}
-            transition={{ duration: speaking ? 0.55 : 1.3, repeat: speaking || listening ? Infinity : 0, delay: 0.08 }}
-          >
-            <rect x="148" y="130" width="20" height="78" rx="10" fill={skin} />
-            <rect x="148" y="152" width="20" height="42" rx="10" fill={isMale ? "#1e3a8a" : "#295f73"} />
-            <circle cx="158" cy="214" r="10" fill={skin} />
-          </motion.g>
-
-          <circle cx="110" cy="74" r="46" fill={`url(#${faceGradId})`} />
-          {isMale ? (
-            <>
-              <path
-                d="M62 74c1-30 21-54 48-54 25 0 47 20 48 54-10-10-24-14-37-14-17 0-33 6-43 14z"
-                fill={hairColor}
-              />
-              <path
-                d="M72 48c9-16 24-24 40-24 14 0 27 5 36 18-8-3-16-5-24-5-20 0-37 8-52 11z"
-                fill="#374151"
-              />
-              <rect x="78" y="66" width="27" height="20" rx="8" fill="none" stroke="#0f172a" strokeWidth="3" />
-              <rect x="115" y="66" width="27" height="20" rx="8" fill="none" stroke="#0f172a" strokeWidth="3" />
-              <rect x="105" y="73" width="10" height="4" rx="2" fill="#0f172a" />
-            </>
-          ) : (
-            <>
-              <path
-                d="M64 78c0-32 19-57 46-57 26 0 46 24 46 57-10-9-22-14-35-14-16 0-31 6-43 14z"
-                fill={hairColor}
-              />
-              <path d="M75 48c8-10 20-16 35-16 15 0 26 6 34 16-8-2-16-4-25-4-18 0-31 4-44 4z" fill="#7f1d1d" />
-              <path d="M66 58a44 44 0 0188 0" stroke="#0b2230" strokeWidth="7" fill="none" />
-              <circle cx="62" cy="72" r="12" fill="#2f6f86" stroke="#0b2230" strokeWidth="3" />
-              <circle cx="158" cy="72" r="12" fill="#2f6f86" stroke="#0b2230" strokeWidth="3" />
-            </>
-          )}
-          <path d="M88 70c4-3 9-4 14-1" stroke="#1f2937" strokeWidth="2.2" strokeLinecap="round" />
-          <path d="M118 69c4-3 10-4 14-1" stroke="#1f2937" strokeWidth="2.2" strokeLinecap="round" />
-
-          <motion.circle
-            cx="93"
-            cy="77"
-            r="4.2"
-            fill="#0f172a"
-            animate={{ scaleY: listening ? [1, 0.35, 1] : 1 }}
-            transition={{ duration: 0.85, repeat: listening ? Infinity : 0 }}
-          />
-          <motion.circle
-            cx="127"
-            cy="77"
-            r="4.2"
-            fill="#0f172a"
-            animate={{ scaleY: listening ? [1, 0.35, 1] : 1 }}
-            transition={{ duration: 0.85, repeat: listening ? Infinity : 0, delay: 0.08 }}
-          />
-          <ellipse cx="110" cy="89" rx="3.4" ry="2.4" fill="#e8a58d" />
-          <motion.rect
-            x="97"
-            y="99"
-            width="26"
-            height="6"
-            rx="3.2"
-            fill="#7f1d1d"
-            transform="translate(0 0)"
-            animate={{
-              width: speaking ? [26, 11, 30, 14, 26] : [26, 20, 26],
-              height: speaking ? [6, 16, 7, 14, 6] : [6, 5, 6],
-              x: speaking ? [97, 105, 95, 103, 97] : [97, 100, 97],
-              y: speaking ? [99, 101, 100, 101, 99] : 99,
-            }}
-            transition={{ duration: speaking ? 0.32 : 1.4, repeat: speaking || listening ? Infinity : 0 }}
-          />
-          <path d="M95 111c10 8 20 8 30 0" stroke="#f8fafc" strokeOpacity="0.7" strokeWidth="1.2" />
-          <motion.path
-            d="M66 118c15 8 28 12 44 12 18 0 31-4 45-12"
-            stroke="rgba(255,255,255,0.14)"
-            strokeWidth="2"
-            fill="none"
-            animate={{ opacity: active ? [0.2, 0.65, 0.2] : 0.2 }}
-            transition={{ duration: 1.25, repeat: active ? Infinity : 0 }}
-          />
-        </motion.svg>
-      </motion.div>
-      <motion.div
-        className="pointer-events-none absolute bottom-3 h-10 w-32 rounded-[100%] bg-cyan-400/20 blur-xl"
-        animate={{ opacity: active ? [0.25, 0.55, 0.25] : 0.18, scaleX: active ? [1, 1.2, 1] : 1 }}
-        transition={{ duration: 1.5, repeat: active ? Infinity : 0 }}
-      />
+    <div className="neo-voice-bars" data-voice-mode={mode} aria-hidden>
+      {Array.from({ length: 16 }, (_, i) => (
+        <div key={i} className="neo-voice-bar" style={{ animationDelay: `${i * 0.045}s` }} />
+      ))}
     </div>
   );
 }
@@ -296,6 +100,8 @@ export default function VoicePage() {
   const [sessionOn, setSessionOn] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [speaking, setSpeaking] = useState(false);
+  /** Kalidokit-style A/E/I/O/U — OpenAI TTS + Web Audio, or synthetic with browser TTS */
+  const mouthShapeRef = useRef<KalidokitMouthShape>({ A: 0, E: 0, I: 0, O: 0, U: 0 });
   const [personaId, setPersonaId] = useState<string | null>(null);
   const [interim, setInterim] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -317,10 +123,19 @@ export default function VoicePage() {
   const historyRef = useRef<Turn[]>([]);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const beginListeningRef = useRef<() => void>(() => {});
+  /** Monotonic id so stale `speaking` state doesn’t fight after interrupt. */
+  const speakGenerationRef = useRef(0);
+  /** True while a recognition session is active — prevents overlapping `start()` calls that abort + clear text + jitter the UI. */
+  const listeningActiveRef = useRef(false);
+  /** Throttle live transcript updates — onresult can fire many times/sec and re-render the whole page. */
+  const lastInterimUiMs = useRef(0);
 
   const scheduleResumeListening = useCallback(() => {
     window.setTimeout(() => {
-      if (sessionOnRef.current) beginListeningRef.current();
+      if (!sessionOnRef.current) return;
+      /* Unstick if a previous session didn’t fire onend — otherwise beginListening no-ops forever */
+      listeningActiveRef.current = false;
+      beginListeningRef.current();
     }, MIC_RESUME_AFTER_TTS_MS);
   }, []);
 
@@ -347,7 +162,12 @@ export default function VoicePage() {
   }, [history]);
 
   useLayoutEffect(() => {
-    setPersonaId(normalizeVoicePersonaId(readStoredVoicePersonaId()));
+    const pid = normalizeVoicePersonaId(readStoredVoicePersonaId());
+    setPersonaId(pid);
+    const g = getVoicePersona(pid).ttsGender;
+    setTtsGender(g);
+    /** Keep storage aligned so a later mount effect cannot overwrite with stale readTtsGender(). */
+    writeTtsGender(g);
   }, []);
 
   useWakeLock(sessionOn);
@@ -405,7 +225,7 @@ export default function VoicePage() {
         const p = getVoicePersona(vid);
         writeTtsGender(p.ttsGender);
         setPersonaId(vid);
-        setTtsGender(readTtsGender());
+        setTtsGender(p.ttsGender);
         setProfileSync((n) => n + 1);
       } catch {
         /* ignore */
@@ -418,14 +238,15 @@ export default function VoicePage() {
 
   useEffect(() => {
     setLang(readStoredVoiceSpeechLang());
-    setTtsGender(readTtsGender());
+    /* Do not call readTtsGender() here — it defaults to "female" when key missing and overwrote Man + male avatar. */
   }, []);
 
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key === "neo-voice-persona-id" || e.key === "neo-tts-gender") {
-        setPersonaId(normalizeVoicePersonaId(readStoredVoicePersonaId()));
-        setTtsGender(readTtsGender());
+        const pid = normalizeVoicePersonaId(readStoredVoicePersonaId());
+        setPersonaId(pid);
+        setTtsGender(getVoicePersona(pid).ttsGender);
       }
       if (e.key === "neo-voice-speech-lang" && e.newValue) {
         setLang(normalizeVoiceSpeechLang(e.newValue));
@@ -446,6 +267,8 @@ export default function VoicePage() {
   }, []);
 
   const stopRecognitionOnly = useCallback(() => {
+    listeningActiveRef.current = false;
+    lastInterimUiMs.current = 0;
     try {
       recRef.current?.abort?.();
     } catch {
@@ -458,12 +281,17 @@ export default function VoicePage() {
     interimRef.current = "";
   }, []);
 
+  const stopVoiceOutput = useCallback(() => {
+    stopSpeaking();
+    stopAvatarTtsAudio();
+  }, []);
+
   const stopSession = useCallback(() => {
     sessionOnRef.current = false;
     setSessionOn(false);
-    stopSpeaking();
+    stopVoiceOutput();
     stopRecognitionOnly();
-  }, [stopRecognitionOnly]);
+  }, [stopRecognitionOnly, stopVoiceOutput]);
 
   const sendText = useCallback(
     async (text: string) => {
@@ -478,7 +306,7 @@ export default function VoicePage() {
       }
       setErr(null);
       stopRecognitionOnly();
-      stopSpeaking();
+      stopVoiceOutput();
 
       const { cleaned, prefs } = stripVoicePreferencePhrases(t);
       const merged = mergeVoicePreferences(prefs);
@@ -515,6 +343,7 @@ export default function VoicePage() {
       }
 
       const toSend = cleaned.trim();
+
       const prefsOnly = toSend.length === 0 && (langChanged || personaChanged);
 
       if (prefsOnly) {
@@ -523,17 +352,21 @@ export default function VoicePage() {
         if (personaChanged)
           bits.push(normalizeVoicePersonaId(merged.personaId) === "arjun" ? "Male voice." : "Female voice.");
         const ack = bits.join(" ") || "Okay.";
+        const gen = ++speakGenerationRef.current;
         setSpeaking(true);
         try {
-          await speakText(ack, speakLang, {
+          primeSpeechVoices();
+          window.speechSynthesis?.resume();
+          await speakTextWithAvatarLipSync(ack, speakLang, {
+            mouthShapeRef,
             voiceGender: speakGender,
-            speedPreset: VOICE_TTS_PRESET,
+            speedPreset: readTtsSpeedPreset(),
             replyMood: "neutral",
           });
         } catch {
           /* ignore */
         } finally {
-          setSpeaking(false);
+          if (speakGenerationRef.current === gen) setSpeaking(false);
         }
         if (sessionOnRef.current) scheduleResumeListening();
         return;
@@ -545,6 +378,39 @@ export default function VoicePage() {
             if (!thinkingRef.current && !speakingRef.current) beginListeningRef.current();
           });
         }
+        return;
+      }
+
+      if (shouldOpenWhatsAppFromCommand(toSend)) {
+        const waUrl = buildWhatsAppWebUrl(toSend);
+        const popped = tryOpenWhatsAppPopup(waUrl);
+        const ack = whatsAppOpenAck(speakLang, popped ? "new-tab" : "same-tab");
+        const turnUser = { role: "user" as const, content: toSend };
+        const turnAsst = { role: "assistant" as const, content: ack };
+        const next: Turn[] = [...historyRef.current, turnUser, turnAsst];
+        historyRef.current = next;
+        setHistory(next);
+        if (!popped) {
+          navigateToWhatsAppWeb(waUrl);
+          return;
+        }
+        const gen = ++speakGenerationRef.current;
+        setSpeaking(true);
+        try {
+          primeSpeechVoices();
+          window.speechSynthesis?.resume();
+          await speakTextWithAvatarLipSync(ack, speakLang, {
+            mouthShapeRef,
+            voiceGender: speakGender,
+            speedPreset: readTtsSpeedPreset(),
+            replyMood: "neutral",
+          });
+        } catch {
+          /* ignore */
+        } finally {
+          if (speakGenerationRef.current === gen) setSpeaking(false);
+        }
+        if (sessionOnRef.current) scheduleResumeListening();
         return;
       }
 
@@ -564,11 +430,15 @@ export default function VoicePage() {
 
         const mood = inferVoiceReplyMood(reply);
 
+        const gen = ++speakGenerationRef.current;
         setSpeaking(true);
         try {
-          await speakText(prepareSpeechText(reply), speakLang, {
+          primeSpeechVoices();
+          window.speechSynthesis?.resume();
+          await speakTextWithAvatarLipSync(prepareSpeechText(reply), speakLang, {
+            mouthShapeRef,
             voiceGender: speakGender,
-            speedPreset: VOICE_TTS_PRESET,
+            speedPreset: readTtsSpeedPreset(),
             replyMood: mood,
           });
         } catch (ttsErr) {
@@ -578,7 +448,7 @@ export default function VoicePage() {
             `${msg} — Volume / speakers check karein; Chrome ya Edge try karein.`
           );
         } finally {
-          setSpeaking(false);
+          if (speakGenerationRef.current === gen) setSpeaking(false);
         }
       } catch (e) {
         setErr(
@@ -594,13 +464,14 @@ export default function VoicePage() {
         scheduleResumeListening();
       }
     },
-    [lang, ttsGender, personaId, scheduleResumeListening, stopRecognitionOnly]
+    [lang, ttsGender, personaId, scheduleResumeListening, stopRecognitionOnly, stopVoiceOutput]
   );
 
   const beginListening = useCallback(() => {
     if (!sessionOnRef.current) return;
-    /* Mic only while assistant is idle — strict turn-taking. */
+    /* Turn-taking: mic only while assistant is idle (continuous:true broke onend → speech never sent). */
     if (thinkingRef.current || speakingRef.current) return;
+    if (listeningActiveRef.current) return;
     if (!isSpeechRecognitionSupported()) {
       setErr("Is browser mein voice support nahi (Chrome/Edge try karein).");
       return;
@@ -635,10 +506,15 @@ export default function VoicePage() {
       }
       const it = interimText.trim();
       interimRef.current = it;
-      setInterim(it);
+      const now = Date.now();
+      if (now - lastInterimUiMs.current >= 100) {
+        lastInterimUiMs.current = now;
+        setInterim(it);
+      }
     };
 
     rec.onerror = (ev: SpeechRecognitionErrorEvent) => {
+      listeningActiveRef.current = false;
       setListening(false);
       recRef.current = null;
       const msg = speechRecognitionErrorMessage(ev.error);
@@ -658,11 +534,13 @@ export default function VoicePage() {
     };
 
     rec.onend = () => {
+      listeningActiveRef.current = false;
       setListening(false);
       recRef.current = null;
       const said = `${finalBuf.current.trim()} ${interimRef.current.trim()}`.trim();
       interimRef.current = "";
       finalBuf.current = "";
+      lastInterimUiMs.current = 0;
       setInterim("");
 
       if (!sessionOnRef.current) return;
@@ -679,8 +557,10 @@ export default function VoicePage() {
     recRef.current = rec;
     try {
       rec.start();
+      listeningActiveRef.current = true;
       setListening(true);
     } catch {
+      listeningActiveRef.current = false;
       setErr("Mic already busy — dubara try karein.");
       setListening(false);
     }
@@ -697,7 +577,7 @@ export default function VoicePage() {
     }
     primeSpeechVoices();
     stopRecognitionOnly();
-    stopSpeaking();
+    stopVoiceOutput();
     sessionOnRef.current = true;
     setSessionOn(true);
     void (async () => {
@@ -706,25 +586,31 @@ export default function VoicePage() {
       const welcome = voiceSessionWelcomeLines(lang, shortName);
       const line = shortName ? welcome.withName : welcome.withoutName;
       setErr(null);
+      const gen = ++speakGenerationRef.current;
       setSpeaking(true);
       try {
-        await speakText(line, lang, {
+        primeSpeechVoices();
+        window.speechSynthesis?.resume();
+        await speakTextWithAvatarLipSync(line, lang, {
+          mouthShapeRef,
           voiceGender: ttsGender,
-          speedPreset: VOICE_TTS_PRESET,
+          speedPreset: readTtsSpeedPreset(),
           replyMood: "neutral",
         });
       } catch {
         /* still open mic */
       } finally {
-        setSpeaking(false);
+        if (speakGenerationRef.current === gen) setSpeaking(false);
       }
       if (sessionOnRef.current) {
         window.setTimeout(() => {
-          if (sessionOnRef.current) beginListening();
+          if (!sessionOnRef.current) return;
+          listeningActiveRef.current = false;
+          beginListening();
         }, MIC_RESUME_AFTER_TTS_MS);
       }
     })();
-  }, [beginListening, stopSession, lang, ttsGender]);
+  }, [beginListening, stopSession, lang, ttsGender, stopVoiceOutput]);
 
   useEffect(() => {
     return () => {
@@ -735,18 +621,9 @@ export default function VoicePage() {
       } catch {
         /* ignore */
       }
-      stopSpeaking();
+      stopVoiceOutput();
     };
-  }, []);
-
-  const avatarActive = listening || speaking || thinking || sessionOn;
-  const avatarState: VoiceAvatarState = speaking
-    ? "speaking"
-    : listening
-      ? "listening"
-      : thinking
-        ? "thinking"
-        : "idle";
+  }, [stopVoiceOutput]);
 
   const profileName = getStoredUser()?.display_name?.trim() || "You";
 
@@ -780,9 +657,11 @@ export default function VoicePage() {
       }
       if (!sessionOnRef.current && isSpeechSynthesisSupported()) {
         try {
+          primeSpeechVoices();
+          window.speechSynthesis?.resume();
           await speakText(pid === "arjun" ? "Male voice." : "Female voice.", lang, {
             voiceGender: p.ttsGender,
-            speedPreset: VOICE_TTS_PRESET,
+            speedPreset: readTtsSpeedPreset(),
             replyMood: "neutral",
           });
         } catch {
@@ -794,16 +673,21 @@ export default function VoicePage() {
   );
 
   const activePersonaId = normalizeVoicePersonaId(personaId);
+  const assistantLabel = getVoicePersona(activePersonaId).name;
 
-  const headerTitle = !sessionOn
-    ? "Voice chat"
-    : listening
-      ? "Listening…"
-      : thinking
-        ? "Thinking…"
-        : speaking
-          ? "Speaking…"
-          : "Ready";
+  const headerTitle = useMemo(
+    () =>
+      !sessionOn
+        ? "Voice chat"
+        : listening
+          ? "Listening — go ahead"
+          : thinking
+            ? "One sec…"
+            : speaking
+              ? "Replying…"
+              : "I'm here",
+    [sessionOn, listening, thinking, speaking],
+  );
 
   return (
     <div className="relative z-[1] flex min-h-0 flex-1 flex-col bg-[#080a0f] md:min-h-0">
@@ -847,36 +731,38 @@ export default function VoicePage() {
 
       <div className="mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col px-4 py-6 md:max-w-xl">
         {history.length > 0 ? (
-          <div className="mb-4 shrink-0">
-            <div className="mb-2 flex items-center justify-between gap-2">
+          <div className="mb-5 w-full shrink-0">
+            <div className="mb-3 flex items-center justify-between gap-2">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-white/40">
                 Saved conversation
               </p>
               <button
                 type="button"
                 onClick={clearHistory}
-                className="rounded-lg border border-white/[0.1] bg-white/[0.05] px-2.5 py-1 text-[10px] font-semibold text-white/70 transition hover:border-white/20 hover:text-white"
+                className="text-[10px] font-semibold text-[#00D4FF]/80 transition hover:text-[#00D4FF]"
               >
                 Clear
               </button>
             </div>
             <div
               ref={transcriptRef}
-              className="max-h-36 space-y-2 overflow-y-auto rounded-xl border border-white/[0.08] bg-black/25 px-3 py-2 ring-1 ring-white/[0.04]"
+              className="max-h-[min(42vh,240px)] space-y-4 overflow-y-auto overscroll-y-contain pr-1"
             >
               {history.map((turn, i) => (
                 <div
                   key={i}
-                  className={`rounded-lg px-2.5 py-1.5 text-[12px] leading-snug ${
+                  className={
                     turn.role === "user"
-                      ? "border border-[#00D4FF]/20 bg-[#00D4FF]/8 text-white/90"
-                      : "border border-white/[0.06] bg-white/[0.04] text-white/82"
-                  }`}
+                      ? "border-l-2 border-[#00D4FF]/35 pl-3"
+                      : "border-l-2 border-white/[0.12] pl-3"
+                  }
                 >
                   <span className="text-[9px] font-bold uppercase tracking-wide text-white/35">
-                    {turn.role === "user" ? profileName : "Assistant"}
+                    {turn.role === "user" ? profileName : assistantLabel}
                   </span>
-                  <p className="mt-0.5 whitespace-pre-wrap break-words">{turn.content}</p>
+                  <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-white/88 break-words">
+                    {turn.content}
+                  </p>
                 </div>
               ))}
             </div>
@@ -893,10 +779,11 @@ export default function VoicePage() {
         ) : null}
 
         <div className="relative flex flex-col items-center">
-          <VirtualVoiceAssistant
-            state={avatarState}
-            active={avatarActive}
-            personaId={activePersonaId}
+          <VoiceSessionWaveform
+            sessionOn={sessionOn}
+            speaking={speaking}
+            listening={listening}
+            thinking={thinking}
           />
           <button
             type="button"

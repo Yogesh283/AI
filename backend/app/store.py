@@ -90,7 +90,7 @@ def get_profile(user_id: str) -> dict[str, Any]:
     return _profiles.setdefault(
         user_id,
         {
-            "display_name": "Aman",
+            "display_name": "User",
             "avatar_id": "neo-core",
             "premium": True,
         },

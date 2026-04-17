@@ -11,6 +11,8 @@ export type NeoAvatar = {
 
 export const NEO_AVATARS: NeoAvatar[] = [
   { id: "neo-core", name: "NeoXAI Core", emoji: "🤖", imageSrc: "/avatars/human-neo-core.svg" },
+  /** HUD + arc-reactor inspired look (Iron Man–style sci‑fi, original artwork). */
+  { id: "arc-hud", name: "Arc HUD", emoji: "◉", imageSrc: "/avatars/human-arc-hud.svg" },
   { id: "nova", name: "Nova", emoji: "✨", imageSrc: "/avatars/human-nova.svg" },
   { id: "atlas", name: "Atlas", emoji: "🛡️", imageSrc: "/avatars/human-atlas.svg" },
   { id: "spark", name: "Spark", emoji: "⚡", imageSrc: "/avatars/human-spark.svg" },

@@ -127,7 +127,8 @@ async def _openai_chat(messages: list[dict[str, str]], api_key: str) -> ChatComp
                 json={
                     "model": "gpt-4o-mini",
                     "messages": messages,
-                    "temperature": 0.7,
+                    # Slightly higher for more natural, human-like phrasing (still grounded).
+                    "temperature": 0.76,
                 },
             )
             r.raise_for_status()
@@ -220,3 +221,69 @@ async def transcribe_audio_whisper(
         data = r.json()
         text = (data.get("text") or "").strip()
         return text
+
+
+_OPENAI_TTS_VOICES = frozenset(
+    {
+        "alloy",
+        "ash",
+        "ballad",
+        "coral",
+        "echo",
+        "fable",
+        "onyx",
+        "nova",
+        "sage",
+        "shimmer",
+    }
+)
+
+
+async def synthesize_openai_tts(
+    text: str,
+    *,
+    voice: str = "alloy",
+    model: str = "tts-1",
+) -> bytes:
+    """OpenAI TTS → MP3 bytes. Empty if no API key or empty text."""
+    key = _openai_api_key()
+    if not key:
+        return b""
+    clean = (text or "").strip()
+    if not clean:
+        return b""
+    if len(clean) > 4096:
+        clean = clean[:4096]
+
+    v = (voice or "alloy").strip().lower()
+    if v not in _OPENAI_TTS_VOICES:
+        v = "alloy"
+
+    m = (model or "tts-1").strip()
+    if m not in ("tts-1", "tts-1-hd"):
+        m = "tts-1"
+
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        try:
+            r = await client.post(
+                "https://api.openai.com/v1/audio/speech",
+                headers={
+                    "Authorization": f"Bearer {key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": m,
+                    "input": clean,
+                    "voice": v,
+                },
+            )
+            r.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            try:
+                err = e.response.json().get("error", {})
+                msg = err.get("message", e.response.text)
+            except Exception:
+                msg = e.response.text or str(e)
+            logger.warning("OpenAI TTS HTTP %s: %s", e.response.status_code, msg)
+            return b""
+        return r.content
