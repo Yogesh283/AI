@@ -13,7 +13,6 @@ import {
   mentionsTelegram,
   shouldOpenTelegramFromCommand,
 } from "@/lib/telegramOpenCommand";
-import { tryOpenWhatsAppPopup, navigateToWhatsAppWeb } from "@/lib/whatsappOpenCommand";
 import {
   clearNeoFollowUpSession,
   isNeoFollowUpActive,
@@ -205,9 +204,54 @@ export function processNeoCommandLine(
 }
 
 export function executeNeoActions(actions: NeoAction[]): void {
+  const isNativeCapacitor = (): boolean => {
+    if (typeof window === "undefined") return false;
+    const c = (window as Window & { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+    try {
+      return !!c?.isNativePlatform?.();
+    } catch {
+      return false;
+    }
+  };
+
+  const openWithFallback = (primary: string, fallback: string) => {
+    if (typeof window === "undefined") return;
+    try {
+      window.location.assign(primary);
+    } catch {
+      window.location.assign(fallback);
+      return;
+    }
+    if (isNativeCapacitor()) return;
+    window.setTimeout(() => {
+      if (document.visibilityState !== "hidden") {
+        window.location.assign(fallback);
+      }
+    }, 1200);
+  };
+
+  const toWhatsAppAppUrl = (webUrl: string): string => {
+    const m = webUrl.match(/[?&]text=([^&]+)/i);
+    if (m?.[1]) return `whatsapp://send?text=${m[1]}`;
+    return "whatsapp://send";
+  };
+
+  const toTelegramAppUrl = (webUrl: string): string => {
+    const m = webUrl.match(/[?&]text=([^&]+)/i);
+    if (m?.[1]) return `tg://msg?text=${m[1]}`;
+    return "tg://";
+  };
+
   for (const a of actions) {
     if (a.kind === "open_url") {
-      if (!tryOpenWhatsAppPopup(a.url)) navigateToWhatsAppWeb(a.url);
+      const u = a.url.toLowerCase();
+      if (u.includes("web.whatsapp.com")) {
+        openWithFallback(toWhatsAppAppUrl(a.url), a.url);
+      } else if (u.includes("web.telegram.org") || u.includes("t.me/share")) {
+        openWithFallback(toTelegramAppUrl(a.url), a.url);
+      } else {
+        window.location.assign(a.url);
+      }
     } else if (a.kind === "tel") {
       window.location.href = a.href;
     }
