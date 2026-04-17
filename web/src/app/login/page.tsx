@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { NeoPublicShell } from "@/components/neo/NeoPublicShell";
 import { GradientButton } from "@/components/neo/GradientButton";
 import { AuthGoogleSection } from "@/components/neo/AuthGoogleSection";
 import { useSiteBrand } from "@/components/SiteBrandProvider";
-import { googleLoginApi, loginApi, saveSession } from "@/lib/auth";
+import { getStoredToken, googleLoginApi, loginApi, saveSession } from "@/lib/auth";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -18,6 +18,10 @@ export default function LoginPage() {
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+
+  useEffect(() => {
+    if (getStoredToken()) router.replace("/dashboard");
+  }, [router]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();

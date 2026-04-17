@@ -6,15 +6,18 @@ import { GoogleLogin } from "@react-oauth/google";
 type Intent = "signin" | "signup";
 
 export function NeoGoogleSignIn({
+  clientId,
   intent,
   onCredential,
   disabled,
 }: {
+  /** From build env or runtime `/api/public/google-client-id`. */
+  clientId: string;
   intent: Intent;
   onCredential: (idToken: string) => void | Promise<void>;
   disabled?: boolean;
 }) {
-  const cid = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+  const cid = clientId.trim();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [fallback, setFallback] = useState(false);
   if (!cid) return null;
@@ -26,7 +29,7 @@ export function NeoGoogleSignIn({
       if (!hasIframe) setFallback(true);
     }, 2200);
     return () => window.clearTimeout(t);
-  }, []);
+  }, [cid]);
 
   return (
     <div ref={rootRef} className="w-full">

@@ -2,10 +2,12 @@
 
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { SPLASH } from "@/shared/neoContent";
 import { useSiteBrand } from "@/components/SiteBrandProvider";
 import { NeoPublicShell } from "@/components/neo/NeoPublicShell";
 import { NeoLogoHead } from "@/components/neo/NeoLogoHead";
+import { getStoredToken } from "@/lib/auth";
 
 function SplashRingGradients({ uid }: { uid: string }) {
   return (
@@ -20,14 +22,19 @@ function SplashRingGradients({ uid }: { uid: string }) {
 }
 
 export default function SplashPage() {
+  const router = useRouter();
   const { brandName } = useSiteBrand();
   const [p, setP] = useState(0);
   useEffect(() => {
+    if (getStoredToken()) {
+      router.replace("/dashboard");
+      return;
+    }
     const t = setInterval(() => {
       setP((x) => (x >= 100 ? 100 : x + 2.5));
     }, 60);
     return () => clearInterval(t);
-  }, []);
+  }, [router]);
 
   return (
     <NeoPublicShell maxWidth="max-w-lg">
