@@ -4,6 +4,7 @@ import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.view.View;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import androidx.core.app.ActivityCompat;
@@ -28,7 +29,9 @@ public class MainActivity extends BridgeActivity {
         // App foreground (especially Voice page): disable always-on wake listener to avoid interference.
         maybeStopWakeService();
         // WebView: allow TTS / Web Audio without an extra user gesture (fixes silent voice on many APK builds).
-        getWindow().getDecorView().post(this::configureWebViewForVoice);
+        View decor = getWindow().getDecorView();
+        decor.post(this::configureWebViewForVoice);
+        decor.postDelayed(this::configureWebViewForVoice, 400);
     }
 
     private void configureWebViewForVoice() {

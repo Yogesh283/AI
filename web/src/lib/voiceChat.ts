@@ -123,6 +123,46 @@ export function isSpeechSynthesisSupported(): boolean {
   return typeof window !== "undefined" && !!window.speechSynthesis;
 }
 
+/**
+ * Android WebView + Capacitor: TTS/Web Audio often stay silent until the audio graph is touched
+ * from a **user gesture** (tap). Call once from mic / session start (same call stack as the click).
+ */
+export function unlockWebAudioAndSpeechFromUserGesture(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.speechSynthesis?.resume();
+    window.speechSynthesis?.getVoices();
+  } catch {
+    /* ignore */
+  }
+  try {
+    const AC =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AC) return;
+    const ctx = new AC();
+    void ctx.resume().then(() => {
+      try {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        g.gain.value = 0.000001;
+        osc.connect(g);
+        g.connect(ctx.destination);
+        const t0 = ctx.currentTime;
+        osc.start(t0);
+        osc.stop(t0 + 0.05);
+        window.setTimeout(() => {
+          void ctx.close().catch(() => undefined);
+        }, 200);
+      } catch {
+        void ctx.close().catch(() => undefined);
+      }
+    });
+  } catch {
+    /* ignore */
+  }
+}
+
 function speechRecognitionErrorMessage(code: string): string {
   switch (code) {
     case "not-allowed":

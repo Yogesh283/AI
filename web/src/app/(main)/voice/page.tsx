@@ -37,6 +37,7 @@ import {
   primeSpeechVoices,
   readTtsSpeedPreset,
   speakText,
+  unlockWebAudioAndSpeechFromUserGesture,
   speechRecognitionErrorMessage,
   stopSpeaking,
   writeTtsGender,
@@ -620,6 +621,7 @@ export default function VoicePage() {
       stopSession();
       return;
     }
+    unlockWebAudioAndSpeechFromUserGesture();
     primeSpeechVoices();
     stopRecognitionOnly();
     stopVoiceOutput();
