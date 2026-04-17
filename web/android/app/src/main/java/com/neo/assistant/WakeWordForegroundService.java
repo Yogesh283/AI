@@ -68,6 +68,7 @@ public class WakeWordForegroundService extends Service {
         if (wakeLock != null && wakeLock.isHeld()) {
             wakeLock.release();
         }
+        NeoCommandRouter.shutdown();
         super.onDestroy();
     }
 

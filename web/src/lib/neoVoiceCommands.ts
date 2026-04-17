@@ -80,6 +80,42 @@ export function runNeoIntents(q: string, silentReplies = false): { reply: string
     return { reply: "", actions: [] };
   }
 
+  const timeIntent =
+    /\b(time|what(?:'s| is)?\s+the\s+time|current\s+time|time\s+now)\b/i.test(trimmed) ||
+    /(समय|टाइम)\s*(क्या|बताओ|कितना|अभी)/i.test(trimmed);
+  if (timeIntent) {
+    const now = new Date();
+    const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    return { reply: `It's ${time}.`, actions: [] };
+  }
+
+  const ytMatch = trimmed.match(
+    /\b(?:play|listen(?:\s+to)?|start)\b\s*(?:song|music)?\s*(?:on\s+youtube)?\s*(.+)?$/i,
+  );
+  const asksYoutube =
+    /\b(youtube|you tube|song|music|singer)\b/i.test(trimmed) ||
+    /(यूट्यूब|गाना|सॉन्ग|म्यूजिक|सिंगर)/i.test(trimmed);
+  if (ytMatch || asksYoutube) {
+    const candidate = (ytMatch?.[1] || trimmed)
+      .replace(/\b(on|in)\s+youtube\b/gi, "")
+      .replace(/\b(play|listen(?:\s+to)?|start|song|music)\b/gi, "")
+      .trim();
+    const query = candidate.length > 1 ? candidate : trimmed;
+    const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+    return { reply: "Opening YouTube.", actions: [{ kind: "open_url", url }] };
+  }
+
+  const volumeIntent =
+    /\b(volume|sound)\b/i.test(trimmed) || /(वॉल्यूम|आवाज़|आवाज)/i.test(trimmed);
+  if (volumeIntent) {
+    return {
+      reply: silentReplies
+        ? ""
+        : "Volume control is available in the Android APK background listener.",
+      actions: [],
+    };
+  }
+
   if (shouldOpenWhatsAppFromCommand(trimmed)) {
     const url = buildWhatsAppWebUrl(trimmed);
     return { reply: "Opening WhatsApp.", actions: [{ kind: "open_url", url }] };
@@ -249,6 +285,11 @@ export function executeNeoActions(actions: NeoAction[]): void {
         openWithFallback(toWhatsAppAppUrl(a.url), a.url);
       } else if (u.includes("web.telegram.org") || u.includes("t.me/share")) {
         openWithFallback(toTelegramAppUrl(a.url), a.url);
+      } else if (u.includes("youtube.com") || u.includes("youtu.be")) {
+        openWithFallback(
+          `vnd.youtube:${a.url.includes("search_query=") ? `results?search_query=${a.url.split("search_query=")[1]}` : ""}`,
+          a.url,
+        );
       } else {
         window.location.assign(a.url);
       }

@@ -43,6 +43,7 @@ import {
   type TtsVoiceGender,
 } from "@/lib/voiceChat";
 import { useWakeLock } from "@/lib/useWakeLock";
+import { writeNeoAlexaListen } from "@/lib/neoAssistantActive";
 import {
   buildWhatsAppWebUrl,
   navigateToWhatsAppWeb,
@@ -173,6 +174,11 @@ export default function VoicePage() {
   }, []);
 
   useWakeLock(sessionOn);
+
+  useEffect(() => {
+    // Voice chat opens: force-disable Alexa-style listen to avoid overlap/interruption.
+    writeNeoAlexaListen(false);
+  }, []);
 
   useEffect(() => {
     const uid = getStoredUser()?.id ?? "anon";

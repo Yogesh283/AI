@@ -76,41 +76,58 @@ export function ProfileNeoAssistantToggle() {
       </div>
 
       <div className="border-t border-white/[0.06] px-5 py-4 sm:flex sm:items-center sm:justify-between sm:gap-4">
-        <div className={`min-w-0 ${!active ? "opacity-45" : ""}`}>
-          <p className="text-sm font-medium text-white/85">Alexa-style listen</p>
-          <p className="mt-0.5 text-[11px] text-white/38">
-            Keeps the mic on while you stay on <span className="text-white/50">Profile</span> (see Try Neo below) so
-            you can say &quot;Neo&quot; without tapping.
-            {!active ? " Turn Neo assistant Active above to enable this." : ""}
-          </p>
-        </div>
-        <div className="mt-3 flex shrink-0 items-center justify-between gap-3 sm:mt-0 sm:justify-end">
-          <span
-            className={`text-xs font-semibold uppercase tracking-wider ${
-              alexaListen && active ? "text-emerald-400/95" : "text-white/35"
-            }`}
-          >
-            {alexaListen && active ? "On" : "Off"}
-          </span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={alexaListen && active}
-            disabled={!active}
-            onClick={toggleAlexa}
-            className={`relative h-9 w-[52px] shrink-0 rounded-full transition ${
-              alexaListen && active
-                ? "bg-emerald-500/35 ring-1 ring-emerald-400/40"
-                : "bg-white/[0.08] ring-1 ring-white/10"
-            } ${!active ? "cursor-not-allowed opacity-50" : ""}`}
-          >
-            <span
-              className={`absolute top-1 h-7 w-7 rounded-full bg-white shadow transition ${
-                alexaListen && active ? "left-6" : "left-1"
-              }`}
-            />
-          </button>
-        </div>
+        {active && alexaListen ? (
+          <div className="flex w-full items-center justify-between gap-3">
+            <p className="text-[12px] text-emerald-300/90">
+              Alexa-style listen is running. Voice chat page opens with this option auto-off.
+            </p>
+            <button
+              type="button"
+              onClick={toggleAlexa}
+              className="rounded-lg border border-white/15 px-3 py-1.5 text-[11px] font-semibold text-white/80 transition hover:bg-white/[0.06]"
+            >
+              Turn off
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className={`min-w-0 ${!active ? "opacity-45" : ""}`}>
+              <p className="text-sm font-medium text-white/85">Alexa-style listen</p>
+              <p className="mt-0.5 text-[11px] text-white/38">
+                Keeps the mic on while you stay on <span className="text-white/50">Profile</span> (see Try Neo below) so
+                you can say &quot;Neo&quot; without tapping.
+                {!active ? " Turn Neo assistant Active above to enable this." : ""}
+              </p>
+            </div>
+            <div className="mt-3 flex shrink-0 items-center justify-between gap-3 sm:mt-0 sm:justify-end">
+              <span
+                className={`text-xs font-semibold uppercase tracking-wider ${
+                  alexaListen && active ? "text-emerald-400/95" : "text-white/35"
+                }`}
+              >
+                {alexaListen && active ? "On" : "Off"}
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={alexaListen && active}
+                disabled={!active}
+                onClick={toggleAlexa}
+                className={`relative h-9 w-[52px] shrink-0 rounded-full transition ${
+                  alexaListen && active
+                    ? "bg-emerald-500/35 ring-1 ring-emerald-400/40"
+                    : "bg-white/[0.08] ring-1 ring-white/10"
+                } ${!active ? "cursor-not-allowed opacity-50" : ""}`}
+              >
+                <span
+                  className={`absolute top-1 h-7 w-7 rounded-full bg-white shadow transition ${
+                    alexaListen && active ? "left-6" : "left-1"
+                  }`}
+                />
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </section>
   );
