@@ -36,11 +36,11 @@ public final class NeoCommandRouter {
 
         String ytQuery = extractYouTubeQuery(text);
         if (ytQuery != null) {
-            openAppOrWeb(
+            openAppOrStore(
                 context,
                 "com.google.android.youtube",
                 Uri.parse("vnd.youtube:results?search_query=" + Uri.encode(ytQuery)),
-                Uri.parse("https://www.youtube.com/results?search_query=" + Uri.encode(ytQuery))
+                Uri.parse("market://details?id=com.google.android.youtube")
             );
             return true;
         }
@@ -49,14 +49,11 @@ public final class NeoCommandRouter {
             Uri appUri = digits != null
                 ? Uri.parse("whatsapp://send?phone=" + digits)
                 : Uri.parse("whatsapp://send");
-            Uri webUri = digits != null
-                ? Uri.parse("https://wa.me/" + digits)
-                : Uri.parse("https://web.whatsapp.com/");
-            openAppOrWeb(
+            openAppOrStore(
                 context,
                 "com.whatsapp",
                 appUri,
-                webUri
+                Uri.parse("market://details?id=com.whatsapp")
             );
             return true;
         }
@@ -65,11 +62,11 @@ public final class NeoCommandRouter {
             Uri appUri = digits != null
                 ? Uri.parse("tg://resolve?phone=%2B" + digits)
                 : Uri.parse("tg://");
-            openAppOrWeb(
+            openAppOrStore(
                 context,
                 "org.telegram.messenger",
                 appUri,
-                Uri.parse("https://web.telegram.org/a/")
+                Uri.parse("market://details?id=org.telegram.messenger")
             );
             return true;
         }
@@ -245,7 +242,7 @@ public final class NeoCommandRouter {
         return "tel:+" + digits;
     }
 
-    private static void openAppOrWeb(Context context, String pkg, Uri appUri, Uri webUri) {
+    private static void openAppOrStore(Context context, String pkg, Uri appUri, Uri storeUri) {
         Intent appIntent = new Intent(Intent.ACTION_VIEW, appUri);
         appIntent.setPackage(pkg);
         appIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -261,11 +258,20 @@ public final class NeoCommandRouter {
             return;
         }
 
-        Intent webIntent = new Intent(Intent.ACTION_VIEW, webUri);
-        webIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        Intent storeIntent = new Intent(Intent.ACTION_VIEW, storeUri);
+        storeIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         try {
-            context.startActivity(webIntent);
+            context.startActivity(storeIntent);
         } catch (ActivityNotFoundException ignored) {
+            try {
+                Intent storeWebIntent = new Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse("https://play.google.com/store/apps/details?id=" + pkg)
+                );
+                storeWebIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(storeWebIntent);
+            } catch (ActivityNotFoundException ignored2) {
+            }
         }
     }
 

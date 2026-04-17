@@ -16,6 +16,8 @@ import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 import java.util.ArrayList;
 import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class WakeWordForegroundService extends Service {
     public static final String ACTION_START = "com.neo.assistant.action.START_WAKE";
@@ -27,7 +29,6 @@ public class WakeWordForegroundService extends Service {
     private SpeechRecognizer recognizer;
     private Intent recognizerIntent;
     private boolean shouldListen = false;
-    private long followUpUntilMs = 0L;
     private PowerManager.WakeLock wakeLock;
 
     @Override
@@ -124,23 +125,13 @@ public class WakeWordForegroundService extends Service {
         if (said.isEmpty()) return;
 
         String command = extractWakeCommand(said);
-        if (command == null) {
-            if (System.currentTimeMillis() < followUpUntilMs) {
-                command = said;
-            } else {
-                return;
-            }
-        }
+        if (command == null) return;
 
         if (command.isEmpty()) {
-            followUpUntilMs = System.currentTimeMillis() + 12000L;
             return;
         }
 
-        boolean executed = NeoCommandRouter.execute(this, command);
-        if (executed) {
-            followUpUntilMs = 0L;
-        }
+        NeoCommandRouter.execute(this, command);
     }
 
     private String extractWakeCommand(String said) {
@@ -158,8 +149,12 @@ public class WakeWordForegroundService extends Service {
         String[] wakes = new String[] {"hello neo", "hello new", "neo", "नियो", "हेलो नियो"};
         int best = -1;
         for (String w : wakes) {
-            int i = s.indexOf(w);
-            if (i >= 0 && (best < 0 || i < best)) best = i;
+            Pattern p = Pattern.compile("(^|\\s|[,.!?])" + Pattern.quote(w) + "(\\s|[,.!?]|$)");
+            Matcher m = p.matcher(s);
+            if (m.find()) {
+                int i = m.start();
+                if (best < 0 || i < best) best = i;
+            }
         }
         return best;
     }
