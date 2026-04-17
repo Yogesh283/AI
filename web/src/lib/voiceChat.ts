@@ -190,18 +190,46 @@ function textForTts(raw: string): string {
   return s.replace(/\s+/g, " ").trim();
 }
 
+function isNativeCapacitorSync(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return !!(window as Window & { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.();
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Chrome often returns [] until voices load; poll getVoices() so Hindi/English voices appear.
+ * Capacitor Android WebView is slower / flaky — longer wait + voiceschanged.
  */
 async function waitForVoices(maxMs = 2200): Promise<void> {
   if (typeof window === "undefined" || !window.speechSynthesis) return;
   const synth = window.speechSynthesis;
-  const start = Date.now();
-  while (Date.now() - start < maxMs) {
+  const limit = isNativeCapacitorSync() ? Math.max(maxMs, 7000) : maxMs;
+
+  await new Promise<void>((resolve) => {
+    const start = Date.now();
+    let finished = false;
+    let iv: number | undefined;
+    const done = () => {
+      if (finished) return;
+      finished = true;
+      synth.removeEventListener("voiceschanged", onVc);
+      if (iv !== undefined) window.clearInterval(iv);
+      resolve();
+    };
+    const onVc = () => {
+      synth.getVoices();
+    };
+    synth.addEventListener("voiceschanged", onVc);
+    iv = window.setInterval(() => {
+      synth.getVoices();
+      if (synth.getVoices().length > 0 || Date.now() - start >= limit) done();
+    }, 70);
     synth.getVoices();
-    if (synth.getVoices().length > 0) return;
-    await new Promise((r) => setTimeout(r, 50));
-  }
+    if (synth.getVoices().length > 0) done();
+  });
 }
 
 export type TtsVoiceGender = "male" | "female";

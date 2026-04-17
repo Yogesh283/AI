@@ -67,6 +67,12 @@ export async function playMp3BlobWithLipSync(
 
   const url = URL.createObjectURL(blob);
   const audio = new Audio(url);
+  audio.volume = 1;
+  try {
+    audio.setAttribute("playsInline", "true");
+  } catch {
+    /* ignore */
+  }
   activeAudio = audio;
 
   const AudioContextCtor = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -115,6 +121,9 @@ export async function playMp3BlobWithLipSync(
       reject(new Error("Audio playback error"));
     };
 
+    if (ctx.state === "suspended") {
+      void ctx.resume();
+    }
     void audio
       .play()
       .then(() => {

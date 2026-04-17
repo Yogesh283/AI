@@ -4,8 +4,11 @@ import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import com.getcapacitor.Bridge;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
@@ -24,6 +27,20 @@ public class MainActivity extends BridgeActivity {
         ensureMicPermission();
         // App foreground (especially Voice page): disable always-on wake listener to avoid interference.
         maybeStopWakeService();
+        // WebView: allow TTS / Web Audio without an extra user gesture (fixes silent voice on many APK builds).
+        getWindow().getDecorView().post(this::configureWebViewForVoice);
+    }
+
+    private void configureWebViewForVoice() {
+        try {
+            Bridge bridge = getBridge();
+            if (bridge == null) return;
+            WebView wv = bridge.getWebView();
+            if (wv == null) return;
+            WebSettings s = wv.getSettings();
+            s.setMediaPlaybackRequiresUserGesture(false);
+        } catch (Throwable ignored) {
+        }
     }
 
     @Override
