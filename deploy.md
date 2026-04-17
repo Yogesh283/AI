@@ -210,3 +210,22 @@ cd "$APP_ROOT/backend" && . .venv/bin/activate && pip install -r requirements.tx
 pm2 restart neo-api
 
 grep -n "HOST_BRAND_OVERRIDES" /home/myneoxai/apps/neoxai/web/src/lib/siteBrand
+
+
+
+
+
+
+
+
+
+
+
+cd "D:\AI\web\android"
+.\gradlew.bat assembleDebug
+
+
+
+
+Set-Location "D:\AI\web\android"
+.\gradlew.bat assembleRelease
