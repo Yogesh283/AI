@@ -1,16 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getStoredToken, patchVoicePersona, saveSession, type AuthUser } from "@/lib/auth";
 import {
+  readHelloNeoTtsGender,
+  readHelloNeoTtsSpeedPreset,
+  readHelloNeoTtsTonePreset,
   readTtsSpeedPreset,
   readTtsTonePreset,
+  writeHelloNeoTtsGender,
+  writeHelloNeoTtsSpeedPreset,
+  writeHelloNeoTtsTonePreset,
   writeTtsGender,
   writeTtsSpeedPreset,
   writeTtsTonePreset,
   type TtsSpeedPreset,
   type TtsTonePreset,
+  type TtsVoiceGender,
 } from "@/lib/voiceChat";
 import {
   getVoicePersona,
@@ -42,7 +49,16 @@ export function ProfileVoiceSettings({ user, onUserUpdated, onMessage }: Props) 
   );
   const [speed, setSpeed] = useState<TtsSpeedPreset>(() => readTtsSpeedPreset());
   const [tone, setTone] = useState<TtsTonePreset>(() => readTtsTonePreset());
+  const [helloNeoGender, setHelloNeoGender] = useState<TtsVoiceGender>("female");
+  const [helloNeoSpeed, setHelloNeoSpeed] = useState<TtsSpeedPreset>("natural");
+  const [helloNeoTone, setHelloNeoTone] = useState<TtsTonePreset>("warm");
   const [savingPersona, setSavingPersona] = useState(false);
+
+  useEffect(() => {
+    setHelloNeoGender(readHelloNeoTtsGender());
+    setHelloNeoSpeed(readHelloNeoTtsSpeedPreset());
+    setHelloNeoTone(readHelloNeoTtsTonePreset());
+  }, []);
 
   const applyPersona = useCallback(
     async (id: "arjun" | "sara") => {
@@ -78,7 +94,7 @@ export function ProfileVoiceSettings({ user, onUserUpdated, onMessage }: Props) 
     (p: TtsSpeedPreset) => {
       writeTtsSpeedPreset(p);
       setSpeed(p);
-      onMessage("Speaking speed saved for voice and chat read-aloud.", null);
+      onMessage("Voice chat speed saved (Hello Neo has its own below).", null);
     },
     [onMessage],
   );
@@ -87,7 +103,34 @@ export function ProfileVoiceSettings({ user, onUserUpdated, onMessage }: Props) 
     (t: TtsTonePreset) => {
       writeTtsTonePreset(t);
       setTone(t);
-      onMessage("Voice tone saved.", null);
+      onMessage("Voice chat tone saved (Hello Neo has its own below).", null);
+    },
+    [onMessage],
+  );
+
+  const applyHelloNeoGender = useCallback(
+    (g: TtsVoiceGender) => {
+      writeHelloNeoTtsGender(g);
+      setHelloNeoGender(g);
+      onMessage("Hello Neo voice saved (separate from voice chat).", null);
+    },
+    [onMessage],
+  );
+
+  const applyHelloNeoSpeed = useCallback(
+    (p: TtsSpeedPreset) => {
+      writeHelloNeoTtsSpeedPreset(p);
+      setHelloNeoSpeed(p);
+      onMessage("Hello Neo command speed saved.", null);
+    },
+    [onMessage],
+  );
+
+  const applyHelloNeoTone = useCallback(
+    (t: TtsTonePreset) => {
+      writeHelloNeoTtsTonePreset(t);
+      setHelloNeoTone(t);
+      onMessage("Hello Neo command tone saved.", null);
     },
     [onMessage],
   );
@@ -97,7 +140,8 @@ export function ProfileVoiceSettings({ user, onUserUpdated, onMessage }: Props) 
       <div className="border-b border-white/[0.07] px-5 py-3.5">
         <h2 className="text-sm font-semibold text-white/90">Voice settings</h2>
         <p className="mt-0.5 text-xs text-white/40">
-          Choose who speaks, how fast, and how light or heavy the voice sounds. Changes apply on your next reply.
+          Voice chat page and Hello Neo commands use <span className="text-white/55">separate</span> speed and tone —
+          set both. Changes apply on the next spoken reply.
         </p>
       </div>
       <div className="space-y-6 px-5 py-5">
@@ -138,7 +182,7 @@ export function ProfileVoiceSettings({ user, onUserUpdated, onMessage }: Props) 
 
         <div>
           <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-white/40">
-            Speaking speed
+            Voice chat — speaking speed
           </p>
           <div className="flex max-w-md flex-wrap gap-1 rounded-xl border border-white/[0.1] bg-black/30 p-0.5">
             {SPEED_OPTIONS.map((o) => (
@@ -160,7 +204,7 @@ export function ProfileVoiceSettings({ user, onUserUpdated, onMessage }: Props) 
 
         <div>
           <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-white/40">
-            Voice weight
+            Voice chat — voice weight
           </p>
           <div className="flex max-w-md gap-1 rounded-xl border border-white/[0.1] bg-black/30 p-0.5">
             {TONE_OPTIONS.map((o) => (
@@ -182,6 +226,88 @@ export function ProfileVoiceSettings({ user, onUserUpdated, onMessage }: Props) 
                 <span className="mt-0.5 block text-[10px] text-white/35">{o.hint}</span>
               </button>
             ))}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-[#00D4FF]/15 bg-[#00D4FF]/[0.04] p-4 space-y-4">
+          <div>
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-[#00D4FF]/90">
+              Hello Neo commands (top bar)
+            </p>
+            <p className="text-[11px] text-white/38">
+              Wake replies, time, open apps — <span className="text-white/55">alag</span> voice system from voice chat.
+              Default gender is the other one; default tone is opposite to voice chat until you set it here.
+            </p>
+          </div>
+          <div>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-white/40">Voice (man / woman)</p>
+            <div className="flex max-w-md rounded-xl border border-white/[0.1] bg-black/30 p-0.5">
+              <button
+                type="button"
+                onClick={() => applyHelloNeoGender("female")}
+                className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition ${
+                  helloNeoGender === "female"
+                    ? "bg-[#00D4FF]/20 text-white shadow-[inset_0_0_0_1px_rgba(0,212,255,0.35)]"
+                    : "text-white/50 hover:bg-white/[0.06] hover:text-white/85"
+                }`}
+              >
+                Woman
+              </button>
+              <button
+                type="button"
+                onClick={() => applyHelloNeoGender("male")}
+                className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition ${
+                  helloNeoGender === "male"
+                    ? "bg-[#00D4FF]/20 text-white shadow-[inset_0_0_0_1px_rgba(0,212,255,0.35)]"
+                    : "text-white/50 hover:bg-white/[0.06] hover:text-white/85"
+                }`}
+              >
+                Man
+              </button>
+            </div>
+          </div>
+          <div>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-white/40">Speaking speed</p>
+            <div className="flex max-w-md flex-wrap gap-1 rounded-xl border border-white/[0.1] bg-black/30 p-0.5">
+              {SPEED_OPTIONS.map((o) => (
+                <button
+                  key={`neo-${o.id}`}
+                  type="button"
+                  onClick={() => applyHelloNeoSpeed(o.id)}
+                  className={`min-w-[5.5rem] flex-1 rounded-lg py-2 text-xs font-bold uppercase tracking-wide sm:text-[13px] ${
+                    helloNeoSpeed === o.id
+                      ? "bg-[#00D4FF]/20 text-white shadow-[inset_0_0_0_1px_rgba(0,212,255,0.35)]"
+                      : "text-white/45 hover:bg-white/[0.06] hover:text-white/85"
+                  }`}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-white/40">Voice weight</p>
+            <div className="flex max-w-md gap-1 rounded-xl border border-white/[0.1] bg-black/30 p-0.5">
+              {TONE_OPTIONS.map((o) => (
+                <button
+                  key={`neo-tone-${o.id}`}
+                  type="button"
+                  onClick={() => applyHelloNeoTone(o.id)}
+                  className={`flex-1 rounded-lg py-2.5 text-left px-3 transition sm:px-4 ${
+                    helloNeoTone === o.id
+                      ? "bg-[#00D4FF]/20 shadow-[inset_0_0_0_1px_rgba(0,212,255,0.35)]"
+                      : "hover:bg-white/[0.06]"
+                  }`}
+                >
+                  <span
+                    className={`block text-sm font-semibold ${helloNeoTone === o.id ? "text-white" : "text-white/55"}`}
+                  >
+                    {o.label}
+                  </span>
+                  <span className="mt-0.5 block text-[10px] text-white/35">{o.hint}</span>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 

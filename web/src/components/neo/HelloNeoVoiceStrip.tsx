@@ -6,13 +6,17 @@ import {
   createSpeechRecognition,
   isSpeechRecognitionSupported,
   primeSpeechVoices,
-  readTtsGender,
-  readTtsSpeedPreset,
+  readHelloNeoTtsGender,
+  readHelloNeoTtsSpeedPreset,
+  readHelloNeoTtsTonePreset,
   speakText,
   speechRecognitionErrorMessage,
+  unlockWebAudioAndSpeechFromUserGesture,
 } from "@/lib/voiceChat";
 import { readStoredVoiceSpeechLang } from "@/lib/voiceLanguages";
+import { isNativeCapacitor } from "@/lib/nativeAppLinks";
 import { executeNeoActions, processNeoCommandLine } from "@/lib/neoVoiceCommands";
+import { isNeoFollowUpActive } from "@/lib/neoVoiceSession";
 import {
   readNeoAlexaListen,
   readNeoAssistantActive,
@@ -27,8 +31,9 @@ async function speakReply(text: string, lang: string) {
   try {
     window.speechSynthesis?.resume();
     await speakText(text, lang, {
-      voiceGender: readTtsGender(),
-      speedPreset: readTtsSpeedPreset(),
+      voiceGender: readHelloNeoTtsGender(),
+      speedPreset: readHelloNeoTtsSpeedPreset(),
+      tonePreset: readHelloNeoTtsTonePreset(),
       replyMood: "neutral",
     });
   } catch {
@@ -53,6 +58,8 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
   const [listening, setListening] = useState(false);
   const [alexaMode, setAlexaMode] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
+  /** True while the post–wake-word command window is active (~18s). */
+  const [neoFollowUpOpen, setNeoFollowUpOpen] = useState(false);
   const recRef = useRef<SpeechRecognition | null>(null);
   const finalBuf = useRef("");
   const alexaRecRef = useRef<SpeechRecognition | null>(null);
@@ -78,6 +85,17 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
       setAlexaMode(readNeoAlexaListen());
     });
   }, []);
+
+  useEffect(() => {
+    if (!assistantActive) {
+      setNeoFollowUpOpen(false);
+      return;
+    }
+    const id = window.setInterval(() => {
+      setNeoFollowUpOpen(isNeoFollowUpActive());
+    }, 600);
+    return () => window.clearInterval(id);
+  }, [assistantActive]);
 
   const stopRec = useCallback(() => {
     try {
@@ -115,21 +133,41 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
 
   const runPipeline = useCallback(async (said: string) => {
     const lang = readStoredVoiceSpeechLang();
-    const { reply, actions } = processNeoCommandLine(said, "voice");
-    executeNeoActions(actions);
-    if (actions.length > 0) {
+    const syncFollowUp = () => setNeoFollowUpOpen(isNeoFollowUpActive());
+
+    if (isNativeCapacitor()) {
       try {
-        window.speechSynthesis?.cancel();
+        const { NeoNativeRouter } = await import("@/lib/neoNativeRouter");
+        const { handled } = await NeoNativeRouter.tryRouteCommand({ text: said });
+        if (handled) {
+          /* Android already speaks for “what time”; other intents open apps silently — short ack so APK isn’t noise-only. */
+          const t = said.toLowerCase();
+          const javaSpeaksTimeAlready =
+            /\b(what\s+)?(is\s+)?(the\s+)?time\b|\btime\s+now\b|\bcurrent\s+time\b|समय|टाइम\b/.test(t);
+          if (!javaSpeaksTimeAlready) {
+            await speakReply(lang.startsWith("hi") ? "ठीक है।" : "Okay.", lang);
+          }
+          syncFollowUp();
+          return;
+        }
       } catch {
-        /* ignore */
+        /* fall through to JS routing */
       }
-      return;
     }
-    if (reply.trim()) await speakReply(reply, lang);
+    const { reply, actions } = processNeoCommandLine(said, "voice", { speechLang: lang });
+    /* Speak first so users hear “Opening WhatsApp.” before the WebView jumps (APK was silent before). */
+    if (reply.trim()) {
+      await speakReply(reply, lang);
+    }
+    if (actions.length > 0) {
+      executeNeoActions(actions);
+    }
+    syncFollowUp();
   }, []);
 
   const startListen = useCallback(() => {
     setHint(null);
+    unlockWebAudioAndSpeechFromUserGesture();
     if (!isSpeechRecognitionSupported()) {
       setHint("Voice needs Chrome or Edge on this device.");
       return;
@@ -318,6 +356,15 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
             {alexaMode ? "Mic always on (off above)" : listening ? "Stop" : "Tap — talk once"}
           </button>
         </div>
+        {neoFollowUpOpen ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="border-t border-emerald-400/25 bg-emerald-500/[0.12] px-5 py-2.5 text-center text-[11px] font-semibold leading-snug text-emerald-100/95"
+          >
+            Neo is active — say your command now (no need to say &quot;Neo&quot; again).
+          </div>
+        ) : null}
         {alexaMode ? (
           <p className="border-t border-white/[0.06] px-5 py-2.5 text-center text-[11px] font-medium text-emerald-300/90">
             Listening for &quot;Neo&quot; — only on this page; turn off with the switch above.
@@ -340,8 +387,8 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
               Say <span className="text-white/88">Neo</span> or <span className="text-white/88">Hello Neo</span> — e.g.{" "}
               <span className="text-white/88">&quot;Neo open my WhatsApp&quot;</span>,{" "}
               <span className="text-white/88">&quot;Neo open Telegram&quot;</span>, or{" "}
-              <span className="text-white/88">call … number</span>. If you only say Neo once, you get a short window
-              for the next command without repeating the wake.{" "}
+              <span className="text-white/88">call … number</span>. If you only say the wake phrase, Neo confirms, then
+              you get a short window for the next command without repeating the wake.{" "}
               <span className="text-white/55">Alexa-style always-on mic</span> is only in{" "}
               <Link href="/profile" className="text-[#00D4FF]/90 underline-offset-2 hover:underline">
                 Profile
@@ -383,6 +430,15 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
             </button>
           </div>
         </div>
+        {neoFollowUpOpen ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="rounded-lg border border-emerald-400/30 bg-emerald-500/[0.12] px-3 py-2 text-center text-[11px] font-semibold leading-snug text-emerald-100/95"
+          >
+            Neo is active — say your command now (no need to say &quot;Neo&quot; again).
+          </div>
+        ) : null}
         {alexaMode ? (
           <p className="text-center text-[11px] font-medium text-emerald-300/90">
             Always listening for &quot;Neo&quot; — change in{" "}

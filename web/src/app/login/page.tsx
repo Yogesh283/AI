@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NeoPublicShell } from "@/components/neo/NeoPublicShell";
 import { GradientButton } from "@/components/neo/GradientButton";
 import { AuthGoogleSection } from "@/components/neo/AuthGoogleSection";
@@ -18,9 +18,23 @@ export default function LoginPage() {
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [sessionExpiredBanner, setSessionExpiredBanner] = useState(false);
+  const didAutoRedirect = useRef(false);
 
   useEffect(() => {
-    if (getStoredToken()) router.replace("/dashboard");
+    try {
+      setSessionExpiredBanner(new URLSearchParams(window.location.search).get("expired") === "1");
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    if (didAutoRedirect.current) return;
+    if (getStoredToken()) {
+      didAutoRedirect.current = true;
+      router.replace("/dashboard");
+    }
   }, [router]);
 
   async function onSubmit(e: React.FormEvent) {
@@ -67,6 +81,11 @@ export default function LoginPage() {
           <p className="mt-2 text-sm text-white/45">
             Sign in to continue with {brandName}
           </p>
+          {sessionExpiredBanner ? (
+            <p className="mt-4 rounded-xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100/95" role="status">
+              Your session ended after 24 hours for security. Please sign in again.
+            </p>
+          ) : null}
 
           <form onSubmit={onSubmit} className="mt-10 flex flex-col gap-5">
             <div>

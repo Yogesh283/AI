@@ -13,17 +13,31 @@ import {
   mentionsTelegram,
   shouldOpenTelegramFromCommand,
 } from "@/lib/telegramOpenCommand";
+import type { VoiceSpeechLangCode } from "@/lib/voiceLanguages";
+import { DEFAULT_VOICE_SPEECH_LANG, neoWakeAckPhrase } from "@/lib/voiceLanguages";
 import {
   clearNeoFollowUpSession,
   isNeoFollowUpActive,
   startNeoFollowUpSession,
 } from "@/lib/neoVoiceSession";
+import {
+  buildTelegramAppUrl as buildTgAppUrl,
+  buildWhatsAppAppUrl,
+  buildYouTubeAppSearchUrl,
+  isNativeCapacitor,
+  openNativeDeepLink,
+} from "@/lib/nativeAppLinks";
 
 export type NeoAction =
   | { kind: "open_url"; url: string }
   | { kind: "tel"; href: string };
 
 export type NeoCommandMode = "voice" | "text" | "voice-followup";
+
+export type NeoProcessOptions = {
+  /** Used for wake-only TTS (e.g. "Yes, I heard you"). */
+  speechLang?: VoiceSpeechLangCode;
+};
 
 /**
  * Detect wake anywhere (earliest match). English: **Neo** alone or after hello/hi/hey.
@@ -89,6 +103,14 @@ export function runNeoIntents(q: string, silentReplies = false): { reply: string
     return { reply: `It's ${time}.`, actions: [] };
   }
 
+  const wantsMusicApp =
+    /\b(open|play|launch|start)\b.*\bmusic\b|\bmusic\b.*\b(open|play|launch|start)\b/i.test(trimmed) ||
+    /\bopen\s+my\s+music\b/i.test(trimmed);
+  if (isNativeCapacitor() && wantsMusicApp) {
+    const url = "intent://#Intent;package=com.google.android.apps.youtube.music;end";
+    return { reply: "Opening music.", actions: [{ kind: "open_url", url }] };
+  }
+
   const ytMatch = trimmed.match(
     /\b(?:play|listen(?:\s+to)?|start)\b\s*(?:song|music)?\s*(?:on\s+youtube)?\s*(.+)?$/i,
   );
@@ -101,7 +123,9 @@ export function runNeoIntents(q: string, silentReplies = false): { reply: string
       .replace(/\b(play|listen(?:\s+to)?|start|song|music)\b/gi, "")
       .trim();
     const query = candidate.length > 1 ? candidate : trimmed;
-    const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+    const url = isNativeCapacitor()
+      ? buildYouTubeAppSearchUrl(query)
+      : `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
     return { reply: "Opening YouTube.", actions: [{ kind: "open_url", url }] };
   }
 
@@ -117,12 +141,12 @@ export function runNeoIntents(q: string, silentReplies = false): { reply: string
   }
 
   if (shouldOpenWhatsAppFromCommand(trimmed)) {
-    const url = buildWhatsAppWebUrl(trimmed);
+    const url = isNativeCapacitor() ? buildWhatsAppAppUrl(trimmed) : buildWhatsAppWebUrl(trimmed);
     return { reply: "Opening WhatsApp.", actions: [{ kind: "open_url", url }] };
   }
 
   if (shouldOpenTelegramFromCommand(trimmed)) {
-    const url = buildTelegramWebUrl(trimmed);
+    const url = isNativeCapacitor() ? buildTgAppUrl(trimmed) : buildTelegramWebUrl(trimmed);
     return { reply: "Opening Telegram.", actions: [{ kind: "open_url", url }] };
   }
 
@@ -189,6 +213,7 @@ export function runNeoIntents(q: string, silentReplies = false): { reply: string
 export function processNeoCommandLine(
   input: string,
   mode: NeoCommandMode,
+  options?: NeoProcessOptions,
 ): { reply: string; actions: NeoAction[] } {
   const trimmed = input.trim();
   if (!trimmed) {
@@ -231,7 +256,8 @@ export function processNeoCommandLine(
 
   if (!rest) {
     startNeoFollowUpSession(18000);
-    return { reply: "", actions: [] };
+    const lang = options?.speechLang ?? DEFAULT_VOICE_SPEECH_LANG;
+    return { reply: neoWakeAckPhrase(lang), actions: [] };
   }
 
   const r = runNeoIntents(rest, true);
@@ -240,16 +266,6 @@ export function processNeoCommandLine(
 }
 
 export function executeNeoActions(actions: NeoAction[]): void {
-  const isNativeCapacitor = (): boolean => {
-    if (typeof window === "undefined") return false;
-    const c = (window as Window & { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
-    try {
-      return !!c?.isNativePlatform?.();
-    } catch {
-      return false;
-    }
-  };
-
   const openWithFallback = (primary: string, fallback: string) => {
     if (typeof window === "undefined") return;
     try {
@@ -280,6 +296,10 @@ export function executeNeoActions(actions: NeoAction[]): void {
 
   for (const a of actions) {
     if (a.kind === "open_url") {
+      if (isNativeCapacitor()) {
+        openNativeDeepLink(a.url);
+        continue;
+      }
       const u = a.url.toLowerCase();
       if (u.includes("web.whatsapp.com")) {
         openWithFallback(toWhatsAppAppUrl(a.url), a.url);
@@ -294,7 +314,11 @@ export function executeNeoActions(actions: NeoAction[]): void {
         window.location.assign(a.url);
       }
     } else if (a.kind === "tel") {
-      window.location.href = a.href;
+      if (isNativeCapacitor()) {
+        openNativeDeepLink(a.href);
+      } else {
+        window.location.href = a.href;
+      }
     }
   }
 }

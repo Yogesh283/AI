@@ -34,6 +34,15 @@ public final class NeoCommandRouter {
             return handleVolumeIntent(context, text);
         }
 
+        if (isYouTubeMusicLaunchIntent(text)) {
+            Intent launch = context.getPackageManager().getLaunchIntentForPackage("com.google.android.apps.youtube.music");
+            if (launch != null) {
+                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(launch);
+                return true;
+            }
+        }
+
         String ytQuery = extractYouTubeQuery(text);
         if (ytQuery != null) {
             openAppOrStore(
@@ -166,6 +175,16 @@ public final class NeoCommandRouter {
 
         am.setStreamVolume(stream, current, AudioManager.FLAG_SHOW_UI);
         return true;
+    }
+
+    /** Open the YouTube Music app when user asks for music (not a YouTube-only phrase). */
+    private static boolean isYouTubeMusicLaunchIntent(String t) {
+        if (t.contains("youtube") || t.contains("you tube") || t.contains("यूट्यूब")) {
+            return false;
+        }
+        return t.matches(".*\\b(open|play|launch|start)\\b.*\\bmusic\\b.*")
+            || t.matches(".*\\bmusic\\b.*\\b(open|play|launch|start)\\b.*")
+            || t.matches(".*\\bmy\\s+music\\b.*");
     }
 
     private static String extractYouTubeQuery(String t) {

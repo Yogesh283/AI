@@ -4,6 +4,9 @@ import { getVoicePersona, writeStoredVoicePersonaId } from "@/lib/voicePersonas"
 
 const TOKEN_KEY = "neo-token";
 const USER_KEY = "neo-user";
+/** Wall-clock session length from last login (new token). After this, user must sign in again. */
+const SESSION_STARTED_AT_KEY = "neo-session-started-at";
+export const SESSION_MAX_MS = 24 * 60 * 60 * 1000;
 
 export type AuthUser = {
   id: string;
@@ -19,7 +22,20 @@ const base = () => apiOrigin();
 export function getStoredToken(): string | null {
   if (typeof window === "undefined") return null;
   try {
-    return localStorage.getItem(TOKEN_KEY);
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return null;
+    const raw = localStorage.getItem(SESSION_STARTED_AT_KEY);
+    let started = raw ? parseInt(raw, 10) : NaN;
+    if (!Number.isFinite(started)) {
+      /* Legacy installs: start the 24h window from first open after this update */
+      started = Date.now();
+      localStorage.setItem(SESSION_STARTED_AT_KEY, String(started));
+    }
+    if (Date.now() - started > SESSION_MAX_MS) {
+      clearSession();
+      return null;
+    }
+    return token;
   } catch {
     return null;
   }
@@ -38,8 +54,22 @@ export function getStoredUser(): AuthUser | null {
 
 export function saveSession(token: string, user: AuthUser) {
   if (typeof window === "undefined") return;
+  let prev: string | null = null;
+  try {
+    prev = localStorage.getItem(TOKEN_KEY);
+  } catch {
+    /* ignore */
+  }
   localStorage.setItem(TOKEN_KEY, token);
   localStorage.setItem(USER_KEY, JSON.stringify(user));
+  /* New login / token rotation — reset 24h window. Same token (e.g. profile PATCH) does not reset. */
+  if (prev !== token) {
+    try {
+      localStorage.setItem(SESSION_STARTED_AT_KEY, String(Date.now()));
+    } catch {
+      /* ignore */
+    }
+  }
   if (user.voice_persona_id) {
     writeStoredVoicePersonaId(user.voice_persona_id);
     writeTtsGender(getVoicePersona(user.voice_persona_id).ttsGender);
@@ -50,6 +80,11 @@ export function clearSession() {
   if (typeof window === "undefined") return;
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
+  try {
+    localStorage.removeItem(SESSION_STARTED_AT_KEY);
+  } catch {
+    /* ignore */
+  }
 }
 
 export async function registerApi(body: {

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NeoPublicShell } from "@/components/neo/NeoPublicShell";
 import { GradientButton } from "@/components/neo/GradientButton";
 import { AuthGoogleSection } from "@/components/neo/AuthGoogleSection";
@@ -20,9 +20,14 @@ export default function RegisterPage() {
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const didAutoRedirect = useRef(false);
 
   useEffect(() => {
-    if (getStoredToken()) router.replace("/dashboard");
+    if (didAutoRedirect.current) return;
+    if (getStoredToken()) {
+      didAutoRedirect.current = true;
+      router.replace("/dashboard");
+    }
   }, [router]);
 
   async function onSubmit(e: React.FormEvent) {

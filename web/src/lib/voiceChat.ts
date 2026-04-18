@@ -276,6 +276,82 @@ export type TtsVoiceGender = "male" | "female";
 
 const TTS_GENDER_STORAGE_KEY = "neo-tts-gender";
 
+/** Voice for the Hello Neo / top-bar command strip only — independent from {@link readTtsGender} (voice chat + persona). */
+const HELLO_NEO_TTS_GENDER_KEY = "neo-hello-neo-tts-gender";
+
+/**
+ * Gender for browser TTS on the Hello Neo strip. If unset, uses the opposite of {@link readTtsGender}
+ * so command replies sound different from the main voice chat by default.
+ */
+export function readHelloNeoTtsGender(): TtsVoiceGender {
+  if (typeof window === "undefined") return "female";
+  try {
+    const v = localStorage.getItem(HELLO_NEO_TTS_GENDER_KEY);
+    if (v === "male" || v === "female") return v;
+  } catch {
+    /* ignore */
+  }
+  return readTtsGender() === "female" ? "male" : "female";
+}
+
+export function writeHelloNeoTtsGender(g: TtsVoiceGender): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(HELLO_NEO_TTS_GENDER_KEY, g);
+  } catch {
+    /* ignore */
+  }
+}
+
+const HELLO_NEO_TTS_SPEED_KEY = "neo-hello-neo-tts-speed";
+
+/** Speed for Hello Neo strip TTS only. If unset, matches voice chat {@link readTtsSpeedPreset}. */
+export function readHelloNeoTtsSpeedPreset(): TtsSpeedPreset {
+  if (typeof window === "undefined") return "natural";
+  try {
+    const v = localStorage.getItem(HELLO_NEO_TTS_SPEED_KEY);
+    if (v === "slow" || v === "natural" || v === "clear" || v === "fast") return v;
+  } catch {
+    /* ignore */
+  }
+  return readTtsSpeedPreset();
+}
+
+export function writeHelloNeoTtsSpeedPreset(p: TtsSpeedPreset): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(HELLO_NEO_TTS_SPEED_KEY, p);
+  } catch {
+    /* ignore */
+  }
+}
+
+const HELLO_NEO_TTS_TONE_KEY = "neo-hello-neo-tts-tone";
+
+/**
+ * Tone for Hello Neo strip only. If unset, uses the opposite of {@link readTtsTonePreset}
+ * so command audio feels different from voice chat by default.
+ */
+export function readHelloNeoTtsTonePreset(): TtsTonePreset {
+  if (typeof window === "undefined") return "warm";
+  try {
+    const v = localStorage.getItem(HELLO_NEO_TTS_TONE_KEY);
+    if (v === "warm" || v === "bright") return v;
+  } catch {
+    /* ignore */
+  }
+  return readTtsTonePreset() === "warm" ? "bright" : "warm";
+}
+
+export function writeHelloNeoTtsTonePreset(p: TtsTonePreset): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(HELLO_NEO_TTS_TONE_KEY, p);
+  } catch {
+    /* ignore */
+  }
+}
+
 /** Slower = easier to follow (especially Hindi + long replies). `natural` = human-like pacing + pauses. */
 export type TtsSpeedPreset = "slow" | "natural" | "clear" | "fast";
 
@@ -649,6 +725,8 @@ export async function speakText(
   opts?: {
     voiceGender?: TtsVoiceGender;
     speedPreset?: TtsSpeedPreset;
+    /** Overrides global {@link readTtsTonePreset} when set (e.g. Hello Neo vs voice chat). */
+    tonePreset?: TtsTonePreset;
     /** From `inferVoiceReplyMood` — shapes pitch and pacing per phrase. */
     replyMood?: VoiceReplyMood;
     /** Fires on browser TTS boundary events (word/sentence), for UI sync. */
@@ -679,7 +757,7 @@ export async function speakText(
   const preset = opts?.speedPreset ?? readTtsSpeedPreset();
   const baseRate = rateForSpeedPreset(preset);
   const mood = opts?.replyMood ?? "neutral";
-  const tone = readTtsTonePreset();
+  const tone = opts?.tonePreset ?? readTtsTonePreset();
   const isDeva = containsDevanagari(trimmed);
   /* Hindi: longer chunks + danda-aware splits = fewer mid-word glitches; slightly shorter when “slow” */
   const chunkMaxLen =

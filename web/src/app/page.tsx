@@ -25,16 +25,32 @@ export default function SplashPage() {
   const router = useRouter();
   const { brandName } = useSiteBrand();
   const [p, setP] = useState(0);
+  /** `checking`: token probe; `guest`: show splash; `redirect` — logged-in, avoid animating splash repeatedly */
+  const [gate, setGate] = useState<"checking" | "guest" | "redirect">("checking");
+
   useEffect(() => {
     if (getStoredToken()) {
+      setGate("redirect");
       router.replace("/dashboard");
       return;
     }
+    setGate("guest");
     const t = setInterval(() => {
       setP((x) => (x >= 100 ? 100 : x + 2.5));
     }, 60);
     return () => clearInterval(t);
   }, [router]);
+
+  if (gate === "checking" || gate === "redirect") {
+    return (
+      <NeoPublicShell maxWidth="max-w-lg">
+        <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 px-4 py-16">
+          <NeoLogoHead className="h-16 w-16 opacity-90" priority />
+          <p className="text-center text-sm text-white/50">{gate === "redirect" ? "Opening app…" : "Loading…"}</p>
+        </div>
+      </NeoPublicShell>
+    );
+  }
 
   return (
     <NeoPublicShell maxWidth="max-w-lg">

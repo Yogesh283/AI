@@ -64,6 +64,46 @@ export function voiceLangLabel(code: VoiceSpeechLangCode): string {
 }
 
 /** Short spoken ack when the user switches language by voice (browser TTS). */
+/** Short TTS after wake-only ("Neo" / "Hello Neo" with no command). Opens the follow-up command window. */
+export function neoWakeAckPhrase(code: VoiceSpeechLangCode): string {
+  switch (code) {
+    case "hi-IN":
+      return "हाँ, सुन रहा हूँ। अब बताइए।";
+    case "en-IN":
+    case "en-US":
+      return "Yes, I heard you. Go ahead.";
+    case "ta-IN":
+      return "Yes, I heard you. Go ahead.";
+    case "te-IN":
+    case "bn-IN":
+    case "mr-IN":
+    case "gu-IN":
+    case "kn-IN":
+    case "ml-IN":
+    case "pa-IN":
+    case "ur-IN":
+      return "Yes, I heard you. Go ahead.";
+    case "es-ES":
+      return "Sí, te escucho. Dime.";
+    case "fr-FR":
+      return "Oui, je t'entends. Vas-y.";
+    case "de-DE":
+      return "Ja, ich höre dich. Bitte weiter.";
+    case "ar-SA":
+      return "نعم، سمعتك. تفضل.";
+    case "pt-BR":
+      return "Sim, ouvi você. Pode falar.";
+    case "ja-JP":
+      return "はい、聞こえています。どうぞ。";
+    case "ko-KR":
+      return "네, 들었어요. 말씀하세요.";
+    case "zh-CN":
+      return "好的，我听到了。请说。";
+    default:
+      return "Yes, I heard you. Go ahead.";
+  }
+}
+
 export function ackPhraseForLang(code: VoiceSpeechLangCode): string {
   switch (code) {
     case "hi-IN":

@@ -17,6 +17,7 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        registerPlugin(NeoNativeRouterPlugin.class);
         super.onCreate(savedInstanceState);
         ensureMicPermission();
         maybeStopWakeService();

@@ -45,6 +45,7 @@ import {
 } from "@/lib/voiceChat";
 import { useWakeLock } from "@/lib/useWakeLock";
 import { writeNeoAlexaListen } from "@/lib/neoAssistantActive";
+import { isNativeCapacitor, buildWhatsAppAppUrl, openNativeDeepLink } from "@/lib/nativeAppLinks";
 import {
   buildWhatsAppWebUrl,
   navigateToWhatsAppWeb,
@@ -394,9 +395,22 @@ export default function VoicePage() {
         return;
       }
 
+      if (isNativeCapacitor()) {
+        try {
+          const { NeoNativeRouter } = await import("@/lib/neoNativeRouter");
+          const { handled } = await NeoNativeRouter.tryRouteCommand({ text: toSend });
+          if (handled) {
+            if (sessionOnRef.current) scheduleResumeListening();
+            return;
+          }
+        } catch {
+          /* continue with JS / chat */
+        }
+      }
+
       if (shouldOpenWhatsAppFromCommand(toSend)) {
-        const waUrl = buildWhatsAppWebUrl(toSend);
-        const popped = tryOpenWhatsAppPopup(waUrl);
+        const waUrl = isNativeCapacitor() ? buildWhatsAppAppUrl(toSend) : buildWhatsAppWebUrl(toSend);
+        const popped = !isNativeCapacitor() && tryOpenWhatsAppPopup(waUrl);
         const ack = whatsAppOpenAck(speakLang, popped ? "new-tab" : "same-tab");
         const turnUser = { role: "user" as const, content: toSend };
         const turnAsst = { role: "assistant" as const, content: ack };
@@ -404,7 +418,11 @@ export default function VoicePage() {
         historyRef.current = next;
         setHistory(next);
         if (!popped) {
-          navigateToWhatsAppWeb(waUrl);
+          if (isNativeCapacitor()) {
+            openNativeDeepLink(waUrl);
+          } else {
+            navigateToWhatsAppWeb(waUrl);
+          }
           return;
         }
         const gen = ++speakGenerationRef.current;
@@ -485,6 +503,8 @@ export default function VoicePage() {
     /* Turn-taking: mic only while assistant is idle (continuous:true broke onend → speech never sent). */
     if (thinkingRef.current || speakingRef.current) return;
     if (listeningActiveRef.current) return;
+    /* Helps WebView/APK unlock TTS after mic opens (noise + autoplay policies). */
+    unlockWebAudioAndSpeechFromUserGesture();
     if (!isSpeechRecognitionSupported()) {
       listeningActiveRef.current = true;
       setListening(true);
