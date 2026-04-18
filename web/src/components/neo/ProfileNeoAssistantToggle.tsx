@@ -1,20 +1,31 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { isNativeCapacitor } from "@/lib/nativeAppLinks";
 import {
   readNeoAlexaListen,
   readNeoAssistantActive,
   writeNeoAlexaListen,
   writeNeoAssistantActive,
 } from "@/lib/neoAssistantActive";
+import {
+  persistWakeScreenOffNative,
+  readWakeListenScreenOffStorage,
+  subscribeNeoWakeScreenOffListen,
+} from "@/lib/neoWakeNative";
 
 export function ProfileNeoAssistantToggle() {
   const [active, setActive] = useState(false);
   const [alexaListen, setAlexaListen] = useState(false);
+  const [wakeScreenOff, setWakeScreenOff] = useState(false);
 
   useEffect(() => {
     setActive(readNeoAssistantActive());
     setAlexaListen(readNeoAlexaListen());
+    setWakeScreenOff(readWakeListenScreenOffStorage());
+    return subscribeNeoWakeScreenOffListen(() => {
+      setWakeScreenOff(readWakeListenScreenOffStorage());
+    });
   }, []);
 
   const toggle = () => {
@@ -38,8 +49,9 @@ export function ProfileNeoAssistantToggle() {
           Starts <span className="text-white/50">Inactive</span> — turn Status to Active when you want voice commands.
           Wake with <span className="text-white/55">Neo</span>, <span className="text-white/55">Hello Neo</span>, or
           <span className="text-white/55"> Hello New</span> (speech often writes it that way) — then e.g. &quot;open my
-          WhatsApp&quot;, &quot;my Telegram&quot;, or a phone number to call. This screen must be on and this app open;
-          screen-off / app-killed wake needs a separate native Android build, not this web app.
+          WhatsApp&quot;, &quot;my Telegram&quot;, or a phone number to call. In the browser, keep this tab open; in the
+          Android app, Hello Neo wake can run in the background while the app stays open (optional lock-screen listen
+          below). Fully closed app or killed process: wake does not run.
         </p>
       </div>
       <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -78,27 +90,78 @@ export function ProfileNeoAssistantToggle() {
 
       <div className="border-t border-white/[0.06] px-5 py-4 sm:flex sm:items-center sm:justify-between sm:gap-4">
         {active && alexaListen ? (
-          <div className="flex w-full items-center justify-between gap-3">
-            <p className="text-[12px] text-emerald-300/90">
-              Wake listen is on — say Hello Neo first, then your command. Voice chat turns this off automatically.
-            </p>
-            <button
-              type="button"
-              onClick={toggleAlexa}
-              className="rounded-lg border border-white/15 px-3 py-1.5 text-[11px] font-semibold text-white/80 transition hover:bg-white/[0.06]"
-            >
-              Turn off
-            </button>
+          <div className="flex w-full flex-col gap-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[12px] text-white/55">
+                Neo is ready — say <span className="text-white/75">Hello Neo</span> first, then your command. Voice
+                chat turns this off automatically.
+              </p>
+              <button
+                type="button"
+                onClick={toggleAlexa}
+                className="shrink-0 rounded-lg border border-white/15 px-3 py-1.5 text-[11px] font-semibold text-white/80 transition hover:bg-white/[0.06]"
+              >
+                Turn off
+              </button>
+            </div>
+            {isNativeCapacitor() ? (
+              <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-3 sm:flex sm:items-center sm:justify-between sm:gap-4">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-white/85">Listen when screen is off</p>
+                  <p className="mt-0.5 text-[11px] text-white/38">
+                    Uses a foreground notification and partial wake lock — higher battery use; turn off if you get
+                    pocket noise.
+                  </p>
+                </div>
+                <div className="mt-3 flex shrink-0 items-center justify-end gap-3 sm:mt-0">
+                  <span
+                    className={`text-xs font-semibold uppercase tracking-wider ${
+                      wakeScreenOff ? "text-emerald-400/95" : "text-white/35"
+                    }`}
+                  >
+                    {wakeScreenOff ? "On" : "Off"}
+                  </span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={wakeScreenOff}
+                    onClick={() => void persistWakeScreenOffNative(!wakeScreenOff)}
+                    className={`relative h-9 w-[52px] shrink-0 rounded-full transition ${
+                      wakeScreenOff
+                        ? "bg-emerald-500/35 ring-1 ring-emerald-400/40"
+                        : "bg-white/[0.08] ring-1 ring-white/10"
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-1 h-7 w-7 rounded-full bg-white shadow transition ${
+                        wakeScreenOff ? "left-6" : "left-1"
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : (
           <>
             <div className={`min-w-0 ${!active ? "opacity-45" : ""}`}>
               <p className="text-sm font-medium text-white/85">Hello Neo wake listen</p>
               <p className="mt-0.5 text-[11px] text-white/38">
-                Mic stays on only on <span className="text-white/50">Profile</span> (Try Neo below) to catch{" "}
-                <span className="text-white/55">Hello Neo</span> / <span className="text-white/55">Neo</span>, then runs
-                your command (music, WhatsApp, Telegram, YouTube, contacts, time). Speech without the wake phrase is
-                ignored — not “always command” mode.
+                {isNativeCapacitor() ? (
+                  <>
+                    With wake on, the Android app keeps a native listener while you use other screens in the app. Open{" "}
+                    <span className="text-white/55">Try Neo</span> below for tap-to-talk. Speech without{" "}
+                    <span className="text-white/55">Hello Neo</span> / <span className="text-white/55">Neo</span> is
+                    ignored.
+                  </>
+                ) : (
+                  <>
+                    Mic stays on only on <span className="text-white/50">Profile</span> (Try Neo below) to catch{" "}
+                    <span className="text-white/55">Hello Neo</span> / <span className="text-white/55">Neo</span>, then
+                    runs your command (music, WhatsApp, Telegram, YouTube, contacts, time). Speech without the wake
+                    phrase is ignored — not “always command” mode.
+                  </>
+                )}
                 {!active ? " Turn Neo assistant Active above to enable this." : ""}
               </p>
             </div>

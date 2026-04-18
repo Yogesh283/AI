@@ -16,11 +16,12 @@ import {
 } from "@/lib/voiceChat";
 import { tryPlayOpenAiTtsPlain, stopAvatarTtsAudio } from "@/lib/voiceAvatarTts";
 import { preferOpenAiTtsForVoiceUi } from "@/lib/voiceTtsPolicy";
-import { readStoredVoiceSpeechLang } from "@/lib/voiceLanguages";
+import { neoWorkingAckPhrase, readStoredVoiceSpeechLang } from "@/lib/voiceLanguages";
 import { isNativeCapacitor } from "@/lib/nativeAppLinks";
 import {
   executeNeoActions,
   extractHelloNeoCommand,
+  isShortOpenActionReply,
   processNeoCommandLine,
 } from "@/lib/neoVoiceCommands";
 import { clearNeoFollowUpSession, isNeoFollowUpActive } from "@/lib/neoVoiceSession";
@@ -184,15 +185,17 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
     if (isNativeCapacitor()) {
       try {
         const { NeoNativeRouter } = await import("@/lib/neoNativeRouter");
+        const t = commandText.toLowerCase();
+        const skipTapBusyLine =
+          /\b(what\s+)?(is\s+)?(the\s+)?time\b|\btime\s+now\b|\bcurrent\s+time\b|समय|टाइम\b/.test(t) ||
+          /\b(volume|mute|unmute|louder|softer|sound)\b|वॉल्यूम|आवाज|म्यूट/i.test(t);
+        /* Wake path uses Android `executeWithBusyAck`; tap-to-talk here still gets a short line before routing. */
+        if (!skipTapBusyLine) {
+          await speakReply(neoWorkingAckPhrase(lang, readHelloNeoTtsGender()), lang);
+        }
         const { handled } = await NeoNativeRouter.tryRouteCommand({ text: commandText });
         if (handled) {
           clearNeoFollowUpSession();
-          const t = commandText.toLowerCase();
-          const javaSpeaksTimeAlready =
-            /\b(what\s+)?(is\s+)?(the\s+)?time\b|\btime\s+now\b|\bcurrent\s+time\b|समय|टाइम\b/.test(t);
-          if (!javaSpeaksTimeAlready) {
-            await speakReply(lang.startsWith("hi") ? "ठीक है।" : "Okay.", lang);
-          }
           syncFollowUp();
           return;
         }
@@ -202,10 +205,16 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
     }
 
     const { reply, actions } = processNeoCommandLine(trimmed, "voice", { speechLang: lang });
-    if (reply.trim()) {
-      await speakReply(reply, lang);
+    const willAct = actions.length > 0;
+    if (willAct) {
+      await speakReply(neoWorkingAckPhrase(lang, readHelloNeoTtsGender()), lang);
     }
-    if (actions.length > 0) {
+    if (reply.trim()) {
+      if (!willAct || !isShortOpenActionReply(reply)) {
+        await speakReply(reply, lang);
+      }
+    }
+    if (willAct) {
       executeNeoActions(actions);
     }
     syncFollowUp();
@@ -272,6 +281,11 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
     }
     if (!alexaMode) {
       stopAlexa();
+      return;
+    }
+    if (isNativeCapacitor()) {
+      stopAlexa();
+      /* Native `WakeWordForegroundService` + `NeoWakeNativeSync` — avoid a second mic in WebView. */
       return;
     }
     if (!isSpeechRecognitionSupported()) {
@@ -369,8 +383,10 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
           <h2 className="text-sm font-semibold text-white/90">Try Neo</h2>
           <p className="mt-0.5 text-xs text-white/40">
             Say <span className="text-white/60">Neo</span> or <span className="text-white/60">नियो</span> (or Hello
-            Neo), then e.g. music, YouTube, WhatsApp, Telegram, contacts, or time. Wake listen only runs while you stay
-            on this page; other speech is ignored until you say the wake phrase.
+            Neo), then e.g. music, YouTube, WhatsApp, Telegram, contacts, or time.{" "}
+            {isNativeCapacitor()
+              ? "Wake listen runs in the app while Hello Neo wake is on (see Profile); other speech is ignored until you say the wake phrase."
+              : "Wake listen only runs while you stay on this page; other speech is ignored until you say the wake phrase."}
           </p>
         </div>
         <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -401,25 +417,24 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
             }`}
             aria-pressed={listening}
           >
-            <span className="text-lg" aria-hidden>
-              {listening ? "■" : "🎤"}
+            <span className="text-lg tabular-nums text-white/50" aria-hidden>
+              {listening ? "■" : "●"}
             </span>
-            {alexaMode ? "Wake listen on (off above)" : listening ? "Stop" : "Tap — talk once"}
+            {alexaMode ? "Voice ready (off above)" : listening ? "Stop" : "Tap — talk once"}
           </button>
         </div>
         {neoFollowUpOpen ? (
           <div
             role="status"
             aria-live="polite"
-            className="border-t border-emerald-400/25 bg-emerald-500/[0.12] px-5 py-2.5 text-center text-[11px] font-semibold leading-snug text-emerald-100/95"
+            className="border-t border-white/[0.06] bg-white/[0.04] px-5 py-2 text-center text-[11px] leading-snug text-white/50"
           >
             Neo is active — say your command now (no need to say &quot;Neo&quot; again).
           </div>
         ) : null}
         {alexaMode ? (
-          <p className="border-t border-white/[0.06] px-5 py-2.5 text-center text-[11px] font-medium text-emerald-300/90">
-            Listening for <span className="text-white/90">Hello Neo</span> / <span className="text-white/90">Neo</span>{" "}
-            — only on this page; turn off with the switch above.
+          <p className="sr-only">
+            Hello Neo voice is on — turn off from Profile if you want.
           </p>
         ) : null}
         {hint ? (
@@ -474,10 +489,10 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
               }`}
               aria-pressed={listening}
             >
-              <span className="text-lg" aria-hidden>
-                {listening ? "■" : "🎤"}
+              <span className="text-lg tabular-nums text-white/50" aria-hidden>
+                {listening ? "■" : "●"}
               </span>
-              {alexaMode ? "Wake listen on (toggle off for tap)" : listening ? "Stop" : "Tap — talk once"}
+              {alexaMode ? "Voice ready (toggle off for tap)" : listening ? "Stop" : "Tap — talk once"}
             </button>
           </div>
         </div>
@@ -485,18 +500,14 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
           <div
             role="status"
             aria-live="polite"
-            className="rounded-lg border border-emerald-400/30 bg-emerald-500/[0.12] px-3 py-2 text-center text-[11px] font-semibold leading-snug text-emerald-100/95"
+            className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-center text-[11px] leading-snug text-white/50"
           >
             Neo is active — say your command now (no need to say &quot;Neo&quot; again).
           </div>
         ) : null}
         {alexaMode ? (
-          <p className="text-center text-[11px] font-medium text-emerald-300/90">
-            Wake listen on — say Hello Neo / Neo first; other talk is ignored. Change in{" "}
-            <Link href="/profile" className="underline underline-offset-2 hover:text-white">
-              Profile
-            </Link>{" "}
-            (keep app open).
+          <p className="sr-only">
+            Hello Neo voice is on — change in Profile; keep app open.
           </p>
         ) : null}
         {hint ? (

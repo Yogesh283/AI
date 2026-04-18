@@ -33,8 +33,7 @@ public class MainActivity extends BridgeActivity {
     public void onResume() {
         super.onResume();
         ensureMicPermission();
-        // App foreground (especially Voice page): disable always-on wake listener to avoid interference.
-        maybeStopWakeService();
+        /* Do not stop wake here — onResume runs after unlock; killing wake prevented lock-screen Hello Neo. */
         // WebView: allow TTS / Web Audio without an extra user gesture (fixes silent voice on many APK builds).
         View decor = getWindow().getDecorView();
         decor.post(this::configureWebViewForVoice);
@@ -68,8 +67,13 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onPause() {
         super.onPause();
-        /* Do not start wake / mic in background — avoids OEM “tun tun” beeps and pocket triggers. Voice = in-app only. */
-        maybeStopWakeService();
+        /*
+         * Default: stop native wake when leaving the activity (other app / lock) — avoids pocket noise.
+         * If user enabled “listen when screen is off”, keep the foreground wake service running while locked.
+         */
+        if (!NeoPrefs.isWakeListenScreenOff(this)) {
+            maybeStopWakeService();
+        }
     }
 
     private void ensureMicPermission() {

@@ -4,9 +4,9 @@
     <string name="title_activity_main">NeoAssistant</string>
     <string name="package_name">com.neo.assistant</string>
     <string name="custom_url_scheme">com.neo.assistant</string>
-    <string name="neo_wake_channel_name">Neo wake listener</string>
-    <string name="neo_wake_channel_desc">Always-on wake word listener for Hello Neo commands</string>
-    <string name="neo_wake_notification_title">Neo assistant is active</string>
-    <string name="neo_wake_notification_text">Listening for \"Hello Neo\" (open WhatsApp, Telegram, call number)</string>
+    <string name="neo_wake_channel_name">Neo</string>
+    <string name="neo_wake_channel_desc">Runs only while you turned assistant on in the app</string>
+    <string name="neo_wake_notification_title">Neo</string>
+    <string name="neo_wake_notification_text">Ready when you need it</string>
     <string name="neo_wake_stop">Stop</string>
 </resources>

@@ -16,3 +16,15 @@ export function preferOpenAiTtsForVoiceUi(): boolean {
   if (/\bwv\b/i.test(ua)) return true;
   return false;
 }
+
+/**
+ * After assistant TTS, wait before reopening the mic — avoids Android/WebView glitchy capture when
+ * playback just released audio focus (robotic / late / noisy first words).
+ */
+export function voiceChatResumeMicDelayMs(): number {
+  if (typeof window === "undefined") return 220;
+  if (isNativeCapacitor()) return 620;
+  const ua = navigator.userAgent || "";
+  if (/Android|iPhone|iPad|iPod|Mobile/i.test(ua)) return 480;
+  return 260;
+}

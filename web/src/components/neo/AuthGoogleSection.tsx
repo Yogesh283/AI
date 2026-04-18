@@ -12,11 +12,13 @@ type Intent = "signin" | "signup";
 export function AuthGoogleSection({
   intent,
   onCredential,
+  onGoogleError,
   disabled,
   layout = "afterForm",
 }: {
   intent: Intent;
   onCredential: (idToken: string) => void | Promise<void>;
+  onGoogleError?: (message: string) => void;
   disabled: boolean;
   /** `beforeForm` — Continue with Google first; `afterForm` — below the password form. */
   layout?: "beforeForm" | "afterForm";
@@ -70,6 +72,7 @@ export function AuthGoogleSection({
         intent={intent}
         disabled={disabled}
         onCredential={onCredential}
+        onGoogleError={onGoogleError}
       />
     ) : (
       <>

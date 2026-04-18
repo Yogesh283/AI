@@ -116,16 +116,39 @@ export async function playMp3BlobWithLipSync(
     audio.onended = () => {
       stopRafLoop();
       mouthShapeRef.current = { ...EMPTY_MOUTH_SHAPE };
-      cleanupAudioGraph();
-      URL.revokeObjectURL(url);
-      resolve();
+      try {
+        audio.pause();
+      } catch {
+        /* ignore */
+      }
+      /* Let the output device settle before closing Web Audio (fewer glitches when mic starts next). */
+      requestAnimationFrame(() => {
+        cleanupAudioGraph();
+        try {
+          URL.revokeObjectURL(url);
+        } catch {
+          /* ignore */
+        }
+        resolve();
+      });
     };
     audio.onerror = () => {
       stopRafLoop();
       mouthShapeRef.current = { ...EMPTY_MOUTH_SHAPE };
-      cleanupAudioGraph();
-      URL.revokeObjectURL(url);
-      reject(new Error("Audio playback error"));
+      try {
+        audio.pause();
+      } catch {
+        /* ignore */
+      }
+      requestAnimationFrame(() => {
+        cleanupAudioGraph();
+        try {
+          URL.revokeObjectURL(url);
+        } catch {
+          /* ignore */
+        }
+        reject(new Error("Audio playback error"));
+      });
     };
 
     if (ctx.state === "suspended") {
@@ -209,6 +232,12 @@ async function playMp3BlobSimple(blob: Blob): Promise<void> {
 
   await new Promise<void>((resolve, reject) => {
     audio.onended = () => {
+      try {
+        audio.pause();
+        audio.removeAttribute("src");
+      } catch {
+        /* ignore */
+      }
       try {
         URL.revokeObjectURL(url);
       } catch {

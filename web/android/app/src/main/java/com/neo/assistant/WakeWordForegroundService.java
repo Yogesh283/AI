@@ -27,6 +27,8 @@ import java.util.regex.Pattern;
 public class WakeWordForegroundService extends Service {
     public static final String ACTION_START = "com.neo.assistant.action.START_WAKE";
     public static final String ACTION_STOP = "com.neo.assistant.action.STOP_WAKE";
+    /** Extra boolean: when true, keep listening after screen off (more battery / OEM quirks possible). */
+    public static final String EXTRA_SCREEN_OFF_LISTEN = "screen_off_listen";
 
     private static final String CHANNEL_ID = "neo_wake_channel_silent_v2";
     private static final int NOTIFICATION_ID = 9001;
@@ -34,6 +36,8 @@ public class WakeWordForegroundService extends Service {
     private SpeechRecognizer recognizer;
     private Intent recognizerIntent;
     private boolean shouldListen = false;
+    /** When false, pause mic when display is off (default). When true, try to keep wake for lock-screen use. */
+    private boolean listenScreenOff = false;
     private PowerManager.WakeLock wakeLock;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private BroadcastReceiver screenReceiver;
@@ -47,8 +51,9 @@ public class WakeWordForegroundService extends Service {
         registerScreenStateReceiver();
     }
 
-    /** While display is off, do not run speech recognition — avoids OEM “beep” / tun-tun on each start cycle in pocket. */
-    private boolean isDeviceInteractive() {
+    /** When {@link #listenScreenOff} is false, skip work while display is off (pocket / OEM beeps). */
+    private boolean mayUseMicNow() {
+        if (listenScreenOff) return true;
         PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
         return pm == null || pm.isInteractive();
     }
@@ -59,7 +64,9 @@ public class WakeWordForegroundService extends Service {
             public void onReceive(Context context, Intent intent) {
                 if (intent == null || intent.getAction() == null) return;
                 if (Intent.ACTION_SCREEN_OFF.equals(intent.getAction())) {
-                    stopListeningSilently();
+                    if (!listenScreenOff) {
+                        stopListeningSilently();
+                    }
                 } else if (Intent.ACTION_SCREEN_ON.equals(intent.getAction()) && shouldListen) {
                     restartWithDelay(500);
                 }
@@ -94,6 +101,13 @@ public class WakeWordForegroundService extends Service {
         if (ACTION_STOP.equals(action)) {
             stopSelf();
             return START_NOT_STICKY;
+        }
+
+        if (intent != null && intent.hasExtra(EXTRA_SCREEN_OFF_LISTEN)) {
+            listenScreenOff = intent.getBooleanExtra(EXTRA_SCREEN_OFF_LISTEN, false);
+            NeoPrefs.setWakeListenScreenOff(this, listenScreenOff);
+        } else {
+            listenScreenOff = NeoPrefs.isWakeListenScreenOff(this);
         }
 
         Notification notification = buildNotification();
@@ -150,20 +164,20 @@ public class WakeWordForegroundService extends Service {
             @Override
             public void onError(int error) {
                 if (!shouldListen) return;
-                if (!isDeviceInteractive()) return;
+                if (!mayUseMicNow()) return;
                 restartWithDelay(450);
             }
 
             @Override
             public void onResults(android.os.Bundle results) {
                 handleResults(results);
-                if (!shouldListen || !isDeviceInteractive()) return;
+                if (!shouldListen || !mayUseMicNow()) return;
                 restartWithDelay(120);
             }
 
             @Override
             public void onPartialResults(android.os.Bundle partialResults) {
-                if (!isDeviceInteractive()) return;
+                if (!mayUseMicNow()) return;
                 handleResults(partialResults);
             }
         });
@@ -178,7 +192,7 @@ public class WakeWordForegroundService extends Service {
     }
 
     private void handleResults(android.os.Bundle bundle) {
-        if (!isDeviceInteractive()) return;
+        if (!mayUseMicNow()) return;
         if (bundle == null) return;
         ArrayList<String> matches = bundle.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
         if (matches == null || matches.isEmpty()) return;
@@ -192,7 +206,7 @@ public class WakeWordForegroundService extends Service {
             return;
         }
 
-        NeoCommandRouter.execute(this, command);
+        NeoCommandRouter.executeWithBusyAck(this, command);
     }
 
     private String extractWakeCommand(String said) {
@@ -238,11 +252,11 @@ public class WakeWordForegroundService extends Service {
 
     private void startListeningSafe() {
         if (!shouldListen || recognizer == null || recognizerIntent == null) return;
-        if (!isDeviceInteractive()) return;
+        if (!mayUseMicNow()) return;
         try {
             recognizer.startListening(recognizerIntent);
         } catch (Exception ignored) {
-            if (isDeviceInteractive()) {
+            if (mayUseMicNow()) {
                 restartWithDelay(700);
             }
         }
@@ -252,7 +266,7 @@ public class WakeWordForegroundService extends Service {
         mainHandler.removeCallbacksAndMessages(null);
         mainHandler.postDelayed(() -> {
             if (!shouldListen) return;
-            if (!isDeviceInteractive()) return;
+            if (!mayUseMicNow()) return;
             startListeningSafe();
         }, ms);
     }

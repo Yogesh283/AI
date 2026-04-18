@@ -44,7 +44,7 @@ import {
 import { useWakeLock } from "@/lib/useWakeLock";
 import { writeNeoAlexaListen } from "@/lib/neoAssistantActive";
 import { isNativeCapacitor } from "@/lib/nativeAppLinks";
-import { preferOpenAiTtsForVoiceUi } from "@/lib/voiceTtsPolicy";
+import { preferOpenAiTtsForVoiceUi, voiceChatResumeMicDelayMs } from "@/lib/voiceTtsPolicy";
 import { executeNeoActions, processNeoCommandLine } from "@/lib/neoVoiceCommands";
 
 const VOICE_HISTORY_PREFIX = "neo-voice-history-";
@@ -337,6 +337,7 @@ export default function VoicePage() {
         stopRecognitionOnly();
         stopVoiceOutput();
         speakGenerationRef.current += 1;
+        speakingRef.current = false;
         setSpeaking(false);
         return;
       }
@@ -347,7 +348,7 @@ export default function VoicePage() {
           window.setTimeout(() => {
             if (!sessionOnRef.current || micPausedRef.current) return;
             beginListeningRef.current();
-          }, 100);
+          }, Math.max(200, Math.round(voiceChatResumeMicDelayMs() * 0.4)));
         }
         return;
       }
@@ -402,6 +403,7 @@ export default function VoicePage() {
           bits.push(normalizeVoicePersonaId(merged.personaId) === "arjun" ? "Male voice." : "Female voice.");
         const ack = bits.join(" ") || "Okay.";
         const gen = ++speakGenerationRef.current;
+        speakingRef.current = true;
         setSpeaking(true);
         try {
           primeSpeechVoices();
@@ -419,7 +421,10 @@ export default function VoicePage() {
         } catch {
           /* ignore */
         } finally {
-          if (speakGenerationRef.current === gen) setSpeaking(false);
+          if (speakGenerationRef.current === gen) {
+            speakingRef.current = false;
+            setSpeaking(false);
+          }
           resumeMicAfterAssistantRef.current();
         }
         return;
@@ -440,6 +445,7 @@ export default function VoicePage() {
               /\b(what\s+)?(is\s+)?(the\s+)?time\b|\btime\s+now\b|\bcurrent\s+time\b|समय|टाइम\b/.test(t);
             if (!javaSpeaksTimeAlready) {
               const gen = ++speakGenerationRef.current;
+              speakingRef.current = true;
               setSpeaking(true);
               try {
                 unlockWebAudioAndSpeechFromUserGesture();
@@ -459,7 +465,10 @@ export default function VoicePage() {
               } catch {
                 /* ignore */
               } finally {
-                if (speakGenerationRef.current === gen) setSpeaking(false);
+                if (speakGenerationRef.current === gen) {
+                  speakingRef.current = false;
+                  setSpeaking(false);
+                }
                 resumeMicAfterAssistantRef.current();
               }
             } else {
@@ -482,6 +491,7 @@ export default function VoicePage() {
           historyRef.current = next;
           setHistory(next);
           const gen = ++speakGenerationRef.current;
+          speakingRef.current = true;
           setSpeaking(true);
           try {
             unlockWebAudioAndSpeechFromUserGesture();
@@ -505,7 +515,10 @@ export default function VoicePage() {
                 : `${msg} — Volume / speakers check karein; Chrome ya Edge try karein.`,
             );
           } finally {
-            if (speakGenerationRef.current === gen) setSpeaking(false);
+            if (speakGenerationRef.current === gen) {
+              speakingRef.current = false;
+              setSpeaking(false);
+            }
             resumeMicAfterAssistantRef.current();
           }
           return;
@@ -529,6 +542,7 @@ export default function VoicePage() {
         const mood = inferVoiceReplyMood(reply);
 
         const gen = ++speakGenerationRef.current;
+        speakingRef.current = true;
         setSpeaking(true);
         try {
           primeSpeechVoices();
@@ -552,7 +566,10 @@ export default function VoicePage() {
               : `${msg} — Volume / speakers check karein; Chrome ya Edge try karein.`
           );
         } finally {
-          if (speakGenerationRef.current === gen) setSpeaking(false);
+          if (speakGenerationRef.current === gen) {
+            speakingRef.current = false;
+            setSpeaking(false);
+          }
           resumeMicAfterAssistantRef.current();
         }
       } catch (e) {
@@ -562,6 +579,7 @@ export default function VoicePage() {
             : "Chat API failed — check /neo-api/health on this site."
         );
         setThinking(false);
+        speakingRef.current = false;
         setSpeaking(false);
         resumeMicAfterAssistantRef.current();
       }
@@ -582,6 +600,9 @@ export default function VoicePage() {
     if (thinkingRef.current) return;
     if (speakingRef.current) return;
     if (listeningActiveRef.current) return;
+    /* Clear any TTS graph before capture — fixes garbled / delayed first words after assistant audio (esp. APK). */
+    stopAvatarTtsAudio();
+    stopSpeaking();
     /* Unlock already ran on “Tap to speak” — avoid double silent-audio blips on APK. */
     if (!isSpeechRecognitionSupported()) {
       listeningActiveRef.current = true;
@@ -702,12 +723,13 @@ export default function VoicePage() {
     beginListeningRef.current = beginListening;
     resumeMicAfterAssistantRef.current = () => {
       window.setTimeout(() => {
+        stopVoiceOutput();
         if (!sessionOnRef.current || micPausedRef.current || thinkingRef.current) return;
         if (listeningActiveRef.current) return;
         beginListeningRef.current();
-      }, 180);
+      }, voiceChatResumeMicDelayMs());
     };
-  }, [beginListening]);
+  }, [beginListening, stopVoiceOutput]);
 
   /** Manual mic / interrupt. After each assistant reply we auto-reopen the mic (unless paused). Tap during AI speech = interrupt + listen. */
   const tapToSpeak = useCallback(() => {
@@ -719,6 +741,7 @@ export default function VoicePage() {
       unlockWebAudioAndSpeechFromUserGesture();
       speakGenerationRef.current += 1;
       stopVoiceOutput();
+      speakingRef.current = false;
       setSpeaking(false);
       stopBargeInRecognition();
       beginListeningRef.current();
@@ -785,6 +808,7 @@ export default function VoicePage() {
       bargeFired = true;
       speakGenerationRef.current += 1;
       stopVoiceOutput();
+      speakingRef.current = false;
       setSpeaking(false);
       stopBargeInRecognition();
       sendTextRef.current(text);

@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { AppSidebar } from "@/components/neo/AppSidebar";
 import { NeoBackground } from "@/components/neo/NeoBackground";
+import { NeoWakeNativeSync } from "@/components/neo/NeoWakeNativeSync";
 import { SessionExpiryBridge } from "@/components/neo/SessionExpiryBridge";
 
 export default function MainLayout({
@@ -15,6 +16,7 @@ export default function MainLayout({
   return (
     <div className="relative min-h-[100dvh] pb-[env(safe-area-inset-bottom,0px)]">
       <SessionExpiryBridge />
+      <NeoWakeNativeSync />
       <NeoBackground stars={12} />
       <div
         className={`relative z-[1] flex min-h-0 ${

@@ -8,6 +8,8 @@ import android.media.AudioManager;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.provider.ContactsContract;
+import android.os.Handler;
+import android.os.Looper;
 import android.speech.tts.TextToSpeech;
 import androidx.core.content.ContextCompat;
 import java.util.Locale;
@@ -18,12 +20,45 @@ public final class NeoCommandRouter {
     private static TextToSpeech tts;
     private static boolean ttsReady = false;
     private static String pendingSpeech;
+    private static final Handler busyAckHandler = new Handler(Looper.getMainLooper());
+    private static Runnable pendingBusyRunnable;
 
     private NeoCommandRouter() {}
+
+    /**
+     * Wake listener: short spoken line before opening apps (less “empty mic”), then run {@link #execute}.
+     * Time/volume answer immediately; “read my messages” gets an explanation only.
+     */
+    static void executeWithBusyAck(Context context, String raw) {
+        busyAckHandler.removeCallbacksAndMessages(null);
+        pendingBusyRunnable = null;
+        String t = normalize(raw);
+        if (t.isEmpty()) return;
+        if (isReadMessagesIntent(t)) {
+            speak(context, explainCantReadMessages());
+            return;
+        }
+        if (shouldSkipBusyAck(t)) {
+            execute(context, raw);
+            return;
+        }
+        speak(context, workingAckPhrase(raw));
+        final Context appCtx = context.getApplicationContext();
+        pendingBusyRunnable =
+            () -> {
+                pendingBusyRunnable = null;
+                execute(appCtx, raw);
+            };
+        busyAckHandler.postDelayed(pendingBusyRunnable, 1150);
+    }
 
     static boolean execute(Context context, String raw) {
         String text = normalize(raw);
         if (text.isEmpty()) return false;
+        if (isReadMessagesIntent(text)) {
+            speak(context, explainCantReadMessages());
+            return true;
+        }
         String digits = extractDigits(text);
 
         if (isTimeIntent(text)) {
@@ -105,6 +140,8 @@ public final class NeoCommandRouter {
     }
 
     static void shutdown() {
+        busyAckHandler.removeCallbacksAndMessages(null);
+        pendingBusyRunnable = null;
         if (tts != null) {
             try {
                 tts.stop();
@@ -231,6 +268,62 @@ public final class NeoCommandRouter {
 
     private static String normalize(String s) {
         return s == null ? "" : s.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").trim();
+    }
+
+    private static boolean isReadMessagesIntent(String t) {
+        boolean msgCtx =
+            t.contains("message")
+                || t.contains("मैसेज")
+                || t.contains("sms")
+                || t.contains("notification")
+                || t.contains("notif")
+                || t.contains("whatsapp")
+                || t.contains("telegram")
+                || t.contains("व्हाट्स")
+                || t.contains("टेली");
+        if (!msgCtx) return false;
+        boolean readish =
+            t.contains("read")
+                || t.contains("padho")
+                || t.contains("पढ़")
+                || t.contains("dikhao")
+                || t.contains("दिखा")
+                || t.contains("whose")
+                || t.contains("what did")
+                || t.contains("kya bola")
+                || t.contains("क्या बोल")
+                || t.contains("kis ka")
+                || t.contains("किस का")
+                || t.contains("kaun sa")
+                || t.contains("कौन सा")
+                || t.contains("last message")
+                || t.matches(".*\\bcheck\\b.*\\b(message|messages|sms|notification|notif)\\b.*")
+                || t.matches(".*\\b(message|messages|sms)\\b.*\\bcheck\\b.*");
+        boolean openOnly =
+            (t.contains("open") || t.contains("launch") || t.contains("start") || t.contains("खोल"))
+                && (t.contains("whatsapp") || t.contains("telegram"));
+        return readish && !openOnly;
+    }
+
+    private static String explainCantReadMessages() {
+        if ("hi".equals(Locale.getDefault().getLanguage())) {
+            return "व्हाट्सऐप या टेलीग्राम के अंदर के मैसेज की पूरी डिटेल यहाँ से नहीं पढ़ सकते। बोलिए: नियो, व्हाट्सऐप खोलो — फिर ऐप में देखें।";
+        }
+        return "I can't read full WhatsApp or Telegram message text from here. Say Neo, open WhatsApp — then read inside the app.";
+    }
+
+    private static boolean shouldSkipBusyAck(String t) {
+        return isTimeIntent(t) || isVolumeIntent(t);
+    }
+
+    /** Gender-neutral line; matches common Indian assistant tone. */
+    private static String workingAckPhrase(String raw) {
+        boolean hindiCtx =
+            "hi".equals(Locale.getDefault().getLanguage()) || (raw != null && raw.matches(".*[\\u0900-\\u097F].*"));
+        if (hindiCtx) {
+            return "जी, अभी चेक करते हैं।";
+        }
+        return "On it — just a moment.";
     }
 
     private static boolean isWhatsAppIntent(String t) {

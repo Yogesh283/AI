@@ -39,6 +39,11 @@ export type NeoProcessOptions = {
   speechLang?: VoiceSpeechLangCode;
 };
 
+/** After a “busy” line, skip repeating a generic “Opening …” TTS. */
+export function isShortOpenActionReply(reply: string): boolean {
+  return /^Opening (music|contacts|YouTube|WhatsApp|Telegram)\.?$/i.test(reply.trim());
+}
+
 /**
  * Detect wake anywhere (earliest match). English: **Neo** alone or after hello/hi/hey.
  * Hindi: **नियो** alone or after greeting.
@@ -92,6 +97,30 @@ export function runNeoIntents(q: string, silentReplies = false): { reply: string
   const trimmed = q.trim();
   if (!trimmed) {
     return { reply: "", actions: [] };
+  }
+
+  const openAppOnly =
+    /\b(open|launch|start|show|खोल|खोलो)\b/i.test(trimmed) &&
+    /\b(whatsapp|telegram|youtube|music|contact|contacts)\b/i.test(trimmed);
+  const wantsReadInbox =
+    (
+      /\b(read|padho|पढ़|dikhao|दिखा|whose|what\s+did|kya\s+bola|क्या\s+बोल|kis\s*ka|किस\s*का|kaun\s*sa|कौन\s*सा|last\s+message)\b/i.test(
+        trimmed,
+      ) ||
+      /\b(check)\b.*\b(message|messages|sms|मैसेज|notification|notif)\b/i.test(trimmed) ||
+      /\b(message|messages|sms|मैसेज)\b.*\b(check)\b/i.test(trimmed)
+    ) &&
+    /\b(message|messages|sms|मैसेज|chat|whatsapp|telegram|व्हाट्स|टेली)\b/i.test(trimmed);
+  if (wantsReadInbox && !openAppOnly) {
+    const useHindi = /[\u0900-\u097F]/.test(trimmed);
+    return {
+      reply: silentReplies
+        ? ""
+        : useHindi
+          ? "व्हाट्सऐप या टेलीग्राम के अंदर के मैसेज की पूरी डिटेल यहाँ से नहीं पढ़ सकते। बोलिए: नियो, व्हाट्सऐप खोलो — फिर ऐप में देखें।"
+          : "I can't read full WhatsApp or Telegram message text from here for privacy. Say Neo, open WhatsApp — then read inside the app.",
+      actions: [],
+    };
   }
 
   const timeIntent =

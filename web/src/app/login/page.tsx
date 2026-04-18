@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { AuthBottomNav } from "@/components/neo/AuthBottomNav";
 import { NeoPublicShell } from "@/components/neo/NeoPublicShell";
 import { GradientButton } from "@/components/neo/GradientButton";
 import { AuthGoogleSection } from "@/components/neo/AuthGoogleSection";
+import { useNativeAuthResumeRedirect } from "@/lib/useNativeAuthResumeRedirect";
 import { useSiteBrand } from "@/components/SiteBrandProvider";
 import { getStoredToken, googleLoginApi, loginApi, saveSession } from "@/lib/auth";
 
@@ -92,6 +94,7 @@ export default function LoginPage() {
             intent="signin"
             disabled={loading || googleLoading}
             onCredential={onGoogleCredential}
+            onGoogleError={(msg) => setErr(msg)}
           />
 
           <form onSubmit={onSubmit} className="mt-10 flex flex-col gap-5">
@@ -146,15 +149,7 @@ export default function LoginPage() {
             </GradientButton>
           </form>
 
-          <p className="mt-8 text-center text-sm text-white/45">
-            New here?{" "}
-            <Link
-              href="/register"
-              className="font-semibold text-[#00D4FF] hover:underline"
-            >
-              Create an account
-            </Link>
-          </p>
+          <AuthBottomNav current="login" />
       </div>
     </NeoPublicShell>
   );

@@ -68,12 +68,11 @@ export function voiceLangLabel(code: VoiceSpeechLangCode): string {
 export function neoWakeAckPhrase(code: VoiceSpeechLangCode): string {
   switch (code) {
     case "hi-IN":
-      return "हाँ, सुन रहा हूँ। अब बताइए।";
+      return "जी, सुन रहे हैं। अब बताइए क्या करना है — जैसे व्हाट्सऐप खोलो या यूट्यूब।";
     case "en-IN":
     case "en-US":
-      return "Yes, I heard you. Go ahead.";
+      return "Yes — what would you like? For example, open WhatsApp, Telegram, or YouTube.";
     case "ta-IN":
-      return "Yes, I heard you. Go ahead.";
     case "te-IN":
     case "bn-IN":
     case "mr-IN":
@@ -81,8 +80,9 @@ export function neoWakeAckPhrase(code: VoiceSpeechLangCode): string {
     case "kn-IN":
     case "ml-IN":
     case "pa-IN":
+      return "Yes — what would you like me to do?";
     case "ur-IN":
-      return "Yes, I heard you. Go ahead.";
+      return "جی، سن رہے ہیں۔ اب بتائیں کیا کرنا ہے۔";
     case "es-ES":
       return "Sí, te escucho. Dime.";
     case "fr-FR":
@@ -100,8 +100,37 @@ export function neoWakeAckPhrase(code: VoiceSpeechLangCode): string {
     case "zh-CN":
       return "好的，我听到了。请说。";
     default:
-      return "Yes, I heard you. Go ahead.";
+      return "Yes — what would you like me to do?";
   }
+}
+
+/**
+ * Spoken right before running an app / action — feels human, avoids an empty “mic is on” moment.
+ * Gender matches Hello Neo TTS setting in Profile.
+ */
+export function neoWorkingAckPhrase(
+  code: VoiceSpeechLangCode,
+  gender: "male" | "female" = "female",
+): string {
+  const maleHi = "जी, मैं अभी चेक करता हूँ।";
+  const femaleHi = "जी, मैं अभी चेक करती हूँ।";
+  const hi = gender === "male" ? maleHi : femaleHi;
+  const en = "On it — just a moment.";
+  if (code === "hi-IN" || code === "ur-IN") return hi;
+  if (code.startsWith("en")) return en;
+  if (
+    code === "ta-IN" ||
+    code === "te-IN" ||
+    code === "bn-IN" ||
+    code === "mr-IN" ||
+    code === "gu-IN" ||
+    code === "kn-IN" ||
+    code === "ml-IN" ||
+    code === "pa-IN"
+  ) {
+    return hi;
+  }
+  return en;
 }
 
 export function ackPhraseForLang(code: VoiceSpeechLangCode): string {

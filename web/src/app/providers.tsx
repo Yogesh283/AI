@@ -20,5 +20,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
   }, [buildId]);
 
   if (!clientId) return <>{children}</>;
-  return <GoogleOAuthProvider clientId={clientId}>{children}</GoogleOAuthProvider>;
+  /* key: remount GSI when client id arrives from fetch — avoids stale init in APK WebView. */
+  return (
+    <GoogleOAuthProvider key={clientId} clientId={clientId}>
+      {children}
+    </GoogleOAuthProvider>
+  );
 }
