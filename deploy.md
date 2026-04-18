@@ -257,6 +257,14 @@ Phone ko USB se PC se jodo, **USB debugging** on. WebView ko **`http://localhost
 
 **Live site test** (USB ke bina): `npm run cap:sync:android:prod` phir Gradle build — WebView `https://myneoxai.com` load karega.
 
+### APK: Login / Register — Continue with Google
+
+1. **WebView (native):** `MainActivity` में third-party cookies + DOM storage on hai taake `accounts.google.com` iframe / OAuth state kaam kare.
+2. **Google Cloud Console → OAuth 2.0 Client IDs → Web client** (jo ID `NEXT_PUBLIC_GOOGLE_CLIENT_ID` / API se milta hai):
+   - **Authorized JavaScript origins** mein wohi **HTTPS origin** add karo jahan se APK WebView page load hota hai (e.g. `https://myneoxai.com`). Local APK + `adb reverse` par `http://localhost:3000` bhi add kar sakte ho agar wahi client ID use ho.
+3. **Backend:** `.env` mein `GOOGLE_CLIENT_IDS` (comma-separated) mein **usi Web client** ka ID hona chahiye jo frontend token ke liye use ho.
+4. **Build:** Web bundle mein client ID empty na ho — prod build se pehle env verify karo.
+
 
 
 

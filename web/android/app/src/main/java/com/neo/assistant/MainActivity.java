@@ -3,8 +3,10 @@ package com.neo.assistant;
 import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
+import android.webkit.CookieManager;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import androidx.core.app.ActivityCompat;
@@ -39,6 +41,7 @@ public class MainActivity extends BridgeActivity {
         decor.postDelayed(this::configureWebViewForVoice, 400);
     }
 
+    /** TTS (no gesture) + Google Sign-In iframe (accounts.google.com cookies in WebView). */
     private void configureWebViewForVoice() {
         try {
             Bridge bridge = getBridge();
@@ -47,6 +50,12 @@ public class MainActivity extends BridgeActivity {
             if (wv == null) return;
             WebSettings s = wv.getSettings();
             s.setMediaPlaybackRequiresUserGesture(false);
+            s.setDomStorageEnabled(true);
+            CookieManager cm = CookieManager.getInstance();
+            cm.setAcceptCookie(true);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                cm.setAcceptThirdPartyCookies(wv, true);
+            }
         } catch (Throwable ignored) {
         }
     }
