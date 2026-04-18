@@ -54,8 +54,8 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onPause() {
         super.onPause();
-        // App goes background/lock-screen: re-enable wake listener.
-        maybeStartWakeService();
+        /* Do not start wake / mic in background — avoids OEM “tun tun” beeps and pocket triggers. Voice = in-app only. */
+        maybeStopWakeService();
     }
 
     private void ensureMicPermission() {
@@ -73,20 +73,7 @@ public class MainActivity extends BridgeActivity {
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode != REQ_MIC) return;
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-            == PackageManager.PERMISSION_GRANTED) {
-            maybeStartWakeService();
-        }
-    }
-
-    private void maybeStartWakeService() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-            != PackageManager.PERMISSION_GRANTED) {
-            return;
-        }
-        Intent service = new Intent(this, WakeWordForegroundService.class);
-        service.setAction(WakeWordForegroundService.ACTION_START);
-        ContextCompat.startForegroundService(this, service);
+        /* Mic permission does not auto-start background wake listener (see onPause). */
     }
 
     private void maybeStopWakeService() {

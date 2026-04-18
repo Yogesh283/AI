@@ -87,6 +87,13 @@ export default function LoginPage() {
             </p>
           ) : null}
 
+          <AuthGoogleSection
+            layout="beforeForm"
+            intent="signin"
+            disabled={loading || googleLoading}
+            onCredential={onGoogleCredential}
+          />
+
           <form onSubmit={onSubmit} className="mt-10 flex flex-col gap-5">
             <div>
               <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/40">
@@ -138,12 +145,6 @@ export default function LoginPage() {
               {loading ? "Signing in…" : "Sign in"}
             </GradientButton>
           </form>
-
-          <AuthGoogleSection
-            intent="signin"
-            disabled={loading || googleLoading}
-            onCredential={onGoogleCredential}
-          />
 
           <p className="mt-8 text-center text-sm text-white/45">
             New here?{" "}

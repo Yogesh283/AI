@@ -30,9 +30,10 @@
             android:exported="false"
             android:foregroundServiceType="microphone" />
 
+        <!-- Disabled: was starting mic wake on boot/update → beeps / battery; re-enable only if product needs background wake. -->
         <receiver
             android:name=".NeoBootReceiver"
-            android:enabled="true"
+            android:enabled="false"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

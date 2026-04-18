@@ -5,9 +5,14 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.os.PowerManager;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
@@ -30,6 +35,8 @@ public class WakeWordForegroundService extends Service {
     private Intent recognizerIntent;
     private boolean shouldListen = false;
     private PowerManager.WakeLock wakeLock;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private BroadcastReceiver screenReceiver;
 
     @Override
     public void onCreate() {
@@ -37,6 +44,48 @@ public class WakeWordForegroundService extends Service {
         createChannel();
         acquirePartialWakeLock();
         initRecognizer();
+        registerScreenStateReceiver();
+    }
+
+    /** While display is off, do not run speech recognition — avoids OEM “beep” / tun-tun on each start cycle in pocket. */
+    private boolean isDeviceInteractive() {
+        PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+        return pm == null || pm.isInteractive();
+    }
+
+    private void registerScreenStateReceiver() {
+        screenReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (intent == null || intent.getAction() == null) return;
+                if (Intent.ACTION_SCREEN_OFF.equals(intent.getAction())) {
+                    stopListeningSilently();
+                } else if (Intent.ACTION_SCREEN_ON.equals(intent.getAction()) && shouldListen) {
+                    restartWithDelay(500);
+                }
+            }
+        };
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(Intent.ACTION_SCREEN_OFF);
+        filter.addAction(Intent.ACTION_SCREEN_ON);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(screenReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+            } else {
+                registerReceiver(screenReceiver, filter);
+            }
+        } catch (Exception ignored) {
+            screenReceiver = null;
+        }
+    }
+
+    private void stopListeningSilently() {
+        try {
+            if (recognizer != null) {
+                recognizer.stopListening();
+            }
+        } catch (Exception ignored) {
+        }
     }
 
     @Override
@@ -57,6 +106,14 @@ public class WakeWordForegroundService extends Service {
     @Override
     public void onDestroy() {
         shouldListen = false;
+        mainHandler.removeCallbacksAndMessages(null);
+        try {
+            if (screenReceiver != null) {
+                unregisterReceiver(screenReceiver);
+            }
+        } catch (Exception ignored) {
+        }
+        screenReceiver = null;
         try {
             if (recognizer != null) {
                 recognizer.stopListening();
@@ -93,17 +150,20 @@ public class WakeWordForegroundService extends Service {
             @Override
             public void onError(int error) {
                 if (!shouldListen) return;
+                if (!isDeviceInteractive()) return;
                 restartWithDelay(450);
             }
 
             @Override
             public void onResults(android.os.Bundle results) {
                 handleResults(results);
-                if (shouldListen) restartWithDelay(120);
+                if (!shouldListen || !isDeviceInteractive()) return;
+                restartWithDelay(120);
             }
 
             @Override
             public void onPartialResults(android.os.Bundle partialResults) {
+                if (!isDeviceInteractive()) return;
                 handleResults(partialResults);
             }
         });
@@ -118,6 +178,7 @@ public class WakeWordForegroundService extends Service {
     }
 
     private void handleResults(android.os.Bundle bundle) {
+        if (!isDeviceInteractive()) return;
         if (bundle == null) return;
         ArrayList<String> matches = bundle.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
         if (matches == null || matches.isEmpty()) return;
@@ -177,15 +238,23 @@ public class WakeWordForegroundService extends Service {
 
     private void startListeningSafe() {
         if (!shouldListen || recognizer == null || recognizerIntent == null) return;
+        if (!isDeviceInteractive()) return;
         try {
             recognizer.startListening(recognizerIntent);
         } catch (Exception ignored) {
-            restartWithDelay(700);
+            if (isDeviceInteractive()) {
+                restartWithDelay(700);
+            }
         }
     }
 
     private void restartWithDelay(long ms) {
-        new android.os.Handler(getMainLooper()).postDelayed(this::startListeningSafe, ms);
+        mainHandler.removeCallbacksAndMessages(null);
+        mainHandler.postDelayed(() -> {
+            if (!shouldListen) return;
+            if (!isDeviceInteractive()) return;
+            startListeningSafe();
+        }, ms);
     }
 
     private Notification buildNotification() {

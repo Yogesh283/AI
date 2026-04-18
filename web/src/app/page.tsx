@@ -35,10 +35,20 @@ export default function SplashPage() {
       return;
     }
     setGate("guest");
+    const splashMs = 2000;
+    const tickMs = 50;
+    const steps = Math.ceil(splashMs / tickMs);
+    const inc = 100 / steps;
     const t = setInterval(() => {
-      setP((x) => (x >= 100 ? 100 : x + 2.5));
-    }, 60);
-    return () => clearInterval(t);
+      setP((x) => (x >= 100 ? 100 : Math.min(100, x + inc)));
+    }, tickMs);
+    const goLogin = setTimeout(() => {
+      router.replace("/login");
+    }, splashMs);
+    return () => {
+      clearInterval(t);
+      clearTimeout(goLogin);
+    };
   }, [router]);
 
   if (gate === "checking" || gate === "redirect") {

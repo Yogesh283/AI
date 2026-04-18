@@ -134,21 +134,25 @@ public final class NeoCommandRouter {
             || t.contains("आवाज़");
     }
 
+    /**
+     * Voice volume commands: use flag 0 (no UI) so OEMs do not play the system “tun” / slider sound on each change.
+     */
     private static boolean handleVolumeIntent(Context context, String t) {
         AudioManager am = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
         if (am == null) return false;
         int stream = AudioManager.STREAM_MUSIC;
         int max = Math.max(1, am.getStreamMaxVolume(stream));
         int current = am.getStreamVolume(stream);
+        final int silent = 0;
 
         if (t.matches(".*\\b(mute|silent|volume\\s*off)\\b.*") || t.contains("म्यूट")) {
-            am.setStreamVolume(stream, 0, AudioManager.FLAG_SHOW_UI);
+            am.setStreamVolume(stream, 0, silent);
             return true;
         }
 
         if (t.matches(".*\\b(unmute|volume\\s*on)\\b.*")) {
             int target = Math.max(1, Math.round(max * 0.35f));
-            am.setStreamVolume(stream, target, AudioManager.FLAG_SHOW_UI);
+            am.setStreamVolume(stream, target, silent);
             return true;
         }
 
@@ -163,23 +167,23 @@ public final class NeoCommandRouter {
         if (level != null) {
             int clamped = Math.max(0, Math.min(100, level));
             int target = Math.round((clamped / 100f) * max);
-            am.setStreamVolume(stream, target, AudioManager.FLAG_SHOW_UI);
+            am.setStreamVolume(stream, target, silent);
             return true;
         }
 
         if (t.matches(".*\\b(volume\\s*(up|increase|high)|louder|raise)\\b.*")
             || t.contains("बढ़ा")) {
-            am.adjustStreamVolume(stream, AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI);
+            am.adjustStreamVolume(stream, AudioManager.ADJUST_RAISE, silent);
             return true;
         }
 
         if (t.matches(".*\\b(volume\\s*(down|decrease|low)|softer|lower)\\b.*")
             || t.contains("कम")) {
-            am.adjustStreamVolume(stream, AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI);
+            am.adjustStreamVolume(stream, AudioManager.ADJUST_LOWER, silent);
             return true;
         }
 
-        am.setStreamVolume(stream, current, AudioManager.FLAG_SHOW_UI);
+        am.setStreamVolume(stream, current, silent);
         return true;
     }
 
