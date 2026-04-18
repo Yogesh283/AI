@@ -6,15 +6,15 @@ export const NEO_ASSISTANT_ACTIVE_KEY = "neo-assistant-active";
 
 const CHANGED = "neo-assistant-active-changed";
 
-/** Default: active (on). Stored "0" = inactive. */
+/** Default: inactive until the user turns Neo on in Profile. Stored "1" = active, "0" = inactive. */
 export function readNeoAssistantActive(): boolean {
-  if (typeof window === "undefined") return true;
+  if (typeof window === "undefined") return false;
   try {
     const v = window.localStorage.getItem(NEO_ASSISTANT_ACTIVE_KEY);
-    if (v === null) return true;
+    if (v === null) return false;
     return v === "1";
   } catch {
-    return true;
+    return false;
   }
 }
 

@@ -634,7 +634,7 @@ export default function VoicePage() {
       stopSession();
       return;
     }
-    /* Silent start: no welcome TTS / no auto mic — user taps “Tap to speak” when ready. */
+    /* User gesture: unlock audio, then open session + mic once (no separate “Tap to speak” needed). */
     unlockWebAudioAndSpeechFromUserGesture();
     primeSpeechVoices();
     stopRecognitionOnly();
@@ -642,6 +642,9 @@ export default function VoicePage() {
     setErr(null);
     sessionOnRef.current = true;
     setSessionOn(true);
+    requestAnimationFrame(() => {
+      beginListeningRef.current?.();
+    });
   }, [stopSession, stopVoiceOutput]);
 
   useEffect(() => {

@@ -111,6 +111,19 @@ export function runNeoIntents(q: string, silentReplies = false): { reply: string
     return { reply: "Opening music.", actions: [{ kind: "open_url", url }] };
   }
 
+  const contactsOpen =
+    /\b(open|launch|show|start)\b.*\b(contact|contacts|phonebook|phone book|address book)\b/i.test(trimmed) ||
+    /\b(contact|contacts|phonebook|phone book)\b.*\b(open|launch|show|start)\b/i.test(trimmed) ||
+    /\b(my\s+contact|mycontact|my\s+contacts)\b/i.test(trimmed) ||
+    /(संपर्क|फोन\s*बुक).*(\bखोल|open|launch)/i.test(trimmed) ||
+    /\b(खोल|open)\b.*(संपर्क|फोन\s*बुक)/i.test(trimmed);
+  if (isNativeCapacitor() && contactsOpen) {
+    return {
+      reply: "Opening contacts.",
+      actions: [{ kind: "open_url", url: "content://com.android.contacts/contacts" }],
+    };
+  }
+
   const ytMatch = trimmed.match(
     /\b(?:play|listen(?:\s+to)?|start)\b\s*(?:song|music)?\s*(?:on\s+youtube)?\s*(.+)?$/i,
   );
@@ -255,7 +268,7 @@ export function processNeoCommandLine(
   }
 
   if (!rest) {
-    startNeoFollowUpSession(18000);
+    startNeoFollowUpSession();
     const lang = options?.speechLang ?? DEFAULT_VOICE_SPEECH_LANG;
     return { reply: neoWakeAckPhrase(lang), actions: [] };
   }

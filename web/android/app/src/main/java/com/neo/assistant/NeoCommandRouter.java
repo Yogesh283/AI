@@ -7,6 +7,7 @@ import android.content.Intent;
 import android.media.AudioManager;
 import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.provider.ContactsContract;
 import android.speech.tts.TextToSpeech;
 import androidx.core.content.ContextCompat;
 import java.util.Locale;
@@ -32,6 +33,11 @@ public final class NeoCommandRouter {
 
         if (isVolumeIntent(text)) {
             return handleVolumeIntent(context, text);
+        }
+
+        if (isContactsIntent(text)) {
+            openContactsApp(context);
+            return true;
         }
 
         if (isYouTubeMusicLaunchIntent(text)) {
@@ -247,6 +253,43 @@ public final class NeoCommandRouter {
             || t.contains("खोल");
     }
 
+    private static boolean isContactsIntent(String t) {
+        if (t.contains("play store") || t.contains("playstore") || t.contains("app store")) {
+            return false;
+        }
+        return t.matches(".*\\b(open|launch|show|start)\\b.*\\b(contact|contacts|phonebook|phone book|address book)\\b.*")
+            || t.matches(".*\\b(contact|contacts|phonebook|phone book)\\b.*\\b(open|launch|show|start)\\b.*")
+            || t.matches(".*\\b(my\\s+contact|mycontact|my\\s+contacts)\\b.*")
+            || t.contains("संपर्क खोल")
+            || t.contains("फोन बुक खोल")
+            || t.matches(".*\\b(खोल|open)\\b.*\\b(संपर्क|फोन\\s*बुक)\\b.*");
+    }
+
+    private static void openContactsApp(Context context) {
+        Intent view = new Intent(Intent.ACTION_VIEW);
+        view.setData(Uri.parse("content://com.android.contacts/contacts"));
+        view.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            context.startActivity(view);
+            return;
+        } catch (ActivityNotFoundException ignored) {
+        }
+        Intent main = new Intent(Intent.ACTION_MAIN);
+        main.addCategory(Intent.CATEGORY_APP_CONTACTS);
+        main.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            context.startActivity(main);
+            return;
+        } catch (ActivityNotFoundException ignored) {
+        }
+        Intent pick = new Intent(Intent.ACTION_PICK, ContactsContract.Contacts.CONTENT_URI);
+        pick.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            context.startActivity(pick);
+        } catch (ActivityNotFoundException ignored) {
+        }
+    }
+
     private static String extractTel(String t) {
         if (!(t.matches(".*\\b(call|dial|phone|ring)\\b.*")
             || t.contains("कॉल")
@@ -261,20 +304,40 @@ public final class NeoCommandRouter {
         return "tel:+" + digits;
     }
 
+    /**
+     * Prefer the installed app. {@code setPackage} first often makes {@code resolveActivity} null even when the app is installed;
+     * try VIEW without package so the system resolver can open the right handler, then explicit package, then launcher intent.
+     */
     private static void openAppOrStore(Context context, String pkg, Uri appUri, Uri storeUri) {
-        Intent appIntent = new Intent(Intent.ACTION_VIEW, appUri);
-        appIntent.setPackage(pkg);
-        appIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        if (appIntent.resolveActivity(context.getPackageManager()) != null) {
-            context.startActivity(appIntent);
-            return;
+        Intent viewNoPkg = new Intent(Intent.ACTION_VIEW, appUri);
+        viewNoPkg.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        if (viewNoPkg.resolveActivity(context.getPackageManager()) != null) {
+            try {
+                context.startActivity(viewNoPkg);
+                return;
+            } catch (ActivityNotFoundException ignored) {
+            }
+        }
+
+        Intent viewPkg = new Intent(Intent.ACTION_VIEW, appUri);
+        viewPkg.setPackage(pkg);
+        viewPkg.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        if (viewPkg.resolveActivity(context.getPackageManager()) != null) {
+            try {
+                context.startActivity(viewPkg);
+                return;
+            } catch (ActivityNotFoundException ignored) {
+            }
         }
 
         Intent launch = context.getPackageManager().getLaunchIntentForPackage(pkg);
         if (launch != null) {
             launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            context.startActivity(launch);
-            return;
+            try {
+                context.startActivity(launch);
+                return;
+            } catch (ActivityNotFoundException ignored) {
+            }
         }
 
         Intent storeIntent = new Intent(Intent.ACTION_VIEW, storeUri);

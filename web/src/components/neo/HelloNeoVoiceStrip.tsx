@@ -27,7 +27,9 @@ import {
   subscribeNeoAssistantActive,
 } from "@/lib/neoAssistantActive";
 
-const DEBOUNCE_MS = 650;
+/** Lower = faster command after you stop talking (Alexa-style continuous). */
+const DEBOUNCE_MS = 260;
+const FLUSH_AFTER_SPEECH_END_MS = 160;
 
 async function speakReply(text: string, lang: string) {
   primeSpeechVoices();
@@ -64,11 +66,11 @@ type Props = {
  */
 export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
   const isProfile = variant === "profile";
-  const [assistantActive, setAssistantActive] = useState(true);
+  const [assistantActive, setAssistantActive] = useState(false);
   const [listening, setListening] = useState(false);
   const [alexaMode, setAlexaMode] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
-  /** True while the post–wake-word command window is active (~18s). */
+  /** True while the post–wake-word command window is active (~25s). */
   const [neoFollowUpOpen, setNeoFollowUpOpen] = useState(false);
   const recRef = useRef<SpeechRecognition | null>(null);
   const finalBuf = useRef("");
@@ -264,6 +266,10 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
       }
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = setTimeout(flush, DEBOUNCE_MS);
+    };
+    (rec as SpeechRecognition & { onspeechend?: () => void }).onspeechend = () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = setTimeout(flush, FLUSH_AFTER_SPEECH_END_MS);
     };
     rec.onerror = (ev: SpeechRecognitionErrorEvent) => {
       const msg = speechRecognitionErrorMessage(ev.error);

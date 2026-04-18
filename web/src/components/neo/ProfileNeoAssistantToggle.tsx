@@ -9,7 +9,7 @@ import {
 } from "@/lib/neoAssistantActive";
 
 export function ProfileNeoAssistantToggle() {
-  const [active, setActive] = useState(true);
+  const [active, setActive] = useState(false);
   const [alexaListen, setAlexaListen] = useState(false);
 
   useEffect(() => {
@@ -35,6 +35,7 @@ export function ProfileNeoAssistantToggle() {
       <div className="border-b border-white/[0.07] px-5 py-3.5">
         <h2 className="text-sm font-semibold text-white/90">Neo assistant</h2>
         <p className="mt-0.5 text-xs text-white/40">
+          Starts <span className="text-white/50">Inactive</span> — turn Status to Active when you want voice commands.
           Wake with <span className="text-white/55">Neo</span>, <span className="text-white/55">Hello Neo</span>, or
           <span className="text-white/55"> Hello New</span> (speech often writes it that way) — then e.g. &quot;open my
           WhatsApp&quot;, &quot;my Telegram&quot;, or a phone number to call. This screen must be on and this app open;
