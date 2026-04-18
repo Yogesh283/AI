@@ -6,10 +6,16 @@
 export function isNativeCapacitor(): boolean {
   if (typeof window === "undefined") return false;
   try {
-    return !!(window as Window & { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.();
+    const C = (window as Window & { Capacitor?: Record<string, unknown> }).Capacitor;
+    if (!C || typeof C !== "object") return false;
+    const iso = (C as { isNativePlatform?: () => boolean }).isNativePlatform;
+    if (typeof iso === "function" && iso()) return true;
+    /* Bridge sometimes loads before `isNativePlatform` is callable — still the APK WebView. */
+    if ("Plugins" in C || "getPlatform" in C || "registerPlugin" in C) return true;
   } catch {
     return false;
   }
+  return false;
 }
 
 /** Build whatsapp:// URL (optional pre-filled text). */

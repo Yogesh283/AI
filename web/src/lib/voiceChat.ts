@@ -135,6 +135,17 @@ export function unlockWebAudioAndSpeechFromUserGesture(): void {
   } catch {
     /* ignore */
   }
+  /* Android WebView: HTMLMediaElement uses a separate unlock from AudioContext — helps MP3 TTS after async. */
+  try {
+    const a = new Audio();
+    a.setAttribute("playsInline", "true");
+    a.src =
+      "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==";
+    a.volume = 0.0001;
+    void a.play().catch(() => undefined);
+  } catch {
+    /* ignore */
+  }
   try {
     const AC =
       window.AudioContext ||

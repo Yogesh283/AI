@@ -5,7 +5,13 @@
  */
 
 import { apiOrigin } from "@/lib/apiBase";
-import { speakText, type TtsVoiceGender, type TtsSpeedPreset } from "@/lib/voiceChat";
+import { isNativeCapacitor } from "@/lib/nativeAppLinks";
+import {
+  isSpeechSynthesisSupported,
+  speakText,
+  type TtsVoiceGender,
+  type TtsSpeedPreset,
+} from "@/lib/voiceChat";
 import type { VoiceReplyMood } from "@/lib/voiceReplyMood";
 import type { KalidokitMouthShape } from "@/lib/vrmKalidokitMouth";
 import { EMPTY_MOUTH_SHAPE } from "@/lib/vrmKalidokitMouth";
@@ -138,26 +144,165 @@ export async function playMp3BlobWithLipSync(
   });
 }
 
-async function tryOpenAiTts(
+function openAiTtsVoiceId(gender?: TtsVoiceGender): string {
+  return gender === "male" ? "onyx" : "nova";
+}
+
+async function fetchOpenAiTtsBlob(
   text: string,
-  mouthShapeRef: { current: KalidokitMouthShape },
-): Promise<boolean> {
+  voiceGender?: TtsVoiceGender,
+): Promise<Blob> {
   const trimmed = (text || "").trim();
-  if (!trimmed) return false;
+  if (!trimmed) {
+    throw new Error("TTS: empty text");
+  }
 
   const res = await fetch(`${apiOrigin()}/api/voice/tts-audio`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
-    body: JSON.stringify({ text: trimmed, voice: "nova", model: "tts-1" }),
+    body: JSON.stringify({
+      text: trimmed,
+      voice: openAiTtsVoiceId(voiceGender),
+      model: "tts-1",
+    }),
   });
 
-  if (!res.ok) return false;
+  if (!res.ok) {
+    const hint = await res.text().catch(() => "");
+    throw new Error(`TTS HTTP ${res.status}: ${hint.slice(0, 200)}`);
+  }
   const blob = await res.blob();
-  if (!blob.size) return false;
+  if (!blob.size) {
+    throw new Error("TTS returned empty audio");
+  }
+  return blob;
+}
 
-  await playMp3BlobWithLipSync(blob, mouthShapeRef);
-  return true;
+/**
+ * MP3 playback without Web Audio analyser (Hello Neo strip, short replies — APK WebView has no `speechSynthesis`).
+ */
+async function playMp3BlobSimple(blob: Blob): Promise<void> {
+  stopAvatarTtsAudio();
+
+  const url = URL.createObjectURL(blob);
+  const audio = new Audio(url);
+  audio.volume = 1;
+  try {
+    audio.setAttribute("playsInline", "true");
+  } catch {
+    /* ignore */
+  }
+  activeAudio = audio;
+
+  await new Promise<void>((resolve, reject) => {
+    audio.onended = () => {
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+        /* ignore */
+      }
+      activeAudio = null;
+      resolve();
+    };
+    audio.onerror = () => {
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+        /* ignore */
+      }
+      activeAudio = null;
+      reject(new Error("Audio playback error"));
+    };
+    const start = async () => {
+      try {
+        try {
+          audio.load?.();
+        } catch {
+          /* ignore */
+        }
+        await audio.play();
+      } catch (e) {
+        try {
+          await new Promise((r) => setTimeout(r, 120));
+          await audio.play();
+        } catch (e2) {
+          try {
+            URL.revokeObjectURL(url);
+          } catch {
+            /* ignore */
+          }
+          activeAudio = null;
+          reject(e2 instanceof Error ? e2 : new Error(String(e2)));
+        }
+      }
+    };
+    void start();
+  });
+}
+
+/**
+ * APK / WebView: Web Audio `createMediaElementSource` is often broken or silent — use `<audio>` only
+ * and drive mouth shapes synthetically (same idea as `speechSynthesis` fallback).
+ */
+async function playMp3BlobSimpleWithSyntheticMouth(
+  blob: Blob,
+  mouthShapeRef: { current: KalidokitMouthShape },
+): Promise<void> {
+  stopRafLoop();
+
+  let rafId = 0;
+  let stopped = false;
+  const loop = () => {
+    if (stopped) return;
+    const t = performance.now() * 0.001;
+    mouthShapeRef.current = syntheticMouthShapeFromTime(t);
+    rafId = requestAnimationFrame(loop);
+  };
+  rafId = requestAnimationFrame(loop);
+
+  try {
+    await playMp3BlobSimple(blob);
+  } finally {
+    stopped = true;
+    if (rafId) cancelAnimationFrame(rafId);
+    mouthShapeRef.current = { ...EMPTY_MOUTH_SHAPE };
+  }
+}
+
+async function tryOpenAiTts(
+  text: string,
+  mouthShapeRef: { current: KalidokitMouthShape },
+  voiceGender?: TtsVoiceGender,
+): Promise<void> {
+  const blob = await fetchOpenAiTtsBlob(text, voiceGender);
+
+  /* APK / WebView without `speechSynthesis`: Web Audio analyser path is flaky — simple `<audio>` MP3 only. */
+  const useSimplePlayback = isNativeCapacitor() || !isSpeechSynthesisSupported();
+  if (useSimplePlayback) {
+    await playMp3BlobSimpleWithSyntheticMouth(blob, mouthShapeRef);
+    return;
+  }
+
+  try {
+    await playMp3BlobWithLipSync(blob, mouthShapeRef);
+  } catch {
+    await playMp3BlobSimpleWithSyntheticMouth(blob, mouthShapeRef);
+  }
+}
+
+/** Server OpenAI MP3 only — no lip-sync (e.g. Profile Hello Neo). Returns false if fetch/play fails. */
+export async function tryPlayOpenAiTtsPlain(
+  text: string,
+  voiceGender?: TtsVoiceGender,
+): Promise<boolean> {
+  try {
+    const blob = await fetchOpenAiTtsBlob(text, voiceGender);
+    await playMp3BlobSimple(blob);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export type SpeakWithAvatarLipSyncOpts = {
@@ -182,10 +327,14 @@ export async function speakTextWithAvatarLipSync(
 
   if (prefer) {
     try {
-      const ok = await tryOpenAiTts(text, ref);
-      if (ok) return;
-    } catch {
-      /* fall through */
+      await tryOpenAiTts(text, ref, opts.voiceGender);
+      return;
+    } catch (e) {
+      /* No browser TTS fallback possible — surface fetch/play errors (e.g. APK WebView). */
+      if (isNativeCapacitor() || !isSpeechSynthesisSupported()) {
+        throw e instanceof Error ? e : new Error(String(e));
+      }
+      /* Desktop browser: optional Web Speech fallback below */
     }
   }
 

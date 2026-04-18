@@ -17,6 +17,7 @@ import { ProfileNeoAssistantToggle } from "@/components/neo/ProfileNeoAssistantT
 import { ProfileVoiceSettings } from "@/components/neo/ProfileVoiceSettings";
 import { getNeoAvatar, readStoredAvatarId } from "@/lib/avatars";
 import { normalizeVoicePersonaId } from "@/lib/voicePersonas";
+import { MainTopNav } from "@/components/neo/MainTopNav";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -90,17 +91,31 @@ export default function ProfilePage() {
 
   async function saveDisplayName() {
     if (!user) return;
+    const trimmed = nameDraft.trim();
+    if (!trimmed) {
+      setOkMsg(null);
+      setErr("Display name is required.");
+      return;
+    }
     setErr(null);
     setOkMsg(null);
     setSavingProfile(true);
     try {
-      const u = await patchMe({ display_name: nameDraft.trim() });
+      const u = await patchMe({ display_name: trimmed });
       setUser(u);
       setOkMsg("Profile updated.");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Save failed");
     } finally {
       setSavingProfile(false);
+    }
+  }
+
+  function goBackFromProfile() {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+    } else {
+      router.push("/dashboard");
     }
   }
 
@@ -129,25 +144,35 @@ export default function ProfilePage() {
     }
   }
 
+  const navCenter = (
+    <span className="text-sm font-semibold text-white/90">Profile</span>
+  );
+
   if (loading) {
     return (
-      <div className="relative z-[1] px-4 pb-10 pt-6 md:px-8 md:pt-8">
-        <p className="text-center text-sm text-white/45">Loading profile…</p>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#080a0f]">
+        <MainTopNav center={navCenter} />
+        <div className="relative z-[1] min-h-0 flex-1 overflow-y-auto px-4 pb-10 pt-4 md:px-8">
+          <p className="text-center text-sm text-white/45">Loading profile…</p>
+        </div>
       </div>
     );
   }
 
   if (!user) {
     return (
-      <div className="relative z-[1] px-4 pb-10 pt-6 md:px-8 md:pt-8">
-        <div className="mx-auto max-w-md rounded-[26px] border border-white/[0.08] bg-white/[0.04] p-8 text-center ring-1 ring-white/[0.06]">
-          <p className="text-white/80">Sign in to view and edit your profile.</p>
-          <Link
-            href="/login"
-            className="mt-6 inline-flex rounded-xl bg-gradient-to-r from-[#00c8f0] to-[#a855f7] px-6 py-3 text-sm font-semibold text-white"
-          >
-            Sign in
-          </Link>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#080a0f]">
+        <MainTopNav center={navCenter} />
+        <div className="relative z-[1] min-h-0 flex-1 overflow-y-auto px-4 pb-10 pt-4 md:px-8">
+          <div className="mx-auto max-w-md rounded-[26px] border border-white/[0.08] bg-white/[0.04] p-8 text-center ring-1 ring-white/[0.06]">
+            <p className="text-white/80">Sign in to view and edit your profile.</p>
+            <Link
+              href="/login"
+              className="mt-6 inline-flex rounded-xl bg-gradient-to-r from-[#00c8f0] to-[#a855f7] px-6 py-3 text-sm font-semibold text-white"
+            >
+              Sign in
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -156,7 +181,18 @@ export default function ProfilePage() {
   const isPasswordAccount = user.auth_provider === "password";
 
   return (
-    <div className="relative z-[1] px-4 pb-10 pt-6 md:px-8 md:pt-8">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#080a0f]">
+      <MainTopNav center={navCenter} />
+      <div className="flex shrink-0 items-center border-b border-white/[0.07] bg-[#080a0f]/95 px-4 py-2 md:px-8">
+        <button
+          type="button"
+          onClick={goBackFromProfile}
+          className="text-sm font-semibold text-[#00D4FF]/90 transition hover:text-[#00D4FF]"
+        >
+          ← Back
+        </button>
+      </div>
+      <div className="relative z-[1] min-h-0 flex-1 overflow-y-auto px-4 pb-10 pt-4 md:px-8">
       <div className="mx-auto max-w-3xl space-y-6">
         <div className="flex flex-col items-center text-center">
           <div className="relative mb-3 h-24 w-24 overflow-hidden rounded-full border-2 border-[#00D4FF]/35 bg-[#0a0f18] shadow-[0_0_36px_rgba(0,212,255,0.2)] ring-2 ring-black/20">
@@ -170,7 +206,9 @@ export default function ProfilePage() {
               unoptimized={avatar.imageSrc.endsWith(".svg")}
             />
           </div>
-          <h1 className="text-xl font-bold text-white">{user.display_name || "User"}</h1>
+          <h1 className="text-xl font-bold text-white">
+            {user.display_name?.trim() || "Add your display name below"}
+          </h1>
           <p className="mt-1 max-w-sm truncate text-sm text-white/45">{user.email}</p>
           <p className="mt-2 rounded-full border border-[#BD00FF]/35 bg-[#BD00FF]/10 px-4 py-1.5 text-xs font-semibold text-[#e9c2ff]">
             {user.auth_provider === "google" ? "Google account" : "Email account"}
@@ -208,7 +246,7 @@ export default function ProfilePage() {
             </div>
             <div>
               <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-white/40">
-                Display name
+                Display name <span className="text-rose-400/90">*</span>
               </label>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <input
@@ -216,17 +254,26 @@ export default function ProfilePage() {
                   onChange={(e) => setNameDraft(e.target.value)}
                   className="min-w-0 flex-1 rounded-xl border border-white/[0.12] bg-[#0c1018] px-3 py-2.5 text-sm text-white outline-none ring-1 ring-transparent focus:border-[#00D4FF]/40 focus:ring-[#00D4FF]/20"
                   maxLength={80}
+                  minLength={1}
+                  required
+                  aria-required="true"
+                  placeholder="Your name (required)"
                   autoComplete="name"
                 />
                 <button
                   type="button"
                   onClick={() => void saveDisplayName()}
-                  disabled={savingProfile || nameDraft.trim() === (user.display_name ?? "").trim()}
+                  disabled={
+                    savingProfile ||
+                    !nameDraft.trim() ||
+                    nameDraft.trim() === (user.display_name ?? "").trim()
+                  }
                   className="rounded-xl bg-gradient-to-r from-[#00c8f0] to-[#7c3aed] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_4px_20px_rgba(0,200,240,0.25)] transition hover:brightness-110 disabled:opacity-40"
                 >
                   {savingProfile ? "Saving…" : "Save name"}
                 </button>
               </div>
+              <p className="mt-1.5 text-[11px] text-white/35">Shown in the header and voice chat — cannot be empty.</p>
             </div>
 
             {isPasswordAccount ? (
@@ -323,6 +370,7 @@ export default function ProfilePage() {
         >
           Logout
         </button>
+      </div>
       </div>
     </div>
   );

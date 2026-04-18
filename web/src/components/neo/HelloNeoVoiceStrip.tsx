@@ -11,8 +11,11 @@ import {
   readHelloNeoTtsTonePreset,
   speakText,
   speechRecognitionErrorMessage,
+  stopSpeaking,
   unlockWebAudioAndSpeechFromUserGesture,
 } from "@/lib/voiceChat";
+import { tryPlayOpenAiTtsPlain, stopAvatarTtsAudio } from "@/lib/voiceAvatarTts";
+import { preferOpenAiTtsForVoiceUi } from "@/lib/voiceTtsPolicy";
 import { readStoredVoiceSpeechLang } from "@/lib/voiceLanguages";
 import { isNativeCapacitor } from "@/lib/nativeAppLinks";
 import { executeNeoActions, processNeoCommandLine } from "@/lib/neoVoiceCommands";
@@ -30,12 +33,19 @@ async function speakReply(text: string, lang: string) {
   primeSpeechVoices();
   try {
     window.speechSynthesis?.resume();
-    await speakText(text, lang, {
-      voiceGender: readHelloNeoTtsGender(),
-      speedPreset: readHelloNeoTtsSpeedPreset(),
-      tonePreset: readHelloNeoTtsTonePreset(),
-      replyMood: "neutral",
-    });
+    /* APK WebView: no usable `speechSynthesis` — same `/neo-api/api/voice/tts-audio` path as Voice chat. */
+    if (preferOpenAiTtsForVoiceUi()) {
+      const ok = await tryPlayOpenAiTtsPlain(text, readHelloNeoTtsGender());
+      if (ok) return;
+    }
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      await speakText(text, lang, {
+        voiceGender: readHelloNeoTtsGender(),
+        speedPreset: readHelloNeoTtsSpeedPreset(),
+        tonePreset: readHelloNeoTtsTonePreset(),
+        replyMood: "neutral",
+      });
+    }
   } catch {
     /* ignore */
   }
@@ -98,6 +108,8 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
   }, [assistantActive]);
 
   const stopRec = useCallback(() => {
+    stopSpeaking();
+    stopAvatarTtsAudio();
     try {
       recRef.current?.abort?.();
     } catch {

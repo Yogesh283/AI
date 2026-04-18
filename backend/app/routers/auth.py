@@ -218,7 +218,9 @@ async def patch_me(
 
     if body.display_name is not None:
         raw = body.display_name.strip()
-        dn = raw[:80] if raw else str(u.get("email", "user")).split("@")[0]
+        if not raw:
+            raise HTTPException(status_code=400, detail="display_name is required")
+        dn = raw[:80]
         u["display_name"] = dn
         set_profile(uid, {"display_name": dn})
         await update_user_display_name(uid, dn)

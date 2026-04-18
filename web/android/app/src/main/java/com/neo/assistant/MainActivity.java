@@ -21,6 +21,10 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
         ensureMicPermission();
         maybeStopWakeService();
+        // Bridge may exist before first resume — allow media playback ASAP for TTS MP3.
+        View decor = getWindow().getDecorView();
+        decor.post(this::configureWebViewForVoice);
+        decor.postDelayed(this::configureWebViewForVoice, 300);
     }
 
     @Override

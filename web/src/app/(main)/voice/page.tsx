@@ -8,13 +8,11 @@ import {
   mergeVoicePreferences,
   stripVoicePreferencePhrases,
 } from "@/lib/voicePreferenceCommands";
-import { shortDisplayNameForGreeting } from "@/lib/siteBranding";
 import {
   ackPhraseForLang,
   DEFAULT_VOICE_SPEECH_LANG,
   normalizeVoiceSpeechLang,
   readStoredVoiceSpeechLang,
-  voiceSessionWelcomeLines,
   writeStoredVoiceSpeechLang,
   type VoiceSpeechLangCode,
 } from "@/lib/voiceLanguages";
@@ -44,21 +42,11 @@ import {
 } from "@/lib/voiceChat";
 import { useWakeLock } from "@/lib/useWakeLock";
 import { writeNeoAlexaListen } from "@/lib/neoAssistantActive";
-import { isNativeCapacitor, buildWhatsAppAppUrl, openNativeDeepLink } from "@/lib/nativeAppLinks";
-import {
-  buildWhatsAppWebUrl,
-  navigateToWhatsAppWeb,
-  shouldOpenWhatsAppFromCommand,
-  tryOpenWhatsAppPopup,
-  whatsAppOpenAck,
-} from "@/lib/whatsappOpenCommand";
+import { isNativeCapacitor } from "@/lib/nativeAppLinks";
+import { preferOpenAiTtsForVoiceUi } from "@/lib/voiceTtsPolicy";
+import { executeNeoActions, processNeoCommandLine } from "@/lib/neoVoiceCommands";
 
 const VOICE_HISTORY_PREFIX = "neo-voice-history-";
-
-/**
- * Short pause after assistant audio ends before reopening the mic (avoids echo / clipped syllables).
- */
-const MIC_RESUME_AFTER_TTS_MS = 180;
 
 function IconMic({ className }: { className?: string }) {
   return (
@@ -87,6 +75,8 @@ function VoiceSessionWaveform({
   thinking: boolean;
 }) {
   if (!sessionOn) return null;
+  /* Idle: no animated bars — avoids constant “moving” UI / perceived noise on APK. */
+  if (!listening && !speaking && !thinking) return null;
   const mode = speaking ? "speaking" : listening ? "listening" : thinking ? "thinking" : "idle";
   return (
     <div className="neo-voice-bars" data-voice-mode={mode} aria-hidden>
@@ -133,15 +123,6 @@ export default function VoicePage() {
   const listeningActiveRef = useRef(false);
   /** Throttle live transcript updates — onresult can fire many times/sec and re-render the whole page. */
   const lastInterimUiMs = useRef(0);
-
-  const scheduleResumeListening = useCallback(() => {
-    window.setTimeout(() => {
-      if (!sessionOnRef.current) return;
-      /* Unstick if a previous session didn’t fire onend — otherwise beginListening no-ops forever */
-      listeningActiveRef.current = false;
-      beginListeningRef.current();
-    }, MIC_RESUME_AFTER_TTS_MS);
-  }, []);
 
   useEffect(() => {
     historyRef.current = history;
@@ -268,7 +249,7 @@ export default function VoicePage() {
   useEffect(() => {
     setSpeechSupported(isSpeechRecognitionSupported());
     /* APK WebView: speechSynthesis missing/broken — we use /api/voice/tts-audio (OpenAI MP3) instead. */
-    setTtsSupported(isSpeechSynthesisSupported() || isNativeCapacitor());
+    setTtsSupported(isSpeechSynthesisSupported() || preferOpenAiTtsForVoiceUi());
     primeSpeechVoices();
     const synth = window.speechSynthesis;
     const onVoices = () => primeSpeechVoices();
@@ -311,11 +292,6 @@ export default function VoicePage() {
     async (text: string) => {
       const t = text.trim();
       if (!t) {
-        if (sessionOnRef.current) {
-          queueMicrotask(() => {
-            if (!thinkingRef.current && !speakingRef.current) beginListeningRef.current();
-          });
-        }
         return;
       }
       setErr(null);
@@ -371,80 +347,99 @@ export default function VoicePage() {
         try {
           primeSpeechVoices();
           window.speechSynthesis?.resume();
+          unlockWebAudioAndSpeechFromUserGesture();
           await speakTextWithAvatarLipSync(ack, speakLang, {
             mouthShapeRef,
             voiceGender: speakGender,
             speedPreset: readTtsSpeedPreset(),
             replyMood: "neutral",
-            preferOpenAiTts: isNativeCapacitor(),
+            preferOpenAiTts: preferOpenAiTtsForVoiceUi(),
           });
         } catch {
           /* ignore */
         } finally {
           if (speakGenerationRef.current === gen) setSpeaking(false);
         }
-        if (sessionOnRef.current) scheduleResumeListening();
         return;
       }
 
       if (!toSend) {
-        if (sessionOnRef.current) {
-          queueMicrotask(() => {
-            if (!thinkingRef.current && !speakingRef.current) beginListeningRef.current();
-          });
-        }
         return;
       }
 
+      /* APK: open WhatsApp / Telegram / YouTube / dial / time via native — not Chrome/WebView navigation. */
       if (isNativeCapacitor()) {
         try {
           const { NeoNativeRouter } = await import("@/lib/neoNativeRouter");
           const { handled } = await NeoNativeRouter.tryRouteCommand({ text: toSend });
           if (handled) {
-            if (sessionOnRef.current) scheduleResumeListening();
+            const t = toSend.toLowerCase();
+            const javaSpeaksTimeAlready =
+              /\b(what\s+)?(is\s+)?(the\s+)?time\b|\btime\s+now\b|\bcurrent\s+time\b|समय|टाइम\b/.test(t);
+            if (!javaSpeaksTimeAlready) {
+              const gen = ++speakGenerationRef.current;
+              setSpeaking(true);
+              try {
+                unlockWebAudioAndSpeechFromUserGesture();
+                await speakTextWithAvatarLipSync(
+                  speakLang.startsWith("hi") ? "ठीक है।" : "Okay.",
+                  speakLang,
+                  {
+                    mouthShapeRef,
+                    voiceGender: speakGender,
+                    speedPreset: readTtsSpeedPreset(),
+                    replyMood: "neutral",
+                    preferOpenAiTts: preferOpenAiTtsForVoiceUi(),
+                  },
+                );
+              } catch {
+                /* ignore */
+              } finally {
+                if (speakGenerationRef.current === gen) setSpeaking(false);
+              }
+            }
             return;
           }
         } catch {
-          /* continue with JS / chat */
+          /* fall through to JS intents */
         }
-      }
 
-      if (shouldOpenWhatsAppFromCommand(toSend)) {
-        const waUrl = isNativeCapacitor() ? buildWhatsAppAppUrl(toSend) : buildWhatsAppWebUrl(toSend);
-        const popped = !isNativeCapacitor() && tryOpenWhatsAppPopup(waUrl);
-        const ack = whatsAppOpenAck(speakLang, popped ? "new-tab" : "same-tab");
-        const turnUser = { role: "user" as const, content: toSend };
-        const turnAsst = { role: "assistant" as const, content: ack };
-        const next: Turn[] = [...historyRef.current, turnUser, turnAsst];
-        historyRef.current = next;
-        setHistory(next);
-        if (!popped) {
-          if (isNativeCapacitor()) {
-            openNativeDeepLink(waUrl);
-          } else {
-            navigateToWhatsAppWeb(waUrl);
+        const neo = processNeoCommandLine(toSend, "text", { speechLang: speakLang });
+        if (neo.actions.length > 0) {
+          const turnUser = { role: "user" as const, content: toSend };
+          const turnAsst = {
+            role: "assistant" as const,
+            content: neo.reply.trim() || "Done.",
+          };
+          const next: Turn[] = [...historyRef.current, turnUser, turnAsst];
+          historyRef.current = next;
+          setHistory(next);
+          const gen = ++speakGenerationRef.current;
+          setSpeaking(true);
+          try {
+            unlockWebAudioAndSpeechFromUserGesture();
+            if (neo.reply.trim()) {
+              await speakTextWithAvatarLipSync(prepareSpeechText(neo.reply), speakLang, {
+                mouthShapeRef,
+                voiceGender: speakGender,
+                speedPreset: readTtsSpeedPreset(),
+                replyMood: "neutral",
+                preferOpenAiTts: preferOpenAiTtsForVoiceUi(),
+              });
+            }
+            executeNeoActions(neo.actions);
+          } catch (ttsErr) {
+            const msg = ttsErr instanceof Error ? ttsErr.message : "TTS failed";
+            setErr(
+              preferOpenAiTtsForVoiceUi()
+                ? `${msg} — Neo server / OpenAI reach check karein (DNS, internet).`
+                : `${msg} — Volume / speakers check karein; Chrome ya Edge try karein.`,
+            );
+          } finally {
+            if (speakGenerationRef.current === gen) setSpeaking(false);
           }
           return;
         }
-        const gen = ++speakGenerationRef.current;
-        setSpeaking(true);
-        try {
-          primeSpeechVoices();
-          window.speechSynthesis?.resume();
-          await speakTextWithAvatarLipSync(ack, speakLang, {
-            mouthShapeRef,
-            voiceGender: speakGender,
-            speedPreset: readTtsSpeedPreset(),
-            replyMood: "neutral",
-            preferOpenAiTts: isNativeCapacitor(),
-          });
-        } catch {
-          /* ignore */
-        } finally {
-          if (speakGenerationRef.current === gen) setSpeaking(false);
-        }
-        if (sessionOnRef.current) scheduleResumeListening();
-        return;
       }
 
       setThinking(true);
@@ -468,19 +463,20 @@ export default function VoicePage() {
         try {
           primeSpeechVoices();
           window.speechSynthesis?.resume();
+          unlockWebAudioAndSpeechFromUserGesture();
           await speakTextWithAvatarLipSync(prepareSpeechText(reply), speakLang, {
             mouthShapeRef,
             voiceGender: speakGender,
             speedPreset: readTtsSpeedPreset(),
             replyMood: mood,
-            preferOpenAiTts: isNativeCapacitor(),
+            preferOpenAiTts: preferOpenAiTtsForVoiceUi(),
           });
         } catch (ttsErr) {
           const msg =
             ttsErr instanceof Error ? ttsErr.message : "TTS failed";
           setErr(
-            isNativeCapacitor()
-              ? `${msg} — App se Neo server / OpenAI reach ho raha hai check karein (DNS, internet).`
+            preferOpenAiTtsForVoiceUi()
+              ? `${msg} — Neo server / OpenAI reach check karein (DNS, internet).`
               : `${msg} — Volume / speakers check karein; Chrome ya Edge try karein.`
           );
         } finally {
@@ -495,12 +491,8 @@ export default function VoicePage() {
         setThinking(false);
         setSpeaking(false);
       }
-
-      if (sessionOnRef.current) {
-        scheduleResumeListening();
-      }
     },
-    [lang, ttsGender, personaId, scheduleResumeListening, stopRecognitionOnly, stopVoiceOutput]
+    [lang, ttsGender, personaId, stopRecognitionOnly, stopVoiceOutput]
   );
 
   const beginListening = useCallback(() => {
@@ -508,8 +500,7 @@ export default function VoicePage() {
     /* Turn-taking: mic only while assistant is idle (continuous:true broke onend → speech never sent). */
     if (thinkingRef.current || speakingRef.current) return;
     if (listeningActiveRef.current) return;
-    /* Helps WebView/APK unlock TTS after mic opens (noise + autoplay policies). */
-    unlockWebAudioAndSpeechFromUserGesture();
+    /* Unlock already ran on “Tap to speak” — avoid double silent-audio blips on APK. */
     if (!isSpeechRecognitionSupported()) {
       listeningActiveRef.current = true;
       setListening(true);
@@ -541,9 +532,6 @@ export default function VoicePage() {
           void sendText(text.trim());
           return;
         }
-        queueMicrotask(() => {
-          if (!thinkingRef.current && !speakingRef.current) beginListeningRef.current();
-        });
       })();
       return;
     }
@@ -597,11 +585,6 @@ export default function VoicePage() {
         setSessionOn(false);
         return;
       }
-      if (sessionOnRef.current) {
-        queueMicrotask(() => {
-          if (!thinkingRef.current && !speakingRef.current) beginListeningRef.current();
-        });
-      }
     };
 
     rec.onend = () => {
@@ -618,10 +601,6 @@ export default function VoicePage() {
 
       if (said) {
         void sendText(said);
-      } else {
-        queueMicrotask(() => {
-          if (!thinkingRef.current && !speakingRef.current) beginListeningRef.current();
-        });
       }
     };
 
@@ -641,49 +620,29 @@ export default function VoicePage() {
     beginListeningRef.current = beginListening;
   }, [beginListening]);
 
+  /** Manual mic — no auto re-open after TTS (avoids mic on/off loop). */
+  const tapToSpeak = useCallback(() => {
+    if (!sessionOnRef.current) return;
+    if (thinkingRef.current || speakingRef.current) return;
+    if (listeningActiveRef.current) return;
+    unlockWebAudioAndSpeechFromUserGesture();
+    beginListeningRef.current();
+  }, []);
+
   const toggleMic = useCallback(() => {
     if (sessionOnRef.current) {
       stopSession();
       return;
     }
+    /* Silent start: no welcome TTS / no auto mic — user taps “Tap to speak” when ready. */
     unlockWebAudioAndSpeechFromUserGesture();
     primeSpeechVoices();
     stopRecognitionOnly();
     stopVoiceOutput();
+    setErr(null);
     sessionOnRef.current = true;
     setSessionOn(true);
-    void (async () => {
-      const u = getStoredUser();
-      const shortName = shortDisplayNameForGreeting(u?.display_name);
-      const welcome = voiceSessionWelcomeLines(lang, shortName);
-      const line = shortName ? welcome.withName : welcome.withoutName;
-      setErr(null);
-      const gen = ++speakGenerationRef.current;
-      setSpeaking(true);
-      try {
-        primeSpeechVoices();
-        window.speechSynthesis?.resume();
-        await speakTextWithAvatarLipSync(line, lang, {
-          mouthShapeRef,
-          voiceGender: ttsGender,
-          speedPreset: readTtsSpeedPreset(),
-          replyMood: "neutral",
-          preferOpenAiTts: isNativeCapacitor(),
-        });
-      } catch {
-        /* still open mic */
-      } finally {
-        if (speakGenerationRef.current === gen) setSpeaking(false);
-      }
-      if (sessionOnRef.current) {
-        window.setTimeout(() => {
-          if (!sessionOnRef.current) return;
-          listeningActiveRef.current = false;
-          beginListening();
-        }, MIC_RESUME_AFTER_TTS_MS);
-      }
-    })();
-  }, [beginListening, stopSession, lang, ttsGender, stopVoiceOutput]);
+  }, [stopSession, stopVoiceOutput]);
 
   useEffect(() => {
     return () => {
@@ -732,12 +691,13 @@ export default function VoicePage() {
         try {
           primeSpeechVoices();
           window.speechSynthesis?.resume();
+          unlockWebAudioAndSpeechFromUserGesture();
           await speakTextWithAvatarLipSync(pid === "arjun" ? "Male voice." : "Female voice.", lang, {
             mouthShapeRef,
             voiceGender: p.ttsGender,
             speedPreset: readTtsSpeedPreset(),
             replyMood: "neutral",
-            preferOpenAiTts: isNativeCapacitor(),
+            preferOpenAiTts: preferOpenAiTtsForVoiceUi(),
           });
         } catch {
           /* ignore */
@@ -845,8 +805,7 @@ export default function VoicePage() {
         ) : null}
 
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center">
-        {speechSupported === false ||
-        (ttsSupported === false && !isNativeCapacitor()) ? (
+        {speechSupported === false || ttsSupported === false ? (
           <p className="mb-8 max-w-sm text-center text-[11px] leading-relaxed text-white/35">
             {speechSupported === false
               ? isNativeCapacitor()
@@ -863,6 +822,15 @@ export default function VoicePage() {
             listening={listening}
             thinking={thinking}
           />
+          {sessionOn && !listening && !thinking && !speaking ? (
+            <button
+              type="button"
+              onClick={tapToSpeak}
+              className="mb-3 mt-1 rounded-2xl border border-[#00D4FF]/35 bg-[#00D4FF]/10 px-5 py-2.5 text-sm font-semibold text-[#a5f3fc] transition hover:bg-[#00D4FF]/18"
+            >
+              Tap to speak
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={toggleMic}

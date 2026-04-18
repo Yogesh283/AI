@@ -229,3 +229,30 @@ cd "D:\AI\web\android"
 
 Set-Location "D:\AI\web\android"
 .\gradlew.bat assembleRelease
+
+---
+
+## Android Studio + USB — local PC par test (localhost)
+
+Phone ko USB se PC se jodo, **USB debugging** on. WebView ko **`http://localhost:3000`** chahiye — phone par “localhost” PC ka hi hota hai, isliye **port reverse** zaroori hai.
+
+1. **Backend** (ek terminal): FastAPI `127.0.0.1:8010` par (Neo API). Next.js `/neo-api` isi ko proxy karta hai.
+2. **Next dev** (doosra terminal):
+   ```powershell
+   cd D:\AI\web
+   npm run dev
+   ```
+3. **ADB reverse** (teesra terminal, cable ke baad dubara chalao agar device reconnect ho):
+   ```powershell
+   adb reverse tcp:3000 tcp:3000
+   ```
+4. **Capacitor local URL** (Capacitor config mein `server.url` = localhost):
+   ```powershell
+   cd D:\AI\web
+   npm run cap:sync:android:local
+   ```
+5. **Android Studio**: `D:\AI\web\android` open karo → USB device select → **Run** ▶.
+
+**Check:** `adb devices` mein device `device` dikhna chahiye (unauthorized ho to phone par allow karo).
+
+**Live site test** (USB ke bina): `npm run cap:sync:android:prod` phir Gradle build — WebView `https://myneoxai.com` load karega.
