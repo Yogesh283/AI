@@ -70,28 +70,14 @@ function IconMic({ className }: { className?: string }) {
 }
 
 /** CSS-only bars — avoids Framer Motion + 22 animated nodes re-rendering every frame (flicker). */
-function VoiceSessionWaveform({
-  sessionOn,
-  speaking,
-  listening,
-  thinking,
-}: {
+/** Animated mic bars removed — they read as “sound” / toy UI; status stays in the top bar text only. */
+function VoiceSessionWaveform(_props: {
   sessionOn: boolean;
   speaking: boolean;
   listening: boolean;
   thinking: boolean;
 }) {
-  if (!sessionOn) return null;
-  /* Idle: no animated bars — avoids constant “moving” UI / perceived noise on APK. */
-  if (!listening && !speaking && !thinking) return null;
-  const mode = speaking ? "speaking" : listening ? "listening" : thinking ? "thinking" : "idle";
-  return (
-    <div className="neo-voice-bars" data-voice-mode={mode} aria-hidden>
-      {Array.from({ length: 16 }, (_, i) => (
-        <div key={i} className="neo-voice-bar" style={{ animationDelay: `${i * 0.045}s` }} />
-      ))}
-    </div>
-  );
+  return null;
 }
 
 type Turn = { role: "user" | "assistant"; content: string };

@@ -189,7 +189,7 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
         const skipTapBusyLine =
           /\b(what\s+)?(is\s+)?(the\s+)?time\b|\btime\s+now\b|\bcurrent\s+time\b|समय|टाइम\b/.test(t) ||
           /\b(volume|mute|unmute|louder|softer|sound)\b|वॉल्यूम|आवाज|म्यूट/i.test(t);
-        /* Wake path uses Android `executeWithBusyAck`; tap-to-talk here still gets a short line before routing. */
+          /* Native wake uses calm delayed routing in `NeoCommandRouter`; tap path may speak a short line before routing. */
         if (!skipTapBusyLine) {
           await speakReply(neoWorkingAckPhrase(lang, readHelloNeoTtsGender()), lang);
         }

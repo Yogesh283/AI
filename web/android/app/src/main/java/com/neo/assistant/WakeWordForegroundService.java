@@ -41,6 +41,9 @@ public class WakeWordForegroundService extends Service {
     private PowerManager.WakeLock wakeLock;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private BroadcastReceiver screenReceiver;
+    /** Ignore duplicate final transcripts (screen-off partial quirks / echo). */
+    private long lastHandledCommandMs;
+    private String lastHandledCommandKey = "";
 
     @Override
     public void onCreate() {
@@ -177,15 +180,14 @@ public class WakeWordForegroundService extends Service {
 
             @Override
             public void onPartialResults(android.os.Bundle partialResults) {
-                if (!mayUseMicNow()) return;
-                handleResults(partialResults);
+                /* Do not route commands from partials — each update re-fired TTS (“on it…”) and felt broken. */
             }
         });
 
         recognizerIntent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
         recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault());
-        recognizerIntent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+        recognizerIntent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
         recognizerIntent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
         recognizerIntent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 700L);
         recognizerIntent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 500L);
@@ -206,7 +208,15 @@ public class WakeWordForegroundService extends Service {
             return;
         }
 
-        NeoCommandRouter.executeWithBusyAck(this, command);
+        String key = command.trim().toLowerCase(Locale.ROOT);
+        long now = System.currentTimeMillis();
+        if (key.equals(lastHandledCommandKey) && (now - lastHandledCommandMs) < 3200) {
+            return;
+        }
+        lastHandledCommandKey = key;
+        lastHandledCommandMs = now;
+
+        NeoCommandRouter.execute(this, command);
     }
 
     private String extractWakeCommand(String said) {

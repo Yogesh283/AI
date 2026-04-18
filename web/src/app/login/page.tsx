@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { AuthBottomNav } from "@/components/neo/AuthBottomNav";
 import { NeoPublicShell } from "@/components/neo/NeoPublicShell";
 import { GradientButton } from "@/components/neo/GradientButton";
 import { AuthGoogleSection } from "@/components/neo/AuthGoogleSection";
@@ -14,6 +13,7 @@ import { getStoredToken, googleLoginApi, loginApi, saveSession } from "@/lib/aut
 export default function LoginPage() {
   const router = useRouter();
   const { brandName } = useSiteBrand();
+  useNativeAuthResumeRedirect();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -89,14 +89,6 @@ export default function LoginPage() {
             </p>
           ) : null}
 
-          <AuthGoogleSection
-            layout="beforeForm"
-            intent="signin"
-            disabled={loading || googleLoading}
-            onCredential={onGoogleCredential}
-            onGoogleError={(msg) => setErr(msg)}
-          />
-
           <form onSubmit={onSubmit} className="mt-10 flex flex-col gap-5">
             <div>
               <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/40">
@@ -149,7 +141,13 @@ export default function LoginPage() {
             </GradientButton>
           </form>
 
-          <AuthBottomNav current="login" />
+          <AuthGoogleSection
+            intent="signin"
+            layout="afterForm"
+            disabled={loading || googleLoading}
+            onCredential={onGoogleCredential}
+            onGoogleError={(msg) => setErr(msg)}
+          />
       </div>
     </NeoPublicShell>
   );

@@ -135,17 +135,7 @@ export function unlockWebAudioAndSpeechFromUserGesture(): void {
   } catch {
     /* ignore */
   }
-  /* Android WebView: HTMLMediaElement uses a separate unlock from AudioContext — helps MP3 TTS after async. */
-  try {
-    const a = new Audio();
-    a.setAttribute("playsInline", "true");
-    a.src =
-      "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==";
-    a.volume = 0.0001;
-    void a.play().catch(() => undefined);
-  } catch {
-    /* ignore */
-  }
+  /* No silent WAV / oscillator “blip” — users read it as mic/toon noise; resume a short-lived context only. */
   try {
     const AC =
       window.AudioContext ||
@@ -153,21 +143,9 @@ export function unlockWebAudioAndSpeechFromUserGesture(): void {
     if (!AC) return;
     const ctx = new AC();
     void ctx.resume().then(() => {
-      try {
-        const osc = ctx.createOscillator();
-        const g = ctx.createGain();
-        g.gain.value = 0.000001;
-        osc.connect(g);
-        g.connect(ctx.destination);
-        const t0 = ctx.currentTime;
-        osc.start(t0);
-        osc.stop(t0 + 0.05);
-        window.setTimeout(() => {
-          void ctx.close().catch(() => undefined);
-        }, 200);
-      } catch {
+      window.setTimeout(() => {
         void ctx.close().catch(() => undefined);
-      }
+      }, 120);
     });
   } catch {
     /* ignore */

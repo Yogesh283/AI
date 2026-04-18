@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { AuthBottomNav } from "@/components/neo/AuthBottomNav";
 import { NeoPublicShell } from "@/components/neo/NeoPublicShell";
 import { GradientButton } from "@/components/neo/GradientButton";
 import { AuthGoogleSection } from "@/components/neo/AuthGoogleSection";
@@ -90,14 +89,6 @@ export default function RegisterPage() {
             Join {brandName} — your personal AI assistant
           </p>
 
-          <AuthGoogleSection
-            layout="beforeForm"
-            intent="signup"
-            disabled={loading || googleLoading}
-            onCredential={onGoogleCredential}
-            onGoogleError={(msg) => setErr(msg)}
-          />
-
           <form onSubmit={onSubmit} className="mt-10 flex flex-col gap-5">
             <div>
               <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/40">
@@ -177,7 +168,13 @@ export default function RegisterPage() {
             </GradientButton>
           </form>
 
-          <AuthBottomNav current="register" />
+          <AuthGoogleSection
+            intent="signup"
+            layout="afterForm"
+            disabled={loading || googleLoading}
+            onCredential={onGoogleCredential}
+            onGoogleError={(msg) => setErr(msg)}
+          />
       </div>
     </NeoPublicShell>
   );

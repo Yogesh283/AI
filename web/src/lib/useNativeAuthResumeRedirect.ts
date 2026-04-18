@@ -32,9 +32,11 @@ export function useNativeAuthResumeRedirect() {
     };
 
     window.addEventListener("pageshow", tryLeaveAuthScreen);
+    window.addEventListener("focus", tryLeaveAuthScreen);
     document.addEventListener("visibilitychange", onVis);
     return () => {
       window.removeEventListener("pageshow", tryLeaveAuthScreen);
+      window.removeEventListener("focus", tryLeaveAuthScreen);
       document.removeEventListener("visibilitychange", onVis);
     };
   }, [router]);

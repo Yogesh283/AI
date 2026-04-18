@@ -25,34 +25,10 @@ public final class NeoCommandRouter {
 
     private NeoCommandRouter() {}
 
-    /**
-     * Wake listener: short spoken line before opening apps (less “empty mic”), then run {@link #execute}.
-     * Time/volume answer immediately; “read my messages” gets an explanation only.
-     */
-    static void executeWithBusyAck(Context context, String raw) {
+    static boolean execute(Context context, String raw) {
         busyAckHandler.removeCallbacksAndMessages(null);
         pendingBusyRunnable = null;
-        String t = normalize(raw);
-        if (t.isEmpty()) return;
-        if (isReadMessagesIntent(t)) {
-            speak(context, explainCantReadMessages());
-            return;
-        }
-        if (shouldSkipBusyAck(t)) {
-            execute(context, raw);
-            return;
-        }
-        speak(context, workingAckPhrase(raw));
-        final Context appCtx = context.getApplicationContext();
-        pendingBusyRunnable =
-            () -> {
-                pendingBusyRunnable = null;
-                execute(appCtx, raw);
-            };
-        busyAckHandler.postDelayed(pendingBusyRunnable, 1150);
-    }
 
-    static boolean execute(Context context, String raw) {
         String text = normalize(raw);
         if (text.isEmpty()) return false;
         if (isReadMessagesIntent(text)) {
@@ -62,7 +38,7 @@ public final class NeoCommandRouter {
         String digits = extractDigits(text);
 
         if (isTimeIntent(text)) {
-            speak(context, "It is " + formatTimeNow());
+            speakTimeCalm(context, raw);
             return true;
         }
 
@@ -71,72 +47,190 @@ public final class NeoCommandRouter {
         }
 
         if (isContactsIntent(text)) {
-            openContactsApp(context);
+            speakThen(
+                context,
+                calmOpenContactsPhrase(raw),
+                1400,
+                () -> openContactsApp(context));
             return true;
         }
 
         if (isYouTubeMusicLaunchIntent(text)) {
-            Intent launch = context.getPackageManager().getLaunchIntentForPackage("com.google.android.apps.youtube.music");
-            if (launch != null) {
-                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                context.startActivity(launch);
+            if (context.getPackageManager().getLaunchIntentForPackage("com.google.android.apps.youtube.music") != null) {
+                speakThen(
+                    context,
+                    calmOpenMusicPhrase(raw),
+                    1450,
+                    () -> {
+                        Intent launch =
+                            context.getPackageManager()
+                                .getLaunchIntentForPackage("com.google.android.apps.youtube.music");
+                        if (launch != null) {
+                            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            try {
+                                context.startActivity(launch);
+                            } catch (ActivityNotFoundException ignored) {
+                            }
+                        }
+                    });
                 return true;
             }
         }
 
         String ytQuery = extractYouTubeQuery(text);
         if (ytQuery != null) {
-            openPreferredAppThenStore(
+            final String q = ytQuery;
+            speakThen(
                 context,
-                new String[] {"com.google.android.youtube"},
-                Uri.parse("vnd.youtube:results?search_query=" + Uri.encode(ytQuery)),
-                "com.google.android.youtube"
-            );
+                calmOpenYouTubePhrase(raw),
+                1500,
+                () ->
+                    openPreferredAppThenStore(
+                        context,
+                        new String[] {"com.google.android.youtube"},
+                        Uri.parse("vnd.youtube:results?search_query=" + Uri.encode(q)),
+                        "com.google.android.youtube"));
             return true;
         }
 
         if (isWhatsAppIntent(text)) {
-            Uri appUri = digits != null
-                ? Uri.parse("whatsapp://send?phone=" + digits)
-                : Uri.parse("whatsapp://send");
-            /* Standard WhatsApp + WhatsApp Business (India/common). */
-            openPreferredAppThenStore(
+            Uri appUri =
+                digits != null
+                    ? Uri.parse("whatsapp://send?phone=" + digits)
+                    : Uri.parse("whatsapp://send");
+            speakThen(
                 context,
-                new String[] {"com.whatsapp", "com.whatsapp.w4b"},
-                appUri,
-                "com.whatsapp"
-            );
+                calmOpenWhatsAppPhrase(raw),
+                1550,
+                () ->
+                    openPreferredAppThenStore(
+                        context,
+                        new String[] {"com.whatsapp", "com.whatsapp.w4b"},
+                        appUri,
+                        "com.whatsapp"));
             return true;
         }
 
         if (isTelegramIntent(text)) {
-            Uri appUri = digits != null
-                ? Uri.parse("tg://resolve?phone=%2B" + digits)
-                : Uri.parse("tg://");
-            openPreferredAppThenStore(
+            Uri appUri =
+                digits != null
+                    ? Uri.parse("tg://resolve?phone=%2B" + digits)
+                    : Uri.parse("tg://");
+            speakThen(
                 context,
-                new String[] {"org.telegram.messenger", "org.thunderdog.challegram"},
-                appUri,
-                "org.telegram.messenger"
-            );
+                calmOpenTelegramPhrase(raw),
+                1550,
+                () ->
+                    openPreferredAppThenStore(
+                        context,
+                        new String[] {"org.telegram.messenger", "org.thunderdog.challegram"},
+                        appUri,
+                        "org.telegram.messenger"));
             return true;
         }
 
         String tel = extractTel(text);
         if (tel != null) {
-            Intent callIntent;
-            if (ContextCompat.checkSelfPermission(context, Manifest.permission.CALL_PHONE)
-                == PackageManager.PERMISSION_GRANTED) {
-                callIntent = new Intent(Intent.ACTION_CALL, Uri.parse(tel));
-            } else {
-                callIntent = new Intent(Intent.ACTION_DIAL, Uri.parse(tel));
-            }
-            callIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            context.startActivity(callIntent);
+            final String telUri = tel;
+            speakThen(
+                context,
+                calmCallPhrase(raw),
+                1250,
+                () -> startTelIntent(context, telUri));
             return true;
         }
 
         return false;
+    }
+
+    private static void startTelIntent(Context context, String tel) {
+        Intent callIntent;
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CALL_PHONE)
+            == PackageManager.PERMISSION_GRANTED) {
+            callIntent = new Intent(Intent.ACTION_CALL, Uri.parse(tel));
+        } else {
+            callIntent = new Intent(Intent.ACTION_DIAL, Uri.parse(tel));
+        }
+        callIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            context.startActivity(callIntent);
+        } catch (ActivityNotFoundException ignored) {
+        }
+    }
+
+    private static boolean preferHindiVoice(String raw) {
+        if (raw == null) return "hi".equals(Locale.getDefault().getLanguage());
+        return "hi".equals(Locale.getDefault().getLanguage())
+            || raw.matches("(?s).*[\\u0900-\\u097F].*");
+    }
+
+    private static void speakTimeCalm(Context context, String raw) {
+        String t = formatTimeNow();
+        boolean hi = preferHindiVoice(raw);
+        String msg =
+            hi
+                ? "जी, आपके फोन पर अभी का समय " + t + " है।"
+                : "Alright — right now, the time is " + t + ".";
+        speak(context, msg);
+    }
+
+    private static String calmOpenWhatsAppPhrase(String raw) {
+        return preferHindiVoice(raw)
+            ? "जी, व्हाट्सऐप आपके लिए खोल रहे हैं — एक छोटा सा पल।"
+            : "Sure — I am opening WhatsApp for you, just a moment.";
+    }
+
+    private static String calmOpenTelegramPhrase(String raw) {
+        return preferHindiVoice(raw)
+            ? "जी, टेलीग्राम खोल रहे हैं — एक पल।"
+            : "Sure — opening Telegram for you, one moment.";
+    }
+
+    private static String calmOpenYouTubePhrase(String raw) {
+        return preferHindiVoice(raw)
+            ? "जी, यूट्यूब खोल रहे हैं — एक पल।"
+            : "Sure — opening YouTube for you, one moment.";
+    }
+
+    private static String calmOpenContactsPhrase(String raw) {
+        return preferHindiVoice(raw)
+            ? "जी, संपर्क खोल रहे हैं — एक पल।"
+            : "Sure — opening contacts for you, one moment.";
+    }
+
+    private static String calmOpenMusicPhrase(String raw) {
+        return preferHindiVoice(raw)
+            ? "जी, म्यूजिक ऐप खोल रहे हैं — एक पल।"
+            : "Sure — opening your music app, one moment.";
+    }
+
+    private static String calmCallPhrase(String raw) {
+        return preferHindiVoice(raw)
+            ? "जी, कॉल शुरू कर रहे हैं — एक पल।"
+            : "Sure — starting the call for you, one moment.";
+    }
+
+    private static void speakThen(Context context, String phrase, long delayMs, Runnable action) {
+        speak(context, phrase);
+        pendingBusyRunnable =
+            () -> {
+                pendingBusyRunnable = null;
+                try {
+                    action.run();
+                } catch (Exception ignored) {
+                }
+            };
+        busyAckHandler.postDelayed(pendingBusyRunnable, delayMs);
+    }
+
+    private static void applyNeoTtsCalmProfile() {
+        if (tts != null && ttsReady) {
+            try {
+                tts.setSpeechRate(0.76f);
+                tts.setPitch(0.94f);
+            } catch (Exception ignored) {
+            }
+        }
     }
 
     static void shutdown() {
@@ -312,20 +406,6 @@ public final class NeoCommandRouter {
         return "I can't read full WhatsApp or Telegram message text from here. Say Neo, open WhatsApp — then read inside the app.";
     }
 
-    private static boolean shouldSkipBusyAck(String t) {
-        return isTimeIntent(t) || isVolumeIntent(t);
-    }
-
-    /** Gender-neutral line; matches common Indian assistant tone. */
-    private static String workingAckPhrase(String raw) {
-        boolean hindiCtx =
-            "hi".equals(Locale.getDefault().getLanguage()) || (raw != null && raw.matches(".*[\\u0900-\\u097F].*"));
-        if (hindiCtx) {
-            return "जी, अभी चेक करते हैं।";
-        }
-        return "On it — just a moment.";
-    }
-
     private static boolean isWhatsAppIntent(String t) {
         boolean hasWord = t.contains("whatsapp")
             || t.contains("व्हाट्सएप")
@@ -473,6 +553,7 @@ public final class NeoCommandRouter {
                 if (status == TextToSpeech.SUCCESS && tts != null) {
                     ttsReady = true;
                     tts.setLanguage(Locale.getDefault());
+                    applyNeoTtsCalmProfile();
                     if (pendingSpeech != null) {
                         tts.speak(pendingSpeech, TextToSpeech.QUEUE_FLUSH, null, "neo-time");
                         pendingSpeech = null;
@@ -482,6 +563,7 @@ public final class NeoCommandRouter {
             return;
         }
         if (ttsReady) {
+            applyNeoTtsCalmProfile();
             tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "neo-speech");
         } else {
             pendingSpeech = text;
