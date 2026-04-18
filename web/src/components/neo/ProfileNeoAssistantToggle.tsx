@@ -80,7 +80,7 @@ export function ProfileNeoAssistantToggle() {
         {active && alexaListen ? (
           <div className="flex w-full items-center justify-between gap-3">
             <p className="text-[12px] text-emerald-300/90">
-              Alexa-style listen is running. Voice chat page opens with this option auto-off.
+              Wake listen is on — say Hello Neo first, then your command. Voice chat turns this off automatically.
             </p>
             <button
               type="button"
@@ -93,10 +93,12 @@ export function ProfileNeoAssistantToggle() {
         ) : (
           <>
             <div className={`min-w-0 ${!active ? "opacity-45" : ""}`}>
-              <p className="text-sm font-medium text-white/85">Alexa-style listen</p>
+              <p className="text-sm font-medium text-white/85">Hello Neo wake listen</p>
               <p className="mt-0.5 text-[11px] text-white/38">
-                Keeps the mic on while you stay on <span className="text-white/50">Profile</span> (see Try Neo below) so
-                you can say &quot;Neo&quot; without tapping.
+                Mic stays on only on <span className="text-white/50">Profile</span> (Try Neo below) to catch{" "}
+                <span className="text-white/55">Hello Neo</span> / <span className="text-white/55">Neo</span>, then runs
+                your command (music, WhatsApp, Telegram, YouTube, contacts, time). Speech without the wake phrase is
+                ignored — not “always command” mode.
                 {!active ? " Turn Neo assistant Active above to enable this." : ""}
               </p>
             </div>

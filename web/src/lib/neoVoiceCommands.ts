@@ -185,9 +185,8 @@ export function runNeoIntents(q: string, silentReplies = false): { reply: string
     listenWhatsAppRead
   ) {
     return {
-      reply: silentReplies
-        ? ""
-        : "I cannot read your WhatsApp inbox from this app — that needs the WhatsApp app on your phone, like Alexa cannot read a private app for you. Say Neo open WhatsApp to open WhatsApp Web.",
+      reply:
+        "I cannot read your WhatsApp inbox from this app — that needs the WhatsApp app on your phone, like Alexa cannot read a private app for you. Say Neo open WhatsApp to open WhatsApp Web.",
       actions: [],
     };
   }
@@ -199,9 +198,8 @@ export function runNeoIntents(q: string, silentReplies = false): { reply: string
     )
   ) {
     return {
-      reply: silentReplies
-        ? ""
-        : "I cannot read your Telegram messages here — same limit as Alexa with another company's app. Say Neo open Telegram to open Telegram Web.",
+      reply:
+        "I cannot read your Telegram messages here — same limit as Alexa with another company's app. Say Neo open Telegram to open Telegram Web.",
       actions: [],
     };
   }

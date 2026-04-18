@@ -11,6 +11,7 @@ import {
   speakText,
   type TtsVoiceGender,
   type TtsSpeedPreset,
+  type TtsTonePreset,
 } from "@/lib/voiceChat";
 import type { VoiceReplyMood } from "@/lib/voiceReplyMood";
 import type { KalidokitMouthShape } from "@/lib/vrmKalidokitMouth";
@@ -308,6 +309,7 @@ export async function tryPlayOpenAiTtsPlain(
 export type SpeakWithAvatarLipSyncOpts = {
   voiceGender?: TtsVoiceGender;
   speedPreset?: TtsSpeedPreset;
+  tonePreset?: TtsTonePreset;
   replyMood?: VoiceReplyMood;
   mouthShapeRef: { current: KalidokitMouthShape };
   /** If true, use OpenAI MP3 + Web Audio lip sync (optional). Default: browser TTS only (same as before). */
@@ -364,6 +366,7 @@ export async function speakTextWithAvatarLipSync(
     speakText(text, lang, {
       voiceGender: opts.voiceGender,
       speedPreset: opts.speedPreset,
+      tonePreset: opts.tonePreset,
       replyMood: opts.replyMood,
     })
       .then(() => finish())

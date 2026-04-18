@@ -256,3 +256,35 @@ Phone ko USB se PC se jodo, **USB debugging** on. WebView ko **`http://localhost
 **Check:** `adb devices` mein device `device` dikhna chahiye (unauthorized ho to phone par allow karo).
 
 **Live site test** (USB ke bina): `npm run cap:sync:android:prod` phir Gradle build — WebView `https://myneoxai.com` load karega.
+
+
+
+
+
+
+
+
+export APP_ROOT=/home/myneoxai/apps/neoxai
+cd "$APP_ROOT"
+
+# 1) Backend env backup (zaroori)
+cp backend/.env /root/backend.env.backup-$(date +%Y%m%d%H%M) 2>/dev/null || true
+
+# 2) Jo untracked Java files merge rok rahi thi — side pe rakh do (chaaho to baad mein dekho)
+mkdir -p /root/neo-android-java-backup
+mv web/android/app/src/main/java/com/neo/assistant/NeoBootReceiver.java /root/neo-android-java-backup/ 2>/dev/null || true
+mv web/android/app/src/main/java/com/neo/assistant/NeoCommandRouter.java /root/neo-android-java-backup/ 2>/dev/null || true
+mv web/android/app/src/main/java/com/neo/assistant/WakeWordForegroundService.java /root/neo-android-java-backup/ 2>/dev/null || true
+
+# 3) Repo ko bilkul GitHub main jaisa karo (saari local file edits hata deta hai)
+git fetch origin
+git reset --hard origin/main
+git clean -fd
+
+# 4) Confirm same commit as GitHub
+git log -1 --oneline
+
+# 5) Phir deploy
+cd "$APP_ROOT/web" && rm -rf .next && npm ci && npm run build
+cd "$APP_ROOT/backend" && . .venv/bin/activate && pip install -r requirements.txt
+pm2 restart neo-api neo-web
