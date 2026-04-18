@@ -21,7 +21,8 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(NeoNativeRouterPlugin.class);
         super.onCreate(savedInstanceState);
-        ensureMicPermission();
+        /* Defer mic prompt so it does not stack on top of Google sign-in / first WebView interactions. */
+        getWindow().getDecorView().postDelayed(this::ensureMicPermission, 2000);
         maybeStopWakeService();
         // Bridge may exist before first resume — allow media playback ASAP for TTS MP3.
         View decor = getWindow().getDecorView();

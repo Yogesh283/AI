@@ -4,6 +4,3 @@ project(':capacitor-android').projectDir = new File('../node_modules/@capacitor/
 
 include ':capacitor-community-speech-recognition'
 project(':capacitor-community-speech-recognition').projectDir = new File('../node_modules/@capacitor-community/speech-recognition/android')
-
-include ':capawesome-capacitor-google-sign-in'
-project(':capawesome-capacitor-google-sign-in').projectDir = new File('../node_modules/@capawesome/capacitor-google-sign-in/android')
