@@ -52,6 +52,8 @@ const VOICE_HISTORY_PREFIX = "neo-voice-history-";
 /** Voice chat page only: slow, warm delivery; Man / Woman both use en-IN–biased voices from `pickVoice` (Indian English / Hindi). */
 const VOICE_CHAT_TTS_SPEED: TtsSpeedPreset = "slow";
 const VOICE_CHAT_TTS_TONE: TtsTonePreset = "warm";
+/** OpenAI HD + conversation voices; browser TTS gets calmer pacing (see `voiceAvatarTts` / `voiceChatCalmDelivery`). */
+const VOICE_CHAT_AVATAR_OPTS = { voiceChatOpenAiTts: true as const };
 
 function IconMic({ className }: { className?: string }) {
   return (
@@ -133,6 +135,13 @@ export default function VoicePage() {
   const bargeInRecRef = useRef<SpeechRecognition | null>(null);
   /** User said “mic off” / stop listening — no mic until tap or “mic on”. */
   const [micPaused, setMicPaused] = useState(false);
+  const micPausedRef = useRef(false);
+  /** After assistant TTS, reopen mic without another tap (unless mic paused or thinking). */
+  const resumeMicAfterAssistantRef = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    micPausedRef.current = micPaused;
+  }, [micPaused]);
 
   useEffect(() => {
     historyRef.current = history;
@@ -334,6 +343,12 @@ export default function VoicePage() {
       if (micOnPhrase) {
         setMicPaused(false);
         setErr(null);
+        if (sessionOnRef.current) {
+          window.setTimeout(() => {
+            if (!sessionOnRef.current || micPausedRef.current) return;
+            beginListeningRef.current();
+          }, 100);
+        }
         return;
       }
 
@@ -399,11 +414,13 @@ export default function VoicePage() {
             tonePreset: VOICE_CHAT_TTS_TONE,
             replyMood: "neutral",
             preferOpenAiTts: preferOpenAiTtsForVoiceUi(),
+            ...VOICE_CHAT_AVATAR_OPTS,
           });
         } catch {
           /* ignore */
         } finally {
           if (speakGenerationRef.current === gen) setSpeaking(false);
+          resumeMicAfterAssistantRef.current();
         }
         return;
       }
@@ -436,13 +453,17 @@ export default function VoicePage() {
                     tonePreset: VOICE_CHAT_TTS_TONE,
                     replyMood: "neutral",
                     preferOpenAiTts: preferOpenAiTtsForVoiceUi(),
+                    ...VOICE_CHAT_AVATAR_OPTS,
                   },
                 );
               } catch {
                 /* ignore */
               } finally {
                 if (speakGenerationRef.current === gen) setSpeaking(false);
+                resumeMicAfterAssistantRef.current();
               }
+            } else {
+              resumeMicAfterAssistantRef.current();
             }
             return;
           }
@@ -472,6 +493,7 @@ export default function VoicePage() {
                 tonePreset: VOICE_CHAT_TTS_TONE,
                 replyMood: "neutral",
                 preferOpenAiTts: preferOpenAiTtsForVoiceUi(),
+                ...VOICE_CHAT_AVATAR_OPTS,
               });
             }
             executeNeoActions(neo.actions);
@@ -484,6 +506,7 @@ export default function VoicePage() {
             );
           } finally {
             if (speakGenerationRef.current === gen) setSpeaking(false);
+            resumeMicAfterAssistantRef.current();
           }
           return;
         }
@@ -518,6 +541,7 @@ export default function VoicePage() {
             tonePreset: VOICE_CHAT_TTS_TONE,
             replyMood: mood,
             preferOpenAiTts: preferOpenAiTtsForVoiceUi(),
+            ...VOICE_CHAT_AVATAR_OPTS,
           });
         } catch (ttsErr) {
           const msg =
@@ -529,6 +553,7 @@ export default function VoicePage() {
           );
         } finally {
           if (speakGenerationRef.current === gen) setSpeaking(false);
+          resumeMicAfterAssistantRef.current();
         }
       } catch (e) {
         setErr(
@@ -538,6 +563,7 @@ export default function VoicePage() {
         );
         setThinking(false);
         setSpeaking(false);
+        resumeMicAfterAssistantRef.current();
       }
     },
     [lang, ttsGender, personaId, stopBargeInRecognition, stopRecognitionOnly, stopVoiceOutput]
@@ -551,7 +577,7 @@ export default function VoicePage() {
 
   const beginListening = useCallback(() => {
     if (!sessionOnRef.current) return;
-    if (micPaused) return;
+    if (micPausedRef.current) return;
     /* Turn-taking: mic while idle, or after interrupt — not while waiting for API. */
     if (thinkingRef.current) return;
     if (speakingRef.current) return;
@@ -670,13 +696,20 @@ export default function VoicePage() {
       setErr("Mic already busy — dubara try karein.");
       setListening(false);
     }
-  }, [lang, micPaused, sendText]);
+  }, [lang, sendText]);
 
   useEffect(() => {
     beginListeningRef.current = beginListening;
+    resumeMicAfterAssistantRef.current = () => {
+      window.setTimeout(() => {
+        if (!sessionOnRef.current || micPausedRef.current || thinkingRef.current) return;
+        if (listeningActiveRef.current) return;
+        beginListeningRef.current();
+      }, 180);
+    };
   }, [beginListening]);
 
-  /** Manual mic — no auto re-open after TTS (avoids mic on/off loop). Tap during AI speech = interrupt + listen. */
+  /** Manual mic / interrupt. After each assistant reply we auto-reopen the mic (unless paused). Tap during AI speech = interrupt + listen. */
   const tapToSpeak = useCallback(() => {
     setMicPaused(false);
     if (!sessionOnRef.current) return;
@@ -851,6 +884,7 @@ export default function VoicePage() {
             tonePreset: VOICE_CHAT_TTS_TONE,
             replyMood: "neutral",
             preferOpenAiTts: preferOpenAiTtsForVoiceUi(),
+            ...VOICE_CHAT_AVATAR_OPTS,
           });
         } catch {
           /* ignore */
@@ -983,7 +1017,11 @@ export default function VoicePage() {
               onClick={tapToSpeak}
               className="mb-3 mt-1 rounded-2xl border border-[#00D4FF]/35 bg-[#00D4FF]/10 px-5 py-2.5 text-sm font-semibold text-[#a5f3fc] transition hover:bg-[#00D4FF]/18"
             >
-              {speaking ? "Tap to interrupt" : micPaused ? "Tap — turn mic on" : "Tap to speak"}
+              {speaking
+                ? "Tap to interrupt"
+                : micPaused
+                  ? "Tap — turn mic on"
+                  : "Tap if mic did not restart"}
             </button>
           ) : null}
           <button

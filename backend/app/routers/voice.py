@@ -38,7 +38,10 @@ async def transcribe(audio: UploadFile | None = File(None)) -> dict:
         return {
             "text": "",
             "error": "transcription_failed",
-            "hint": "Check API key, billing, or try a shorter clip.",
+            "hint": (
+                "OpenAI Whisper ne jawab nahi diya — server par api.openai.com reach / key / billing check karein "
+                "(curl -sI https://api.openai.com; HTTPS_PROXY agar proxy lagta ho)."
+            ),
         }
 
     return {"text": text, "duration_ms": None}
@@ -71,15 +74,27 @@ async def tts_audio(payload: TtsAudioBody) -> Response:
             status_code=503,
             detail="openai_not_configured — set OPENAI_API_KEY in backend/.env",
         )
-    raw = await synthesize_openai_tts(
+    raw, tts_err = await synthesize_openai_tts(
         payload.text,
         voice=payload.voice,
         model=payload.model,
     )
+    if tts_err == "network":
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "openai_unreachable — server se https://api.openai.com connect nahi ho raha "
+                "(firewall / DNS / IPv6 / outbound HTTPS). SSH par: curl -sI https://api.openai.com | head -1. "
+                "Agar proxy chahiye to backend env mein HTTPS_PROXY set karein; OPENAI_HTTP_MAX_RETRIES=3 default."
+            ),
+        )
     if not raw:
         raise HTTPException(
             status_code=502,
-            detail="tts_failed — empty text, billing, or model error",
+            detail=(
+                "tts_failed — OpenAI ne MP3 nahi diya (billing / quota / model). "
+                "Key aur usage: platform.openai.com"
+            ),
         )
     return Response(
         content=raw,

@@ -35,15 +35,15 @@ def create_registered_user(email: str, password_hash_b64: str, display_name: str
     return rec
 
 
-def upsert_google_user(email: str, display_name: str) -> dict[str, Any]:
-    """Create or return existing user for verified Google sign-in."""
+def upsert_google_user(email: str, display_name: str) -> tuple[dict[str, Any], bool]:
+    """Create or return existing user for verified Google sign-in. Returns (user, created)."""
     em = normalize_email(email)
     existing = get_user_by_email(em)
     if existing:
         if display_name and existing.get("display_name") in ("", em.split("@")[0]):
             existing["display_name"] = display_name.strip() or existing["display_name"]
             set_profile(existing["id"], {"display_name": existing["display_name"]})
-        return existing
+        return existing, False
     uid = str(uuid.uuid4())
     dn = (display_name or "").strip() or em.split("@")[0]
     rec: dict[str, Any] = {
@@ -56,7 +56,7 @@ def upsert_google_user(email: str, display_name: str) -> dict[str, Any]:
     _users[uid] = rec
     _email_to_id[em] = uid
     set_profile(uid, {"display_name": dn})
-    return rec
+    return rec, True
 
 
 def get_user_by_email(email: str) -> dict[str, Any] | None:

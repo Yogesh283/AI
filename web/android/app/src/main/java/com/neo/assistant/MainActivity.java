@@ -56,6 +56,11 @@ public class MainActivity extends BridgeActivity {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 cm.setAcceptThirdPartyCookies(wv, true);
             }
+            /* GIS “Sign in with Google” often skips renderButton when UA contains “; wv” (embedded WebView marker). */
+            String ua = s.getUserAgentString();
+            if (ua != null && ua.contains("; wv")) {
+                s.setUserAgentString(ua.replace("; wv", ""));
+            }
         } catch (Throwable ignored) {
         }
     }

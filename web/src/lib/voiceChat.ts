@@ -742,6 +742,8 @@ export async function speakText(
     replyMood?: VoiceReplyMood;
     /** Fires on browser TTS boundary events (word/sentence), for UI sync. */
     onSpeechBoundary?: () => void;
+    /** Voice chat only: slightly slower rate, calmer pitch, longer pauses between chunks. */
+    voiceChatCalmDelivery?: boolean;
   }
 ): Promise<void> {
   let trimmed = textForTts(text);
@@ -795,7 +797,13 @@ export async function speakText(
       /* Hindi needs slower rate on most engines — avoids slurred / wrong syllables */
       const hiRateMul = isHi ? 1.02 : 1;
       u.rate = Math.min(1.16, Math.max(0.68, baseRate * rateWobble * hiRateMul));
+      if (opts?.voiceChatCalmDelivery) {
+        u.rate = Math.min(1.1, Math.max(0.62, u.rate * 0.93));
+      }
       u.pitch = utterancePitch(mood, chunkLang, opts?.voiceGender, chunkIdx, tone);
+      if (opts?.voiceChatCalmDelivery) {
+        u.pitch = Math.min(1.22, Math.max(0.84, u.pitch * 0.97));
+      }
       if (voice && voiceMatchesUtteranceLang(voice, chunkLang)) {
         u.voice = voice;
       }
@@ -824,10 +832,12 @@ export async function speakText(
       }
     });
 
+  const pauseMul = opts?.voiceChatCalmDelivery ? 1.12 : 1;
   for (let i = 0; i < chunks.length; i++) {
     await speakChunk(chunks[i], i);
     if (i < chunks.length - 1) {
-      await new Promise<void>((r) => setTimeout(r, pauseAfterChunkMs(chunks[i], preset)));
+      const ms = Math.round(pauseAfterChunkMs(chunks[i], preset) * pauseMul);
+      await new Promise<void>((r) => setTimeout(r, ms));
     }
   }
 }

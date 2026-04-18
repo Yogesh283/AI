@@ -58,7 +58,7 @@ export default function LoginPage() {
     try {
       const data = await googleLoginApi(idToken);
       saveSession(data.access_token, data.user);
-      router.replace("/dashboard");
+      router.replace(data.is_new_user ? "/onboarding" : "/dashboard");
     } catch (x) {
       setErr(x instanceof Error ? x.message : "Google sign-in failed");
     } finally {

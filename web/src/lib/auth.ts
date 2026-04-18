@@ -17,6 +17,14 @@ export type AuthUser = {
   voice_persona_id?: string;
 };
 
+/** POST /api/auth/google — includes is_new_user when backend supports it (first Google sign-in). */
+export type GoogleAuthResponse = {
+  access_token: string;
+  token_type: string;
+  user: AuthUser;
+  is_new_user?: boolean;
+};
+
 const base = () => apiOrigin();
 
 export function getStoredToken(): string | null {
@@ -137,7 +145,7 @@ export async function loginApi(body: { email: string; password: string }) {
   }>;
 }
 
-export async function googleLoginApi(idToken: string) {
+export async function googleLoginApi(idToken: string): Promise<GoogleAuthResponse> {
   const r = await fetch(`${base()}/api/auth/google`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -153,11 +161,7 @@ export async function googleLoginApi(idToken: string) {
     }
     throw new Error(msg || "Google sign-in failed");
   }
-  return r.json() as Promise<{
-    access_token: string;
-    token_type: string;
-    user: AuthUser;
-  }>;
+  return r.json() as Promise<GoogleAuthResponse>;
 }
 
 export async function fetchMe(): Promise<AuthUser> {

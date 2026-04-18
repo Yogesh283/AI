@@ -51,11 +51,11 @@ public final class NeoCommandRouter {
 
         String ytQuery = extractYouTubeQuery(text);
         if (ytQuery != null) {
-            openAppOrStore(
+            openPreferredAppThenStore(
                 context,
-                "com.google.android.youtube",
+                new String[] {"com.google.android.youtube"},
                 Uri.parse("vnd.youtube:results?search_query=" + Uri.encode(ytQuery)),
-                Uri.parse("market://details?id=com.google.android.youtube")
+                "com.google.android.youtube"
             );
             return true;
         }
@@ -64,11 +64,12 @@ public final class NeoCommandRouter {
             Uri appUri = digits != null
                 ? Uri.parse("whatsapp://send?phone=" + digits)
                 : Uri.parse("whatsapp://send");
-            openAppOrStore(
+            /* Standard WhatsApp + WhatsApp Business (India/common). */
+            openPreferredAppThenStore(
                 context,
-                "com.whatsapp",
+                new String[] {"com.whatsapp", "com.whatsapp.w4b"},
                 appUri,
-                Uri.parse("market://details?id=com.whatsapp")
+                "com.whatsapp"
             );
             return true;
         }
@@ -77,11 +78,11 @@ public final class NeoCommandRouter {
             Uri appUri = digits != null
                 ? Uri.parse("tg://resolve?phone=%2B" + digits)
                 : Uri.parse("tg://");
-            openAppOrStore(
+            openPreferredAppThenStore(
                 context,
-                "org.telegram.messenger",
+                new String[] {"org.telegram.messenger", "org.thunderdog.challegram"},
                 appUri,
-                Uri.parse("market://details?id=org.telegram.messenger")
+                "org.telegram.messenger"
             );
             return true;
         }
@@ -309,13 +310,43 @@ public final class NeoCommandRouter {
     }
 
     /**
-     * Prefer the installed app. {@code setPackage} first often makes {@code resolveActivity} null even when the app is installed;
-     * try VIEW without package so the system resolver can open the right handler, then explicit package, then launcher intent.
+     * Open deep link in an installed package variant (e.g. WhatsApp + WhatsApp Business), then chooser, then launcher,
+     * then Play Store. Requires {@code <queries>} in the manifest on API 31+ or {@code getLaunchIntentForPackage} stays null.
      */
-    private static void openAppOrStore(Context context, String pkg, Uri appUri, Uri storeUri) {
+    private static void openPreferredAppThenStore(
+        Context context,
+        String[] candidatePkgs,
+        Uri appUri,
+        String playStorePackageId
+    ) {
+        PackageManager pm = context.getPackageManager();
+
+        for (String pkg : candidatePkgs) {
+            if (pm.getLaunchIntentForPackage(pkg) == null) {
+                continue;
+            }
+            Intent viewPkg = new Intent(Intent.ACTION_VIEW, appUri);
+            viewPkg.setPackage(pkg);
+            viewPkg.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            try {
+                context.startActivity(viewPkg);
+                return;
+            } catch (ActivityNotFoundException ignored) {
+            }
+            Intent launch = pm.getLaunchIntentForPackage(pkg);
+            if (launch != null) {
+                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                try {
+                    context.startActivity(launch);
+                    return;
+                } catch (ActivityNotFoundException ignored) {
+                }
+            }
+        }
+
         Intent viewNoPkg = new Intent(Intent.ACTION_VIEW, appUri);
         viewNoPkg.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        if (viewNoPkg.resolveActivity(context.getPackageManager()) != null) {
+        if (viewNoPkg.resolveActivity(pm) != null) {
             try {
                 context.startActivity(viewNoPkg);
                 return;
@@ -323,27 +354,7 @@ public final class NeoCommandRouter {
             }
         }
 
-        Intent viewPkg = new Intent(Intent.ACTION_VIEW, appUri);
-        viewPkg.setPackage(pkg);
-        viewPkg.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        if (viewPkg.resolveActivity(context.getPackageManager()) != null) {
-            try {
-                context.startActivity(viewPkg);
-                return;
-            } catch (ActivityNotFoundException ignored) {
-            }
-        }
-
-        Intent launch = context.getPackageManager().getLaunchIntentForPackage(pkg);
-        if (launch != null) {
-            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            try {
-                context.startActivity(launch);
-                return;
-            } catch (ActivityNotFoundException ignored) {
-            }
-        }
-
+        Uri storeUri = Uri.parse("market://details?id=" + playStorePackageId);
         Intent storeIntent = new Intent(Intent.ACTION_VIEW, storeUri);
         storeIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         try {
@@ -352,7 +363,7 @@ public final class NeoCommandRouter {
             try {
                 Intent storeWebIntent = new Intent(
                     Intent.ACTION_VIEW,
-                    Uri.parse("https://play.google.com/store/apps/details?id=" + pkg)
+                    Uri.parse("https://play.google.com/store/apps/details?id=" + playStorePackageId)
                 );
                 storeWebIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 context.startActivity(storeWebIntent);

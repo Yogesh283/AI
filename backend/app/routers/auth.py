@@ -49,6 +49,8 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: dict
+    # True only from POST /google when this Google email was first seen (APK → onboarding).
+    is_new_user: bool = False
 
 
 class GoogleTokenBody(BaseModel):
@@ -148,10 +150,14 @@ async def google_auth(body: GoogleTokenBody) -> TokenResponse:
     if not email:
         raise HTTPException(status_code=401, detail="Google token has no email")
     name = str(info.get("name") or email.split("@")[0])
-    u = upsert_google_user(email, name)
+    u, created = upsert_google_user(email, name)
     token = create_access_token(u["id"], u["email"])
     await sync_user_record(u)
-    return TokenResponse(access_token=token, user=await _enrich_user(u))
+    return TokenResponse(
+        access_token=token,
+        user=await _enrich_user(u),
+        is_new_user=created,
+    )
 
 
 async def optional_user(

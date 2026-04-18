@@ -259,11 +259,15 @@ Phone ko USB se PC se jodo, **USB debugging** on. WebView ko **`http://localhost
 
 ### APK: Login / Register — Continue with Google
 
-1. **WebView (native):** `MainActivity` में third-party cookies + DOM storage on hai taake `accounts.google.com` iframe / OAuth state kaam kare.
+1. **WebView (native):** `MainActivity` में third-party cookies + DOM storage on hai taake `accounts.google.com` iframe / OAuth state kaam kare; **user-agent se `; wv` hata** diya hai taake Google Identity “Sign in with Google” button WebView mein render ho (warna blank / FedCM bina iframe).
 2. **Google Cloud Console → OAuth 2.0 Client IDs → Web client** (jo ID `NEXT_PUBLIC_GOOGLE_CLIENT_ID` / API se milta hai):
    - **Authorized JavaScript origins** mein wohi **HTTPS origin** add karo jahan se APK WebView page load hota hai (e.g. `https://myneoxai.com`). Local APK + `adb reverse` par `http://localhost:3000` bhi add kar sakte ho agar wahi client ID use ho.
 3. **Backend:** `.env` mein `GOOGLE_CLIENT_IDS` (comma-separated) mein **usi Web client** ka ID hona chahiye jo frontend token ke liye use ho.
 4. **Build:** Web bundle mein client ID empty na ho — prod build se pehle env verify karo.
+
+### Chat / Voice — OpenAI `ConnectError` ya TTS 503
+
+Neo **server** se `https://api.openai.com` HTTPS nikalna zaroori hai (chat + Whisper + TTS). VPS par check: `curl -sI https://api.openai.com | head -1` → `HTTP/2 401` ya `403` theek hai (auth); **connection timeout / failed** = firewall / DNS / IPv6 / provider block. Proxy ho to backend env: `HTTPS_PROXY=...` (code `trust_env=True` use karta hai). `OPENAI_HTTP_MAX_RETRIES` (default 3) `.env` se badal sakte ho.
 
 
 

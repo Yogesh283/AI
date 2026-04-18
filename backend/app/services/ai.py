@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
+from typing import Any
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -86,6 +88,47 @@ def _openai_api_key() -> str:
     return ""
 
 
+def _openai_max_retries() -> int:
+    raw = (os.getenv("OPENAI_HTTP_MAX_RETRIES") or "3").strip()
+    try:
+        n = int(raw)
+        return max(1, min(n, 6))
+    except ValueError:
+        return 3
+
+
+def _openai_httpx_timeout() -> httpx.Timeout:
+    """Generous connect timeout — slow VPS / DNS / TLS to api.openai.com."""
+    return httpx.Timeout(120.0, connect=45.0)
+
+
+def _openai_async_client() -> httpx.AsyncClient:
+    """trust_env=True picks up HTTP_PROXY / HTTPS_PROXY / ALL_PROXY on the server."""
+    return httpx.AsyncClient(timeout=_openai_httpx_timeout(), trust_env=True)
+
+
+async def _post_openai_with_retries(
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    max_attempts: int | None = None,
+    **kwargs: Any,
+) -> httpx.Response:
+    attempts = max_attempts if max_attempts is not None else _openai_max_retries()
+    last: httpx.RequestError | None = None
+    for i in range(attempts):
+        try:
+            r = await client.post(url, **kwargs)
+            return r
+        except httpx.RequestError as e:
+            last = e
+            logger.warning("OpenAI POST %s attempt %s/%s: %s", url, i + 1, attempts, e)
+            if i + 1 < attempts:
+                await asyncio.sleep(0.35 * (i + 1))
+    assert last is not None
+    raise last
+
+
 @dataclass(frozen=True)
 class ChatCompletionResult:
     text: str
@@ -116,9 +159,10 @@ async def chat_completion(
 
 
 async def _openai_chat(messages: list[dict[str, str]], api_key: str) -> ChatCompletionResult:
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    async with _openai_async_client() as client:
         try:
-            r = await client.post(
+            r = await _post_openai_with_retries(
+                client,
                 "https://api.openai.com/v1/chat/completions",
                 headers={
                     "Authorization": f"Bearer {api_key}",
@@ -201,15 +245,19 @@ async def transcribe_audio_whisper(
     # Whisper accepts many types; default if missing
     mime = content_type or "application/octet-stream"
     safe_name = filename.strip() or "audio.webm"
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    async with _openai_async_client() as client:
         try:
-            r = await client.post(
+            r = await _post_openai_with_retries(
+                client,
                 "https://api.openai.com/v1/audio/transcriptions",
                 headers={"Authorization": f"Bearer {key}"},
                 files={"file": (safe_name, audio_bytes, mime)},
                 data={"model": "whisper-1"},
             )
             r.raise_for_status()
+        except httpx.RequestError as e:
+            logger.warning("Whisper network error: %s", e)
+            return ""
         except httpx.HTTPStatusError as e:
             try:
                 err = e.response.json().get("error", {})
@@ -244,14 +292,17 @@ async def synthesize_openai_tts(
     *,
     voice: str = "alloy",
     model: str = "tts-1",
-) -> bytes:
-    """OpenAI TTS → MP3 bytes. Empty if no API key or empty text."""
+) -> tuple[bytes, str]:
+    """
+    OpenAI TTS → (mp3_bytes, err_tag).
+    err_tag is '' on success; 'network' if api.openai.com could not be reached; 'http' on non-2xx.
+    """
     key = _openai_api_key()
     if not key:
-        return b""
+        return b"", "no_key"
     clean = (text or "").strip()
     if not clean:
-        return b""
+        return b"", "empty_text"
     if len(clean) > 4096:
         clean = clean[:4096]
 
@@ -263,9 +314,10 @@ async def synthesize_openai_tts(
     if m not in ("tts-1", "tts-1-hd"):
         m = "tts-1"
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    async with _openai_async_client() as client:
         try:
-            r = await client.post(
+            r = await _post_openai_with_retries(
+                client,
                 "https://api.openai.com/v1/audio/speech",
                 headers={
                     "Authorization": f"Bearer {key}",
@@ -278,6 +330,9 @@ async def synthesize_openai_tts(
                 },
             )
             r.raise_for_status()
+        except httpx.RequestError as e:
+            logger.warning("OpenAI TTS network error: %s", e)
+            return b"", "network"
         except httpx.HTTPStatusError as e:
             try:
                 err = e.response.json().get("error", {})
@@ -285,5 +340,5 @@ async def synthesize_openai_tts(
             except Exception:
                 msg = e.response.text or str(e)
             logger.warning("OpenAI TTS HTTP %s: %s", e.response.status_code, msg)
-            return b""
-        return r.content
+            return b"", "http"
+        return r.content, ""

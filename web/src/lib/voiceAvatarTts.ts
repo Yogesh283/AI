@@ -145,18 +145,29 @@ export async function playMp3BlobWithLipSync(
   });
 }
 
-function openAiTtsVoiceId(gender?: TtsVoiceGender): string {
+/** Default strip / Hello Neo — compact. Voice chat uses conversation style (more natural dialogue). */
+function openAiTtsVoiceId(
+  gender: TtsVoiceGender | undefined,
+  style: "default" | "conversation",
+): string {
+  if (style === "conversation") {
+    return gender === "male" ? "echo" : "shimmer";
+  }
   return gender === "male" ? "onyx" : "nova";
 }
 
 async function fetchOpenAiTtsBlob(
   text: string,
-  voiceGender?: TtsVoiceGender,
+  voiceGender: TtsVoiceGender | undefined,
+  fetchOpts?: { model?: "tts-1" | "tts-1-hd"; voiceStyle?: "default" | "conversation" },
 ): Promise<Blob> {
   const trimmed = (text || "").trim();
   if (!trimmed) {
     throw new Error("TTS: empty text");
   }
+
+  const model = fetchOpts?.model === "tts-1-hd" ? "tts-1-hd" : "tts-1";
+  const voiceStyle = fetchOpts?.voiceStyle === "conversation" ? "conversation" : "default";
 
   const res = await fetch(`${apiOrigin()}/api/voice/tts-audio`, {
     method: "POST",
@@ -164,8 +175,8 @@ async function fetchOpenAiTtsBlob(
     credentials: "same-origin",
     body: JSON.stringify({
       text: trimmed,
-      voice: openAiTtsVoiceId(voiceGender),
-      model: "tts-1",
+      voice: openAiTtsVoiceId(voiceGender, voiceStyle),
+      model,
     }),
   });
 
@@ -274,9 +285,10 @@ async function playMp3BlobSimpleWithSyntheticMouth(
 async function tryOpenAiTts(
   text: string,
   mouthShapeRef: { current: KalidokitMouthShape },
-  voiceGender?: TtsVoiceGender,
+  voiceGender: TtsVoiceGender | undefined,
+  fetchOpts?: { model?: "tts-1" | "tts-1-hd"; voiceStyle?: "default" | "conversation" },
 ): Promise<void> {
-  const blob = await fetchOpenAiTtsBlob(text, voiceGender);
+  const blob = await fetchOpenAiTtsBlob(text, voiceGender, fetchOpts);
 
   /* APK / WebView without `speechSynthesis`: Web Audio analyser path is flaky — simple `<audio>` MP3 only. */
   const useSimplePlayback = isNativeCapacitor() || !isSpeechSynthesisSupported();
@@ -298,7 +310,7 @@ export async function tryPlayOpenAiTtsPlain(
   voiceGender?: TtsVoiceGender,
 ): Promise<boolean> {
   try {
-    const blob = await fetchOpenAiTtsBlob(text, voiceGender);
+    const blob = await fetchOpenAiTtsBlob(text, voiceGender, undefined);
     await playMp3BlobSimple(blob);
     return true;
   } catch {
@@ -314,6 +326,10 @@ export type SpeakWithAvatarLipSyncOpts = {
   mouthShapeRef: { current: KalidokitMouthShape };
   /** If true, use OpenAI MP3 + Web Audio lip sync (optional). Default: browser TTS only (same as before). */
   preferOpenAiTts?: boolean;
+  /**
+   * Voice chat page only: OpenAI `tts-1-hd` + calmer dialogue voices; browser path gets slightly slower/calmer delivery.
+   */
+  voiceChatOpenAiTts?: boolean;
 };
 
 /**
@@ -325,11 +341,17 @@ export async function speakTextWithAvatarLipSync(
   opts: SpeakWithAvatarLipSyncOpts,
 ): Promise<void> {
   const prefer = opts.preferOpenAiTts === true;
+  const voiceChat = opts.voiceChatOpenAiTts === true;
   const ref = opts.mouthShapeRef;
 
   if (prefer) {
     try {
-      await tryOpenAiTts(text, ref, opts.voiceGender);
+      await tryOpenAiTts(
+        text,
+        ref,
+        opts.voiceGender,
+        voiceChat ? { model: "tts-1-hd", voiceStyle: "conversation" } : undefined,
+      );
       return;
     } catch (e) {
       /* No browser TTS fallback possible — surface fetch/play errors (e.g. APK WebView). */
@@ -368,6 +390,7 @@ export async function speakTextWithAvatarLipSync(
       speedPreset: opts.speedPreset,
       tonePreset: opts.tonePreset,
       replyMood: opts.replyMood,
+      voiceChatCalmDelivery: voiceChat,
     })
       .then(() => finish())
       .catch((e) => finish(e));
