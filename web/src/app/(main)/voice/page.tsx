@@ -36,7 +36,6 @@ import {
   prepareSpeechText,
   primeSpeechVoices,
   readTtsSpeedPreset,
-  speakText,
   unlockWebAudioAndSpeechFromUserGesture,
   speechRecognitionErrorMessage,
   stopSpeaking,
@@ -268,7 +267,8 @@ export default function VoicePage() {
 
   useEffect(() => {
     setSpeechSupported(isSpeechRecognitionSupported());
-    setTtsSupported(isSpeechSynthesisSupported());
+    /* APK WebView: speechSynthesis missing/broken — we use /api/voice/tts-audio (OpenAI MP3) instead. */
+    setTtsSupported(isSpeechSynthesisSupported() || isNativeCapacitor());
     primeSpeechVoices();
     const synth = window.speechSynthesis;
     const onVoices = () => primeSpeechVoices();
@@ -376,6 +376,7 @@ export default function VoicePage() {
             voiceGender: speakGender,
             speedPreset: readTtsSpeedPreset(),
             replyMood: "neutral",
+            preferOpenAiTts: isNativeCapacitor(),
           });
         } catch {
           /* ignore */
@@ -435,6 +436,7 @@ export default function VoicePage() {
             voiceGender: speakGender,
             speedPreset: readTtsSpeedPreset(),
             replyMood: "neutral",
+            preferOpenAiTts: isNativeCapacitor(),
           });
         } catch {
           /* ignore */
@@ -471,12 +473,15 @@ export default function VoicePage() {
             voiceGender: speakGender,
             speedPreset: readTtsSpeedPreset(),
             replyMood: mood,
+            preferOpenAiTts: isNativeCapacitor(),
           });
         } catch (ttsErr) {
           const msg =
             ttsErr instanceof Error ? ttsErr.message : "TTS failed";
           setErr(
-            `${msg} — Volume / speakers check karein; Chrome ya Edge try karein.`
+            isNativeCapacitor()
+              ? `${msg} — App se Neo server / OpenAI reach ho raha hai check karein (DNS, internet).`
+              : `${msg} — Volume / speakers check karein; Chrome ya Edge try karein.`
           );
         } finally {
           if (speakGenerationRef.current === gen) setSpeaking(false);
@@ -663,6 +668,7 @@ export default function VoicePage() {
           voiceGender: ttsGender,
           speedPreset: readTtsSpeedPreset(),
           replyMood: "neutral",
+          preferOpenAiTts: isNativeCapacitor(),
         });
       } catch {
         /* still open mic */
@@ -722,14 +728,16 @@ export default function VoicePage() {
           /* offline — local choice still applies */
         }
       }
-      if (!sessionOnRef.current && isSpeechSynthesisSupported()) {
+      if (!sessionOnRef.current) {
         try {
           primeSpeechVoices();
           window.speechSynthesis?.resume();
-          await speakText(pid === "arjun" ? "Male voice." : "Female voice.", lang, {
+          await speakTextWithAvatarLipSync(pid === "arjun" ? "Male voice." : "Female voice.", lang, {
+            mouthShapeRef,
             voiceGender: p.ttsGender,
             speedPreset: readTtsSpeedPreset(),
             replyMood: "neutral",
+            preferOpenAiTts: isNativeCapacitor(),
           });
         } catch {
           /* ignore */
@@ -837,10 +845,13 @@ export default function VoicePage() {
         ) : null}
 
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center">
-        {ttsSupported === false || speechSupported === false ? (
+        {speechSupported === false ||
+        (ttsSupported === false && !isNativeCapacitor()) ? (
           <p className="mb-8 max-w-sm text-center text-[11px] leading-relaxed text-white/35">
             {speechSupported === false
-              ? "Voice input needs Chrome or Edge on desktop."
+              ? isNativeCapacitor()
+                ? "Mic permission dena zaroori hai — app settings mein allow karein."
+                : "Voice input needs Chrome or Edge on desktop."
               : "Speech output works best in Chrome or Edge."}
           </p>
         ) : null}
