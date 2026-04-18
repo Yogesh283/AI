@@ -32,7 +32,11 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onResume() {
         super.onResume();
-        ensureMicPermission();
+        /*
+         * Do NOT call ensureMicPermission() here. Returning from Google Sign-In / Credential Manager
+         * runs onResume; starting RECORD_AUDIO requestPermissions() again can interrupt that flow and
+         * surface as "The user canceled the sign-in flow." Mic is requested once from onCreate.
+         */
         /* Do not stop wake here — onResume runs after unlock; killing wake prevented lock-screen Hello Neo. */
         // WebView: allow TTS / Web Audio without an extra user gesture (fixes silent voice on many APK builds).
         View decor = getWindow().getDecorView();
