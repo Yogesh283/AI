@@ -21,6 +21,8 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(NeoNativeRouterPlugin.class);
         super.onCreate(savedInstanceState);
+        /* Apply UA / cookies before first paint so the initial request to server.url is not stuck with "; wv". */
+        configureWebViewForVoice();
         /* Defer mic prompt so it does not stack on top of Google sign-in / first WebView interactions. */
         getWindow().getDecorView().postDelayed(this::ensureMicPermission, 2000);
         maybeStopWakeService();
@@ -55,6 +57,9 @@ public class MainActivity extends BridgeActivity {
             WebSettings s = wv.getSettings();
             s.setMediaPlaybackRequiresUserGesture(false);
             s.setDomStorageEnabled(true);
+            s.setCacheMode(WebSettings.LOAD_DEFAULT);
+            /* GIS / OAuth: child windows often open Chrome and strand the user on accounts.google.com/gsi/tr */
+            s.setSupportMultipleWindows(false);
             CookieManager cm = CookieManager.getInstance();
             cm.setAcceptCookie(true);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {

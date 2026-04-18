@@ -1,8 +1,22 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
-import { NeoGoogleSignIn } from "@/components/neo/NeoGoogleSignIn";
 import { fetchGoogleWebClientId } from "@/lib/googleClientId";
+
+/** Client-only: avoids SSR/hydration serving `GoogleLogin` (GIS) in the APK — GIS opens Chrome on `accounts.google.com/gsi/tr` and never returns. */
+const NeoGoogleSignIn = dynamic(
+  () => import("@/components/neo/NeoGoogleSignIn").then((m) => m.NeoGoogleSignIn),
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        className="neo-glass h-12 w-full rounded-2xl border border-white/[0.08] bg-white/[0.04]"
+        aria-hidden
+      />
+    ),
+  },
+);
 
 type Intent = "signin" | "signup";
 

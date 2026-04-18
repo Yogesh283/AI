@@ -10,8 +10,12 @@ export function isNativeCapacitor(): boolean {
     if (!C || typeof C !== "object") return false;
     const iso = (C as { isNativePlatform?: () => boolean }).isNativePlatform;
     if (typeof iso === "function" && iso()) return true;
-    /* Bridge sometimes loads before `isNativePlatform` is callable — still the APK WebView. */
-    if ("Plugins" in C || "getPlatform" in C || "registerPlugin" in C) return true;
+    /* Before `isNativePlatform()` is ready, `getPlatform()` is still reliable in the shell WebView. */
+    const gp = (C as { getPlatform?: () => string }).getPlatform;
+    if (typeof gp === "function") {
+      const p = gp();
+      if (p === "android" || p === "ios") return true;
+    }
   } catch {
     return false;
   }
