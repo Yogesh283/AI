@@ -67,7 +67,10 @@ const VOICE_CHAT_AVATAR_OPTS = { voiceChatOpenAiTts: true as const };
 /** Browser classic STT: debounce finals + flush after a pause (continuous recognition). */
 const VOICE_CLASSIC_UTTERANCE_DEBOUNCE_MS = 280;
 const VOICE_CLASSIC_FLUSH_AFTER_SPEECH_END_MS = 220;
-/** After Web Speech `onend`, brief pause before `start()` again — fewer OEM “tun” / focus glitches than immediate restart. */
+/**
+ * After Web Speech `onend` / `no-speech`, brief pause before `start()` again — fewer OEM “tun” / focus glitches
+ * than immediate restart. Same `SpeechRecognition` instance is reused for the whole session when possible.
+ */
 const VOICE_CLASSIC_ONEND_RESTART_MS = 52;
 
 function IconMic({ className }: { className?: string }) {
@@ -801,6 +804,22 @@ export default function VoicePage() {
     };
   }, [sendText]);
 
+  /** Same continuous Web Speech instance: avoids destroy/recreate cycles that often trigger OS mic cues. */
+  const tryResumeSpeechRecognition = useCallback((): boolean => {
+    if (!isSpeechRecognitionSupported()) return false;
+    if (voiceEngineRef.current === "live") return false;
+    const r = recRef.current;
+    if (!r || !sessionOnRef.current || micPausedRef.current) return false;
+    try {
+      r.start();
+      listeningActiveRef.current = true;
+      setListening(true);
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
   const beginListening = useCallback(() => {
     if (voiceEngineRef.current === "live") return;
     if (!sessionOnRef.current) return;
@@ -847,7 +866,19 @@ export default function VoicePage() {
       return;
     }
 
-    /* Browser classic: one continuous STT session — no abort/restart each turn (quieter on many devices). */
+    /* Browser classic: one continuous STT session — keep the same instance until session end or hard error. */
+    if (recRef.current != null && !listeningActiveRef.current) {
+      if (tryResumeSpeechRecognition()) {
+        return;
+      }
+      try {
+        recRef.current.abort?.();
+      } catch {
+        /* ignore */
+      }
+      recRef.current = null;
+    }
+
     if (listeningActiveRef.current && recRef.current) {
       return;
     }
@@ -930,9 +961,41 @@ export default function VoicePage() {
       ) as unknown as number;
     };
 
+    const scheduleClassicRecognitionRestart = (recSnapshot: SpeechRecognition) => {
+      if (voiceOnendRestartTimerRef.current != null) {
+        window.clearTimeout(voiceOnendRestartTimerRef.current);
+      }
+      voiceOnendRestartTimerRef.current = window.setTimeout(() => {
+        voiceOnendRestartTimerRef.current = null;
+        if (recRef.current !== recSnapshot || !sessionOnRef.current || micPausedRef.current) return;
+        try {
+          recSnapshot.start();
+          listeningActiveRef.current = true;
+          setListening(true);
+        } catch {
+          listeningActiveRef.current = false;
+          setListening(false);
+          recRef.current = null;
+          if (sessionOnRef.current && !micPausedRef.current) {
+            beginListeningRef.current();
+          }
+        }
+      }, VOICE_CLASSIC_ONEND_RESTART_MS) as unknown as number;
+    };
+
     rec.onerror = (ev: SpeechRecognitionErrorEvent) => {
       if (ev.error === "aborted") return;
       listeningActiveRef.current = false;
+      if (ev.error === "no-speech") {
+        if (voiceUtteranceDebounceRef.current != null) {
+          window.clearTimeout(voiceUtteranceDebounceRef.current);
+          voiceUtteranceDebounceRef.current = null;
+        }
+        listeningActiveRef.current = false;
+        /* Keep `rec` / recRef — same quiet restart path as `onend` (no destroy → fewer OS sounds). */
+        scheduleClassicRecognitionRestart(rec);
+        return;
+      }
       setListening(false);
       recRef.current = null;
       if (voiceUtteranceDebounceRef.current != null) {
@@ -955,21 +1018,9 @@ export default function VoicePage() {
         recRef.current = null;
         return;
       }
-      const recSnapshot = rec;
-      if (voiceOnendRestartTimerRef.current != null) {
-        window.clearTimeout(voiceOnendRestartTimerRef.current);
-      }
-      voiceOnendRestartTimerRef.current = window.setTimeout(() => {
-        voiceOnendRestartTimerRef.current = null;
-        if (recRef.current !== recSnapshot || !sessionOnRef.current || micPausedRef.current) return;
-        try {
-          recSnapshot.start();
-        } catch {
-          listeningActiveRef.current = false;
-          setListening(false);
-          recRef.current = null;
-        }
-      }, VOICE_CLASSIC_ONEND_RESTART_MS) as unknown as number;
+      /* Session still on: keep UI “listening” through the micro-gap — only the ref drops until `start()` succeeds. */
+      listeningActiveRef.current = false;
+      scheduleClassicRecognitionRestart(rec);
     };
 
     recRef.current = rec;
@@ -982,15 +1033,24 @@ export default function VoicePage() {
       setErr("Mic is busy — try again.");
       setListening(false);
     }
-  }, [lang, sendText]);
+  }, [lang, sendText, tryResumeSpeechRecognition]);
 
   useEffect(() => {
     beginListeningRef.current = beginListening;
     resumeMicAfterAssistantRef.current = () => {
       window.setTimeout(() => {
-        releaseWebVoiceCaptureAfterAssistant();
         if (!sessionOnRef.current || micPausedRef.current || thinkingRef.current) return;
-        /* Continuous browser STT: mic never stopped — avoid extra TTS graph stops that some stacks surface as UI noise. */
+        releaseWebVoiceCaptureAfterAssistant();
+        if (
+          isSpeechRecognitionSupported() &&
+          recRef.current != null &&
+          !listeningActiveRef.current
+        ) {
+          if (tryResumeSpeechRecognition()) {
+            return;
+          }
+        }
+        /* Continuous browser STT: avoid extra TTS graph stops that some stacks surface as UI noise. */
         if (!(isSpeechRecognitionSupported() && listeningActiveRef.current)) {
           stopVoiceOutput();
         }
@@ -998,7 +1058,7 @@ export default function VoicePage() {
         beginListeningRef.current();
       }, voiceChatResumeMicDelayMs());
     };
-  }, [beginListening, releaseWebVoiceCaptureAfterAssistant, stopVoiceOutput]);
+  }, [beginListening, releaseWebVoiceCaptureAfterAssistant, stopVoiceOutput, tryResumeSpeechRecognition]);
 
   const startLiveVoice = useCallback(async () => {
     if (!sessionOnRef.current) return;

@@ -127,6 +127,7 @@ export async function startOpenAiRealtimeVoiceSession(
     if (ev) routeRealtimeEvent(ev, callbacks);
   };
 
+  /* One mic stream for the whole Realtime session — tracks stay live until `close()` (no per-turn getUserMedia). */
   const ms = await navigator.mediaDevices.getUserMedia({
     audio: {
       echoCancellation: true,
