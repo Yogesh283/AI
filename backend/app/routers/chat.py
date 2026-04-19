@@ -21,11 +21,13 @@ from app.db_mysql import (
     pool_ready,
 )
 from app.routers.auth import optional_user
-from app.services.ai import (
-    ChatCompletionResult,
-    _openai_api_key,
-    chat_completion,
-    stream_openai_chat_deltas,
+from app.services.ai import ChatCompletionResult
+from app.services.chat_inference import (
+    chat_inference_backend,
+    effective_stream_model_id,
+    maybe_append_training_log,
+    unified_chat_completion,
+    unified_stream_chat_deltas,
 )
 from app.services.web_search import fetch_google_snippets, should_auto_fetch_web
 from app.store import add_chat_turn, add_memory_fact, get_memory, get_profile, get_recent_chat_history
@@ -389,7 +391,10 @@ async def _persist_chat_exchange(
             await insert_usage_transaction(
                 uid,
                 "chat",
-                metadata={"model": result.model, "endpoint": "chat/completions"},
+                metadata={
+                    "model": result.model,
+                    "endpoint": "openai" if chat_inference_backend() == "openai" else "local",
+                },
                 prompt_tokens=result.prompt_tokens,
                 completion_tokens=result.completion_tokens,
                 total_tokens=result.total_tokens,
@@ -400,14 +405,19 @@ def _sse(obj: dict[str, Any]) -> bytes:
     return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n".encode("utf-8")
 
 
-def _completion_result_from_stream_usage(full_text: str, usage_h: list[dict[str, Any]]) -> ChatCompletionResult:
+def _completion_result_from_stream_usage(
+    full_text: str,
+    usage_h: list[dict[str, Any]],
+    *,
+    model_id: str,
+) -> ChatCompletionResult:
     usage = usage_h[0] if usage_h else {}
     pt = usage.get("prompt_tokens")
     ct = usage.get("completion_tokens")
     tt = usage.get("total_tokens")
     return ChatCompletionResult(
         text=full_text,
-        model="gpt-4o-mini",
+        model=model_id,
         prompt_tokens=int(pt) if isinstance(pt, int) else None,
         completion_tokens=int(ct) if isinstance(ct, int) else None,
         total_tokens=int(tt) if isinstance(tt, int) else None,
@@ -435,7 +445,7 @@ async def post_chat(
     system_extra = ctx.system_extra
 
     try:
-        result = await chat_completion(msgs, user_id=uid)
+        result = await unified_chat_completion(msgs, user_id=uid)
         reply = result.text
         if not web_block and last_user and _looks_like_no_live_access(reply):
             forced_block = await fetch_google_snippets(last_user)
@@ -447,7 +457,7 @@ async def post_chat(
                 retry_msgs: list[dict[str, str]] = [{"role": "system", "content": retry_system}]
                 for m in body.messages:
                     retry_msgs.append({"role": m.role, "content": m.content})
-                retry = await chat_completion(retry_msgs, user_id=uid)
+                retry = await unified_chat_completion(retry_msgs, user_id=uid)
                 result = retry
                 reply = retry.text
     except HTTPException:
@@ -458,11 +468,13 @@ async def post_chat(
             status_code=503,
             detail=(
                 f"Chat AI error ({type(e).__name__}): {e}. "
-                "Check backend OPENAI_API_KEY, billing, outbound HTTPS, and: pm2 logs neo-api"
+                "If NEO_CHAT_BACKEND=openai: check OPENAI_API_KEY, billing, outbound HTTPS (pm2 logs neo-api). "
+                "If NEO_CHAT_BACKEND=local: check NEO_LOCAL_CHAT_URL and that the local server is reachable."
             ),
         ) from e
 
     await _persist_chat_exchange(uid, last_user, reply, ctx.source, user, result)
+    maybe_append_training_log(uid, ctx.source, msgs, reply)
     snippets = [f"{x['key']}: {x['value']}" for x in mem[-3:]]
     return ChatResponse(reply=reply, memory_snippets=snippets)
 
@@ -485,15 +497,16 @@ async def post_chat_stream(
 
             msgs = ctx.openai_messages
             assert msgs is not None
-            key = _openai_api_key()
             usage_h: list[dict[str, Any]] = []
             parts: list[str] = []
-            async for delta in stream_openai_chat_deltas(msgs, key, usage_holder=usage_h):
+            model_id = effective_stream_model_id()
+            async for delta in unified_stream_chat_deltas(msgs, usage_holder=usage_h):
                 parts.append(delta)
                 yield _sse({"d": delta})
             full = "".join(parts)
-            result = _completion_result_from_stream_usage(full, usage_h)
+            result = _completion_result_from_stream_usage(full, usage_h, model_id=model_id)
             await _persist_chat_exchange(ctx.uid, ctx.last_user, full, ctx.source, user, result)
+            maybe_append_training_log(ctx.uid, ctx.source, msgs, full)
             yield _sse({"done": True})
         except Exception as e:
             logger.exception("post_chat_stream failed")

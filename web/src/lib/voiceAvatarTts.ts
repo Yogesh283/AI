@@ -8,6 +8,7 @@ import { apiOrigin } from "@/lib/apiBase";
 import { isNativeCapacitor } from "@/lib/nativeAppLinks";
 import {
   isSpeechSynthesisSupported,
+  prepareSpeechText,
   speakText,
   type TtsVoiceGender,
   type TtsSpeedPreset,
@@ -409,6 +410,168 @@ export type SpeakWithAvatarLipSyncOpts = {
    */
   voiceChatOpenAiTts?: boolean;
 };
+
+/** Voice chat: stream assistant tokens → speak phrase-sized chunks without waiting for the full reply. */
+export type VoiceChatStreamedOpenAiTtsSession = {
+  pushAssistantDelta(delta: string): void;
+  /** Speak any remaining buffered text and await all queued audio. */
+  finish(): Promise<void>;
+  /** Stop timers and playback (e.g. abort / interrupt). */
+  dispose(): void;
+};
+
+/**
+ * OpenAI TTS chunks in order as SSE text arrives — first audible phrase usually starts shortly after
+ * a natural break (sentence / clause / word boundary) plus one TTS round-trip.
+ */
+export function createVoiceChatStreamedOpenAiTtsSession(opts: {
+  mouthShapeRef: { current: KalidokitMouthShape };
+  voiceGender: TtsVoiceGender | undefined;
+  /** When the first speakable chunk is queued (before audio returns) — e.g. clear “thinking” UI. */
+  onFirstSpeakableChunk?: () => void;
+  /** If set, skip further playback when this no longer matches (user interrupted). */
+  speakGenerationRef?: { current: number };
+  speakGenerationId: number;
+  signal?: AbortSignal;
+}): VoiceChatStreamedOpenAiTtsSession {
+  let buf = "";
+  let spoken = 0;
+  let disposed = false;
+  let firstChunkQueued = false;
+  let chain: Promise<void> = Promise.resolve();
+  let idleTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const fetchOpts = { model: "gpt-4o-mini-tts" as const, voiceStyle: "conversation" as const };
+
+  const genOk = () =>
+    !disposed &&
+    !opts.signal?.aborted &&
+    (opts.speakGenerationRef == null || opts.speakGenerationRef.current === opts.speakGenerationId);
+
+  const findNextFlushEnd = (full: string, from: number, isFirst: boolean): number => {
+    const n = full.length;
+    const minLen = isFirst ? 10 : 22;
+    if (n - from < minLen) return -1;
+    const hardMax = 140;
+    const searchTo = Math.min(n, from + hardMax);
+    for (let i = from + minLen; i < searchTo; i++) {
+      const c = full[i];
+      if (c === "." || c === "!" || c === "?" || c === "\n" || c === "\u0964") {
+        return i + 1;
+      }
+    }
+    for (let i = from + minLen; i < searchTo; i++) {
+      const ch = full[i];
+      if (",;:-".includes(ch) && i - from >= 20) {
+        return i + 1;
+      }
+    }
+    if (n - from >= hardMax) {
+      const slice = full.slice(from, from + hardMax);
+      const sp = slice.lastIndexOf(" ");
+      if (sp >= minLen - 1) return from + sp + 1;
+    }
+    return -1;
+  };
+
+  const tryFlushHardBoundaries = () => {
+    let isFirst = spoken === 0;
+    while (genOk()) {
+      const end = findNextFlushEnd(buf, spoken, isFirst);
+      if (end < 0) break;
+      const raw = buf.slice(spoken, end);
+      spoken = end;
+      isFirst = false;
+      const t = prepareSpeechText(raw, 520).trim();
+      if (!t) continue;
+      if (!firstChunkQueued) {
+        firstChunkQueued = true;
+        opts.onFirstSpeakableChunk?.();
+      }
+      const g = opts.speakGenerationId;
+      chain = chain.then(async () => {
+        if (!genOk() || opts.speakGenerationRef?.current !== g) return;
+        await tryOpenAiTts(t, opts.mouthShapeRef, opts.voiceGender, fetchOpts);
+      });
+    }
+  };
+
+  const tryFlushIdlePartial = () => {
+    if (!genOk() || buf.length - spoken < 16) return;
+    const slice = buf.slice(spoken);
+    const sp = slice.lastIndexOf(" ");
+    if (sp < 10) return;
+    const cut = spoken + sp + 1;
+    const raw = buf.slice(spoken, cut);
+    spoken = cut;
+    const t = prepareSpeechText(raw, 520).trim();
+    if (!t) return;
+    if (!firstChunkQueued) {
+      firstChunkQueued = true;
+      opts.onFirstSpeakableChunk?.();
+    }
+    const g = opts.speakGenerationId;
+    chain = chain.then(async () => {
+      if (!genOk() || opts.speakGenerationRef?.current !== g) return;
+      await tryOpenAiTts(t, opts.mouthShapeRef, opts.voiceGender, fetchOpts);
+    });
+  };
+
+  const scheduleIdleFlush = () => {
+    if (idleTimer != null) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      idleTimer = null;
+      if (!genOk()) return;
+      tryFlushHardBoundaries();
+      tryFlushIdlePartial();
+    }, 280);
+  };
+
+  const flushRemainder = () => {
+    const tail = buf.slice(spoken).trim();
+    spoken = buf.length;
+    if (!tail) return;
+    const t = prepareSpeechText(tail, 520).trim();
+    if (!t) return;
+    if (!firstChunkQueued) {
+      firstChunkQueued = true;
+      opts.onFirstSpeakableChunk?.();
+    }
+    const g = opts.speakGenerationId;
+    chain = chain.then(async () => {
+      if (!genOk() || opts.speakGenerationRef?.current !== g) return;
+      await tryOpenAiTts(t, opts.mouthShapeRef, opts.voiceGender, fetchOpts);
+    });
+  };
+
+  return {
+    pushAssistantDelta(delta: string) {
+      if (!genOk() || !delta) return;
+      buf += delta;
+      tryFlushHardBoundaries();
+      scheduleIdleFlush();
+    },
+    async finish() {
+      if (idleTimer != null) {
+        clearTimeout(idleTimer);
+        idleTimer = null;
+      }
+      if (!genOk()) return;
+      tryFlushHardBoundaries();
+      tryFlushIdlePartial();
+      flushRemainder();
+      await chain;
+    },
+    dispose() {
+      disposed = true;
+      if (idleTimer != null) {
+        clearTimeout(idleTimer);
+        idleTimer = null;
+      }
+      stopAvatarTtsAudio();
+    },
+  };
+}
 
 /**
  * Browser `speakText` + synthetic mouth by default. Set `preferOpenAiTts: true` for OpenAI TTS + analyser lip sync.

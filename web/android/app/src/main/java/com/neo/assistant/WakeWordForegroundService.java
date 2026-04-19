@@ -44,8 +44,24 @@ public class WakeWordForegroundService extends Service {
     /** Ignore duplicate final transcripts (screen-off partial quirks / echo). */
     private long lastHandledCommandMs;
     private String lastHandledCommandKey = "";
-    /** After each recognition pass, wait before opening the mic again (TTS + “say Hello Neo again” rhythm). */
-    private volatile int pendingRelistenMs = 450;
+    /**
+     * Return value from {@link #consumeRecognizerResults(android.os.Bundle)}: do not schedule STT restart here —
+     * {@link NeoCommandRouter} will run {@link #resumeListeningRunnable} when TTS ends.
+     */
+    private static final int RELISTEN_DEFERRED = -1;
+    /** Short gap before the next {@link SpeechRecognizer#startListening} — keeps one recognizer, avoids long “dead air”. */
+    private static final int RELISTEN_MS_QUICK = 100;
+    private static final int RELISTEN_MS_ERROR = 260;
+    /** Wake heard with no command tail — brief pause so the user can finish the phrase. */
+    private static final int RELISTEN_MS_AFTER_WAKE_ONLY = 420;
+
+    private final Runnable resumeListeningRunnable =
+        () -> {
+            if (!shouldListen) return;
+            if (!mayUseMicNow()) return;
+            if (NeoCommandRouter.isAISpeaking()) return;
+            startListeningSafe();
+        };
 
     @Override
     public void onCreate() {
@@ -53,6 +69,13 @@ public class WakeWordForegroundService extends Service {
         createChannel();
         acquirePartialWakeLock();
         initRecognizer();
+        NeoCommandRouter.setAssistantSpeechEndedRunnable(
+            () -> {
+                if (!shouldListen) return;
+                if (!mayUseMicNow()) return;
+                if (NeoCommandRouter.isAISpeaking()) return;
+                schedulePassiveRelisten(RELISTEN_MS_QUICK);
+            });
         registerScreenStateReceiver();
     }
 
@@ -73,7 +96,7 @@ public class WakeWordForegroundService extends Service {
                         stopListeningSilently();
                     }
                 } else if (Intent.ACTION_SCREEN_ON.equals(intent.getAction()) && shouldListen) {
-                    restartWithDelay(500);
+                    schedulePassiveRelisten(420);
                 }
             }
         };
@@ -125,6 +148,8 @@ public class WakeWordForegroundService extends Service {
     @Override
     public void onDestroy() {
         shouldListen = false;
+        NeoCommandRouter.setAssistantSpeechEndedRunnable(null);
+        mainHandler.removeCallbacks(resumeListeningRunnable);
         mainHandler.removeCallbacksAndMessages(null);
         try {
             if (screenReceiver != null) {
@@ -157,6 +182,7 @@ public class WakeWordForegroundService extends Service {
 
     private void initRecognizer() {
         if (!SpeechRecognizer.isRecognitionAvailable(this)) return;
+        /* Single recognizer for the foreground lifetime — only startListening again after each final result / error. */
         recognizer = SpeechRecognizer.createSpeechRecognizer(this);
         recognizer.setRecognitionListener(new RecognitionListener() {
             @Override public void onReadyForSpeech(android.os.Bundle params) {}
@@ -170,14 +196,23 @@ public class WakeWordForegroundService extends Service {
             public void onError(int error) {
                 if (!shouldListen) return;
                 if (!mayUseMicNow()) return;
-                restartWithDelay(450);
+                if (NeoCommandRouter.isAISpeaking()) return;
+                schedulePassiveRelisten(RELISTEN_MS_ERROR);
             }
 
             @Override
             public void onResults(android.os.Bundle results) {
-                handleResults(results);
                 if (!shouldListen || !mayUseMicNow()) return;
-                restartWithDelay(pendingRelistenMs);
+                if (NeoCommandRouter.isAISpeaking()) {
+                    /* Drop finals captured while assistant TTS is playing (feedback loop). */
+                    return;
+                }
+                int delayMs = consumeRecognizerResults(results);
+                if (!shouldListen || !mayUseMicNow()) return;
+                if (NeoCommandRouter.isAISpeaking()) return;
+                if (delayMs != RELISTEN_DEFERRED) {
+                    schedulePassiveRelisten(delayMs);
+                }
             }
 
             @Override
@@ -191,46 +226,47 @@ public class WakeWordForegroundService extends Service {
         recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault());
         recognizerIntent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
         recognizerIntent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
-        recognizerIntent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 700L);
-        recognizerIntent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 500L);
+        /* Slightly longer end windows reduce rapid stop/start of the same session (fewer focus beeps on some devices). */
+        recognizerIntent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1100L);
+        recognizerIntent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 750L);
     }
 
-    private static final int RELISTEN_MS_NO_WAKE = 1800;
-    private static final int RELISTEN_MS_WAKE_ONLY = 4200;
-    private static final int RELISTEN_MS_AFTER_COMMAND = 5500;
-
-    private void handleResults(android.os.Bundle bundle) {
-        pendingRelistenMs = RELISTEN_MS_NO_WAKE;
-        if (!mayUseMicNow()) return;
-        if (bundle == null) return;
+    /**
+     * Parses wake + command and runs {@link NeoCommandRouter#execute}.
+     *
+     * @return ms to wait before {@link #startListeningSafe}, or {@link #RELISTEN_DEFERRED} if TTS owns the next start.
+     */
+    private int consumeRecognizerResults(android.os.Bundle bundle) {
+        if (!mayUseMicNow()) return RELISTEN_MS_QUICK;
+        if (bundle == null) return RELISTEN_MS_QUICK;
         ArrayList<String> matches = bundle.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-        if (matches == null || matches.isEmpty()) return;
+        if (matches == null || matches.isEmpty()) return RELISTEN_MS_QUICK;
         String said = normalize(matches.get(0));
-        if (said.isEmpty()) return;
+        if (said.isEmpty()) return RELISTEN_MS_QUICK;
 
         String command = extractWakeCommand(said);
         if (command == null) {
-            pendingRelistenMs = RELISTEN_MS_NO_WAKE;
-            return;
+            return RELISTEN_MS_QUICK;
         }
 
         if (command.isEmpty()) {
-            /* Wake heard (e.g. "hello neo") with no command tail — pause before listening again. */
-            pendingRelistenMs = RELISTEN_MS_WAKE_ONLY;
-            return;
+            /* Wake heard (e.g. "hello neo") with no command tail — brief pause before passive listen resumes. */
+            return RELISTEN_MS_AFTER_WAKE_ONLY;
         }
 
         String key = command.trim().toLowerCase(Locale.ROOT);
         long now = System.currentTimeMillis();
         if (key.equals(lastHandledCommandKey) && (now - lastHandledCommandMs) < 3200) {
-            pendingRelistenMs = RELISTEN_MS_AFTER_COMMAND;
-            return;
+            return RELISTEN_MS_QUICK;
         }
         lastHandledCommandKey = key;
         lastHandledCommandMs = now;
 
         NeoCommandRouter.execute(this, command);
-        pendingRelistenMs = RELISTEN_MS_AFTER_COMMAND;
+        if (NeoCommandRouter.isAISpeaking()) {
+            return RELISTEN_DEFERRED;
+        }
+        return RELISTEN_MS_QUICK;
     }
 
     private String extractWakeCommand(String said) {
@@ -281,18 +317,15 @@ public class WakeWordForegroundService extends Service {
             recognizer.startListening(recognizerIntent);
         } catch (Exception ignored) {
             if (mayUseMicNow()) {
-                restartWithDelay(700);
+                schedulePassiveRelisten(700);
             }
         }
     }
 
-    private void restartWithDelay(long ms) {
-        mainHandler.removeCallbacksAndMessages(null);
-        mainHandler.postDelayed(() -> {
-            if (!shouldListen) return;
-            if (!mayUseMicNow()) return;
-            startListeningSafe();
-        }, ms);
+    /** One debounced “open mic again” pass — same {@link SpeechRecognizer} instance, no destroy/recreate. */
+    private void schedulePassiveRelisten(long ms) {
+        mainHandler.removeCallbacks(resumeListeningRunnable);
+        mainHandler.postDelayed(resumeListeningRunnable, ms);
     }
 
     private Notification buildNotification() {

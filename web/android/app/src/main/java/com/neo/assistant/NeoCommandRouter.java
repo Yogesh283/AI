@@ -11,6 +11,7 @@ import android.provider.ContactsContract;
 import android.os.Handler;
 import android.os.Looper;
 import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
 import androidx.core.content.ContextCompat;
 import java.util.Locale;
 import java.util.regex.Matcher;
@@ -22,8 +23,33 @@ public final class NeoCommandRouter {
     private static String pendingSpeech;
     private static final Handler busyAckHandler = new Handler(Looper.getMainLooper());
     private static Runnable pendingBusyRunnable;
+    /** While assistant TTS is playing — wake / voice layers must ignore mic input (no speaker→mic loop). */
+    private static volatile boolean isAISpeaking = false;
+    /** Posted when the last queued utterance finishes (or errors). Wake listener resumes STT without extra mic churn. */
+    private static volatile Runnable assistantSpeechEndedRunnable;
 
     private NeoCommandRouter() {}
+
+    /** @return true while Neo voice acknowledgement / reply TTS is active */
+    public static boolean isAISpeaking() {
+        return isAISpeaking;
+    }
+
+    /**
+     * Wake / foreground listener registers this to resume {@link android.speech.SpeechRecognizer} after TTS.
+     * Do not perform heavy work on this runnable’s thread.
+     */
+    public static void setAssistantSpeechEndedRunnable(Runnable r) {
+        assistantSpeechEndedRunnable = r;
+    }
+
+    private static void notifyAssistantSpeechEnded() {
+        isAISpeaking = false;
+        Runnable r = assistantSpeechEndedRunnable;
+        if (r != null) {
+            busyAckHandler.post(r);
+        }
+    }
 
     static boolean execute(Context context, String raw) {
         busyAckHandler.removeCallbacksAndMessages(null);
@@ -236,6 +262,8 @@ public final class NeoCommandRouter {
     static void shutdown() {
         busyAckHandler.removeCallbacksAndMessages(null);
         pendingBusyRunnable = null;
+        assistantSpeechEndedRunnable = null;
+        isAISpeaking = false;
         if (tts != null) {
             try {
                 tts.stop();
@@ -246,6 +274,42 @@ public final class NeoCommandRouter {
         tts = null;
         ttsReady = false;
         pendingSpeech = null;
+    }
+
+    private static void attachUtteranceListener() {
+        if (tts == null) return;
+        try {
+            tts.setOnUtteranceProgressListener(
+                new UtteranceProgressListener() {
+                    @Override
+                    public void onStart(String utteranceId) {
+                        /* Flag is set synchronously in speakInternal before speak(); this confirms engine started. */
+                    }
+
+                    @Override
+                    public void onDone(String utteranceId) {
+                        notifyAssistantSpeechEnded();
+                    }
+
+                    @Override
+                    public void onError(String utteranceId) {
+                        notifyAssistantSpeechEnded();
+                    }
+                });
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static void speakInternal(String text) {
+        if (tts == null || !ttsReady) return;
+        applyNeoTtsCalmProfile();
+        attachUtteranceListener();
+        isAISpeaking = true;
+        String uttId = "neo-utt-" + System.nanoTime();
+        int code = tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, uttId);
+        if (code == TextToSpeech.ERROR) {
+            notifyAssistantSpeechEnded();
+        }
     }
 
     private static boolean isTimeIntent(String t) {
@@ -549,22 +613,25 @@ public final class NeoCommandRouter {
         if (text == null || text.trim().isEmpty()) return;
         if (tts == null) {
             pendingSpeech = text;
-            tts = new TextToSpeech(context.getApplicationContext(), status -> {
-                if (status == TextToSpeech.SUCCESS && tts != null) {
-                    ttsReady = true;
-                    tts.setLanguage(Locale.getDefault());
-                    applyNeoTtsCalmProfile();
-                    if (pendingSpeech != null) {
-                        tts.speak(pendingSpeech, TextToSpeech.QUEUE_FLUSH, null, "neo-time");
-                        pendingSpeech = null;
-                    }
-                }
-            });
+            tts =
+                new TextToSpeech(
+                    context.getApplicationContext(),
+                    status -> {
+                        if (status == TextToSpeech.SUCCESS && tts != null) {
+                            ttsReady = true;
+                            tts.setLanguage(Locale.getDefault());
+                            attachUtteranceListener();
+                            applyNeoTtsCalmProfile();
+                            if (pendingSpeech != null) {
+                                speakInternal(pendingSpeech);
+                                pendingSpeech = null;
+                            }
+                        }
+                    });
             return;
         }
         if (ttsReady) {
-            applyNeoTtsCalmProfile();
-            tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "neo-speech");
+            speakInternal(text);
         } else {
             pendingSpeech = text;
         }

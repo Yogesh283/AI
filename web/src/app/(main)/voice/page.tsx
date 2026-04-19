@@ -24,7 +24,11 @@ import {
 } from "@/lib/voicePersonas";
 import { inferVoiceReplyMood } from "@/lib/voiceReplyMood";
 import type { KalidokitMouthShape } from "@/lib/vrmKalidokitMouth";
-import { speakTextWithAvatarLipSync, stopAvatarTtsAudio } from "@/lib/voiceAvatarTts";
+import {
+  createVoiceChatStreamedOpenAiTtsSession,
+  speakTextWithAvatarLipSync,
+  stopAvatarTtsAudio,
+} from "@/lib/voiceAvatarTts";
 import {
   captureNativeSpeechOnce,
   createSpeechRecognition,
@@ -60,6 +64,9 @@ const VOICE_CHAT_TTS_SPEED: TtsSpeedPreset = "slow";
 const VOICE_CHAT_TTS_TONE: TtsTonePreset = "warm";
 /** OpenAI HD + conversation voices; browser TTS gets calmer pacing (see `voiceAvatarTts` / `voiceChatCalmDelivery`). */
 const VOICE_CHAT_AVATAR_OPTS = { voiceChatOpenAiTts: true as const };
+/** Browser classic STT: debounce finals + flush after a pause (continuous recognition). */
+const VOICE_CLASSIC_UTTERANCE_DEBOUNCE_MS = 280;
+const VOICE_CLASSIC_FLUSH_AFTER_SPEECH_END_MS = 220;
 
 function IconMic({ className }: { className?: string }) {
   return (
@@ -123,7 +130,7 @@ export default function VoicePage() {
   /** Throttle live transcript updates — onresult can fire many times/sec and re-render the whole page. */
   const lastInterimUiMs = useRef(0);
   const sendTextRef = useRef<(text: string) => void>(() => {});
-  /** Parallel recognition while assistant TTS plays — user can interrupt (barge-in). */
+  /** Legacy: second recognizer for TTS barge-in (unused — classic uses one continuous STT + ignore gate). */
   const bargeInRecRef = useRef<SpeechRecognition | null>(null);
   /** User said “mic off” / stop listening — no mic until tap or “mic on”. */
   const [micPaused, setMicPaused] = useState(false);
@@ -139,6 +146,9 @@ export default function VoicePage() {
   /** True between Realtime `response.created` and `response.done` — drives transcript append vs new bubble. */
   const liveAssistStreamOpenRef = useRef(false);
   const voiceChatStreamAbortRef = useRef<AbortController | null>(null);
+  /** Classic + browser STT: drop transcripts while assistant thinks/speaks (avoids speaker→mic feedback). */
+  const ignoreVoiceMicInputRef = useRef(false);
+  const voiceUtteranceDebounceRef = useRef<number | null>(null);
 
   useLayoutEffect(() => {
     try {
@@ -322,6 +332,11 @@ export default function VoicePage() {
   const stopRecognitionOnly = useCallback(() => {
     listeningActiveRef.current = false;
     lastInterimUiMs.current = 0;
+    ignoreVoiceMicInputRef.current = false;
+    if (voiceUtteranceDebounceRef.current != null) {
+      window.clearTimeout(voiceUtteranceDebounceRef.current);
+      voiceUtteranceDebounceRef.current = null;
+    }
     try {
       recRef.current?.abort?.();
     } catch {
@@ -332,6 +347,23 @@ export default function VoicePage() {
     setInterim("");
     finalBuf.current = "";
     interimRef.current = "";
+  }, []);
+
+  const silenceWebVoiceCaptureDuringAssistant = useCallback(() => {
+    if (!isSpeechRecognitionSupported()) return;
+    ignoreVoiceMicInputRef.current = true;
+    finalBuf.current = "";
+    interimRef.current = "";
+    setInterim("");
+    if (voiceUtteranceDebounceRef.current != null) {
+      window.clearTimeout(voiceUtteranceDebounceRef.current);
+      voiceUtteranceDebounceRef.current = null;
+    }
+  }, []);
+
+  const releaseWebVoiceCaptureAfterAssistant = useCallback(() => {
+    if (!isSpeechRecognitionSupported()) return;
+    ignoreVoiceMicInputRef.current = false;
   }, []);
 
   const stopVoiceOutput = useCallback(() => {
@@ -392,6 +424,7 @@ export default function VoicePage() {
       if (micOnPhrase) {
         setMicPaused(false);
         setErr(null);
+        releaseWebVoiceCaptureAfterAssistant();
         if (sessionOnRef.current) {
           window.setTimeout(() => {
             if (!sessionOnRef.current || micPausedRef.current) return;
@@ -403,7 +436,10 @@ export default function VoicePage() {
 
       setErr(null);
       stopBargeInRecognition();
-      stopRecognitionOnly();
+      /* Browser classic: keep one continuous STT session — avoids OS mic toggle sounds from abort/restart. */
+      if (!isSpeechRecognitionSupported()) {
+        stopRecognitionOnly();
+      }
       stopVoiceOutput();
 
       const { cleaned, prefs } = stripVoicePreferencePhrases(t);
@@ -445,6 +481,7 @@ export default function VoicePage() {
       const prefsOnly = toSend.length === 0 && (langChanged || personaChanged);
 
       if (prefsOnly) {
+        silenceWebVoiceCaptureDuringAssistant();
         const bits: string[] = [];
         if (langChanged) bits.push(ackPhraseForLang(speakLang));
         if (personaChanged)
@@ -481,6 +518,8 @@ export default function VoicePage() {
       if (!toSend) {
         return;
       }
+
+      silenceWebVoiceCaptureDuringAssistant();
 
       /* APK: open WhatsApp / Telegram / YouTube / dial / time via native — not Chrome/WebView navigation. */
       if (isNativeCapacitor()) {
@@ -588,54 +627,114 @@ export default function VoicePage() {
           role: m.role as "user" | "assistant",
           content: m.content,
         }));
+        const streamGen = ++speakGenerationRef.current;
         let replyAcc = "";
-        await postChatStream(
-          apiMsgs,
-          uid,
-          { useWeb: false, signal: sig, source: "voice", speechLang: speakLang },
-          (delta) => {
-          replyAcc += delta;
-          setHistory((h) => {
-            const next = [...h];
-            const L = next.length - 1;
-            if (L >= 0 && next[L].role === "assistant") {
-              next[L] = { role: "assistant", content: next[L].content + delta };
-            }
-            historyRef.current = next;
-            return next;
-          });
-        });
-        const reply = replyAcc.trim();
-        setThinking(false);
-
-        const mood = inferVoiceReplyMood(reply);
-
-        const gen = ++speakGenerationRef.current;
-        speakingRef.current = true;
-        setSpeaking(true);
+        let streamTts: ReturnType<typeof createVoiceChatStreamedOpenAiTtsSession> | null = null;
         try {
+          const useOpenAiStreamTts = preferOpenAiTtsForVoiceUi();
+          streamTts = useOpenAiStreamTts
+            ? createVoiceChatStreamedOpenAiTtsSession({
+                mouthShapeRef,
+                voiceGender: speakGender,
+                speakGenerationRef: speakGenerationRef,
+                speakGenerationId: streamGen,
+                signal: sig,
+                onFirstSpeakableChunk: () => {
+                  if (speakGenerationRef.current !== streamGen) return;
+                  setThinking(false);
+                  speakingRef.current = true;
+                  setSpeaking(true);
+                },
+              })
+            : null;
+
           primeSpeechVoices();
           window.speechSynthesis?.resume();
           unlockWebAudioAndSpeechFromUserGesture();
-          await speakTextWithAvatarLipSync(prepareSpeechText(reply), speakLang, {
-            mouthShapeRef,
-            voiceGender: speakGender,
-            speedPreset: VOICE_CHAT_TTS_SPEED,
-            tonePreset: VOICE_CHAT_TTS_TONE,
-            replyMood: mood,
-            preferOpenAiTts: preferOpenAiTtsForVoiceUi(),
-            ...VOICE_CHAT_AVATAR_OPTS,
-          });
-        } catch (ttsErr) {
-          const msg =
-            ttsErr instanceof Error ? ttsErr.message : "TTS failed";
-          setErr(
-            preferOpenAiTtsForVoiceUi()
-              ? `${msg} — Check Neo server / OpenAI reach (DNS, internet).`
-              : `${msg} — Check volume and speakers; try Chrome or Edge.`
+
+          await postChatStream(
+            apiMsgs,
+            uid,
+            { useWeb: false, signal: sig, source: "voice", speechLang: speakLang },
+            (delta) => {
+              replyAcc += delta;
+              setHistory((h) => {
+                const next = [...h];
+                const L = next.length - 1;
+                if (L >= 0 && next[L].role === "assistant") {
+                  next[L] = { role: "assistant", content: next[L].content + delta };
+                }
+                historyRef.current = next;
+                return next;
+              });
+              streamTts?.pushAssistantDelta(delta);
+            },
           );
+
+          const reply = replyAcc.trim();
+
+          if (streamTts) {
+            try {
+              await streamTts.finish();
+            } catch (ttsErr) {
+              const msg = ttsErr instanceof Error ? ttsErr.message : "TTS failed";
+              setErr(
+                preferOpenAiTtsForVoiceUi()
+                  ? `${msg} — Check Neo server / OpenAI reach (DNS, internet).`
+                  : `${msg} — Check volume and speakers; try Chrome or Edge.`,
+              );
+            }
+            setThinking(false);
+            if (
+              reply &&
+              speakGenerationRef.current === streamGen &&
+              !speakingRef.current
+            ) {
+              const mood = inferVoiceReplyMood(reply);
+              speakingRef.current = true;
+              setSpeaking(true);
+              try {
+                await speakTextWithAvatarLipSync(prepareSpeechText(reply), speakLang, {
+                  mouthShapeRef,
+                  voiceGender: speakGender,
+                  speedPreset: VOICE_CHAT_TTS_SPEED,
+                  tonePreset: VOICE_CHAT_TTS_TONE,
+                  replyMood: mood,
+                  preferOpenAiTts: true,
+                  ...VOICE_CHAT_AVATAR_OPTS,
+                });
+              } catch (ttsErr2) {
+                const msg = ttsErr2 instanceof Error ? ttsErr2.message : "TTS failed";
+                setErr(
+                  `${msg} — Check Neo server / OpenAI reach (DNS, internet).`,
+                );
+              }
+            }
+          } else {
+            setThinking(false);
+            const mood = inferVoiceReplyMood(reply);
+            speakingRef.current = true;
+            setSpeaking(true);
+            try {
+              await speakTextWithAvatarLipSync(prepareSpeechText(reply), speakLang, {
+                mouthShapeRef,
+                voiceGender: speakGender,
+                speedPreset: VOICE_CHAT_TTS_SPEED,
+                tonePreset: VOICE_CHAT_TTS_TONE,
+                replyMood: mood,
+                preferOpenAiTts: false,
+                ...VOICE_CHAT_AVATAR_OPTS,
+              });
+            } catch (ttsErr) {
+              const msg = ttsErr instanceof Error ? ttsErr.message : "TTS failed";
+              setErr(
+                `${msg} — Check volume and speakers; try Chrome or Edge.`,
+              );
+            }
+          }
         } finally {
-          if (speakGenerationRef.current === gen) {
+          streamTts?.dispose();
+          if (speakGenerationRef.current === streamGen) {
             speakingRef.current = false;
             setSpeaking(false);
           }
@@ -653,6 +752,7 @@ export default function VoicePage() {
             historyRef.current = next;
             return next;
           });
+          releaseWebVoiceCaptureAfterAssistant();
           return;
         }
         setErr(
@@ -672,10 +772,20 @@ export default function VoicePage() {
         });
         speakingRef.current = false;
         setSpeaking(false);
-        resumeMicAfterAssistantRef.current();
+        releaseWebVoiceCaptureAfterAssistant();
+        /* resumeMic already ran in inner `finally` after stream + TTS */
       }
     },
-    [lang, ttsGender, personaId, stopBargeInRecognition, stopRecognitionOnly, stopVoiceOutput]
+    [
+      lang,
+      ttsGender,
+      personaId,
+      releaseWebVoiceCaptureAfterAssistant,
+      silenceWebVoiceCaptureDuringAssistant,
+      stopBargeInRecognition,
+      stopRecognitionOnly,
+      stopVoiceOutput,
+    ]
   );
 
   useEffect(() => {
@@ -688,15 +798,14 @@ export default function VoicePage() {
     if (voiceEngineRef.current === "live") return;
     if (!sessionOnRef.current) return;
     if (micPausedRef.current) return;
-    /* Turn-taking: mic while idle, or after interrupt — not while waiting for API. */
-    if (thinkingRef.current) return;
-    if (speakingRef.current) return;
-    if (listeningActiveRef.current) return;
-    /* Clear any TTS graph before capture — fixes garbled / delayed first words after assistant audio (esp. APK). */
-    stopAvatarTtsAudio();
-    stopSpeaking();
-    /* Unlock already ran on “Tap to speak” — avoid double silent-audio blips on APK. */
+
     if (!isSpeechRecognitionSupported()) {
+      /* Native one-shot: keep strict turn-taking — no parallel capture during assistant output. */
+      if (thinkingRef.current) return;
+      if (speakingRef.current) return;
+      if (listeningActiveRef.current) return;
+      stopAvatarTtsAudio();
+      stopSpeaking();
       listeningActiveRef.current = true;
       setListening(true);
       setInterim("");
@@ -731,24 +840,49 @@ export default function VoicePage() {
       return;
     }
 
+    /* Browser classic: one continuous STT session — no abort/restart each turn (quieter on many devices). */
+    if (listeningActiveRef.current && recRef.current) {
+      return;
+    }
+
+    stopAvatarTtsAudio();
+    stopSpeaking();
+
     try {
       recRef.current?.abort?.();
     } catch {
       /* ignore */
     }
     recRef.current = null;
+    if (voiceUtteranceDebounceRef.current != null) {
+      window.clearTimeout(voiceUtteranceDebounceRef.current);
+      voiceUtteranceDebounceRef.current = null;
+    }
     finalBuf.current = "";
     interimRef.current = "";
     setInterim("");
     setErr(null);
 
-    const rec = createSpeechRecognition(lang);
+    const rec = createSpeechRecognition(lang, { continuous: true });
     if (!rec) {
       setErr("Could not start speech recognition.");
       return;
     }
 
+    const flushVoiceUtterance = () => {
+      voiceUtteranceDebounceRef.current = null;
+      const said = `${finalBuf.current.trim()} ${interimRef.current.trim()}`.trim();
+      interimRef.current = "";
+      finalBuf.current = "";
+      lastInterimUiMs.current = 0;
+      setInterim("");
+      if (!sessionOnRef.current || micPausedRef.current) return;
+      if (!said || ignoreVoiceMicInputRef.current) return;
+      sendTextRef.current(said);
+    };
+
     rec.onresult = (ev: SpeechRecognitionEvent) => {
+      if (ignoreVoiceMicInputRef.current) return;
       let interimText = "";
       for (let i = ev.resultIndex; i < ev.results.length; i++) {
         const piece = ev.results[i][0].transcript;
@@ -765,16 +899,37 @@ export default function VoicePage() {
         lastInterimUiMs.current = now;
         setInterim(it);
       }
+      if (voiceUtteranceDebounceRef.current != null) {
+        window.clearTimeout(voiceUtteranceDebounceRef.current);
+      }
+      voiceUtteranceDebounceRef.current = window.setTimeout(
+        flushVoiceUtterance,
+        VOICE_CLASSIC_UTTERANCE_DEBOUNCE_MS,
+      ) as unknown as number;
+    };
+
+    (rec as SpeechRecognition & { onspeechend?: () => void }).onspeechend = () => {
+      if (ignoreVoiceMicInputRef.current) return;
+      if (voiceUtteranceDebounceRef.current != null) {
+        window.clearTimeout(voiceUtteranceDebounceRef.current);
+      }
+      voiceUtteranceDebounceRef.current = window.setTimeout(
+        flushVoiceUtterance,
+        VOICE_CLASSIC_FLUSH_AFTER_SPEECH_END_MS,
+      ) as unknown as number;
     };
 
     rec.onerror = (ev: SpeechRecognitionErrorEvent) => {
+      if (ev.error === "aborted") return;
       listeningActiveRef.current = false;
       setListening(false);
       recRef.current = null;
+      if (voiceUtteranceDebounceRef.current != null) {
+        window.clearTimeout(voiceUtteranceDebounceRef.current);
+        voiceUtteranceDebounceRef.current = null;
+      }
       const msg = speechRecognitionErrorMessage(ev.error);
       if (msg) setErr(msg);
-      if (ev.error === "aborted") return;
-      // Don't loop forever on permission/device failures.
       if (ev.error === "not-allowed" || ev.error === "service-not-allowed" || ev.error === "audio-capture") {
         sessionOnRef.current = false;
         setSessionOn(false);
@@ -783,19 +938,18 @@ export default function VoicePage() {
     };
 
     rec.onend = () => {
-      listeningActiveRef.current = false;
-      setListening(false);
-      recRef.current = null;
-      const said = `${finalBuf.current.trim()} ${interimRef.current.trim()}`.trim();
-      interimRef.current = "";
-      finalBuf.current = "";
-      lastInterimUiMs.current = 0;
-      setInterim("");
-
-      if (!sessionOnRef.current) return;
-
-      if (said) {
-        void sendText(said);
+      if (!sessionOnRef.current || micPausedRef.current) {
+        listeningActiveRef.current = false;
+        setListening(false);
+        recRef.current = null;
+        return;
+      }
+      try {
+        rec.start();
+      } catch {
+        listeningActiveRef.current = false;
+        setListening(false);
+        recRef.current = null;
       }
     };
 
@@ -817,11 +971,12 @@ export default function VoicePage() {
       window.setTimeout(() => {
         stopVoiceOutput();
         if (!sessionOnRef.current || micPausedRef.current || thinkingRef.current) return;
+        releaseWebVoiceCaptureAfterAssistant();
         if (listeningActiveRef.current) return;
         beginListeningRef.current();
       }, voiceChatResumeMicDelayMs());
     };
-  }, [beginListening, stopVoiceOutput]);
+  }, [beginListening, releaseWebVoiceCaptureAfterAssistant, stopVoiceOutput]);
 
   const startLiveVoice = useCallback(async () => {
     if (!sessionOnRef.current) return;
@@ -941,8 +1096,7 @@ export default function VoicePage() {
       }
       return;
     }
-    if (listeningActiveRef.current) return;
-    if (thinkingRef.current) return;
+    /* Classic keeps browser STT running — interrupt must run before the “already listening” guard. */
     if (speakingRef.current) {
       unlockWebAudioAndSpeechFromUserGesture();
       speakGenerationRef.current += 1;
@@ -950,9 +1104,21 @@ export default function VoicePage() {
       speakingRef.current = false;
       setSpeaking(false);
       stopBargeInRecognition();
-      beginListeningRef.current();
+      if (isSpeechRecognitionSupported()) {
+        ignoreVoiceMicInputRef.current = false;
+        finalBuf.current = "";
+        interimRef.current = "";
+        setInterim("");
+        if (voiceUtteranceDebounceRef.current != null) {
+          window.clearTimeout(voiceUtteranceDebounceRef.current);
+          voiceUtteranceDebounceRef.current = null;
+        }
+      }
+      if (!listeningActiveRef.current) beginListeningRef.current();
       return;
     }
+    if (listeningActiveRef.current) return;
+    if (thinkingRef.current) return;
     unlockWebAudioAndSpeechFromUserGesture();
     beginListeningRef.current();
   }, [stopBargeInRecognition, stopVoiceOutput]);
@@ -991,101 +1157,11 @@ export default function VoicePage() {
       }
       liveCloseRef.current = null;
       liveCancelRef.current = null;
-      try {
-        const r = recRef.current;
-        if (r && "abort" in r) (r as SpeechRecognition).abort();
-      } catch {
-        /* ignore */
-      }
+      stopRecognitionOnly();
       stopBargeInRecognition();
       stopVoiceOutput();
     };
-  }, [stopBargeInRecognition, stopVoiceOutput]);
-
-  /** While assistant voice plays (browser STT), listen for user speech — stop TTS and treat as next message. */
-  useEffect(() => {
-    if (voiceEngine !== "classic") {
-      stopBargeInRecognition();
-      return;
-    }
-    if (!sessionOn || !speaking || micPaused) {
-      stopBargeInRecognition();
-      return;
-    }
-    if (!isSpeechRecognitionSupported()) return;
-
-    let bargeFired = false;
-    let debounceTimer: number | null = null;
-    let finalAcc = "";
-
-    const rec = createSpeechRecognition(lang, { continuous: true });
-    if (!rec) return;
-    bargeInRecRef.current = rec;
-
-    const flush = (raw: string) => {
-      if (bargeFired) return;
-      const text = raw.replace(/\s+/g, " ").trim();
-      if (text.length < 2) return;
-      bargeFired = true;
-      speakGenerationRef.current += 1;
-      stopVoiceOutput();
-      speakingRef.current = false;
-      setSpeaking(false);
-      stopBargeInRecognition();
-      sendTextRef.current(text);
-    };
-
-    rec.onresult = (ev: SpeechRecognitionEvent) => {
-      if (!sessionOnRef.current || bargeFired) return;
-      let interim = "";
-      for (let i = ev.resultIndex; i < ev.results.length; i++) {
-        const piece = ev.results[i][0].transcript;
-        if (ev.results[i].isFinal) {
-          finalAcc += piece;
-        } else {
-          interim += piece;
-        }
-      }
-      const combined = `${finalAcc} ${interim}`.replace(/\s+/g, " ").trim();
-      if (combined.length >= 3) {
-        if (debounceTimer) window.clearTimeout(debounceTimer);
-        debounceTimer = window.setTimeout(() => flush(combined), 240);
-      }
-      const last = ev.results.length > 0 ? ev.results[ev.results.length - 1] : null;
-      if (last?.isFinal && finalAcc.trim().length >= 1) {
-        if (debounceTimer) window.clearTimeout(debounceTimer);
-        debounceTimer = null;
-        flush(finalAcc.trim());
-      }
-    };
-
-    rec.onerror = (ev: SpeechRecognitionErrorEvent) => {
-      if (ev.error === "aborted") return;
-      stopBargeInRecognition();
-    };
-
-    rec.onend = () => {
-      if (bargeFired) return;
-      if (sessionOnRef.current && speakingRef.current && bargeInRecRef.current === rec) {
-        try {
-          rec.start();
-        } catch {
-          /* ignore */
-        }
-      }
-    };
-
-    try {
-      rec.start();
-    } catch {
-      stopBargeInRecognition();
-    }
-
-    return () => {
-      if (debounceTimer) window.clearTimeout(debounceTimer);
-      stopBargeInRecognition();
-    };
-  }, [voiceEngine, sessionOn, speaking, micPaused, lang, stopBargeInRecognition, stopVoiceOutput]);
+  }, [stopBargeInRecognition, stopRecognitionOnly, stopVoiceOutput]);
 
   const profileName = getStoredUser()?.display_name?.trim() || "You";
 

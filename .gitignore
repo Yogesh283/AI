@@ -37,6 +37,9 @@ mobile/dist/
 Thumbs.db
 .DS_Store
 
+# Local training corpus (Neo optional JSONL log — may contain private text)
+backend/data/*.jsonl
+
 # Logs & debug
 *.log
 npm-debug.log*
