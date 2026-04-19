@@ -1,15 +1,10 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { MainTopNav } from "@/components/neo/MainTopNav";
 import { fetchMe, getStoredToken, getStoredUser, patchVoicePersona, saveSession } from "@/lib/auth";
-import { postChatStream, postVoiceRealtimeToken } from "@/lib/api";
+import { postVoiceRealtimeToken } from "@/lib/api";
 import {
-  mergeVoicePreferences,
-  stripVoicePreferencePhrases,
-} from "@/lib/voicePreferenceCommands";
-import {
-  ackPhraseForLang,
   DEFAULT_VOICE_SPEECH_LANG,
   normalizeVoiceSpeechLang,
   readStoredVoiceSpeechLang,
@@ -22,56 +17,32 @@ import {
   readStoredVoicePersonaId,
   writeStoredVoicePersonaId,
 } from "@/lib/voicePersonas";
-import { inferVoiceReplyMood } from "@/lib/voiceReplyMood";
 import type { KalidokitMouthShape } from "@/lib/vrmKalidokitMouth";
+import { speakTextWithAvatarLipSync, stopAvatarTtsAudio } from "@/lib/voiceAvatarTts";
 import {
-  createVoiceChatStreamedOpenAiTtsSession,
-  speakTextWithAvatarLipSync,
-  stopAvatarTtsAudio,
-} from "@/lib/voiceAvatarTts";
-import {
-  captureNativeSpeechOnce,
-  createSpeechRecognition,
-  isSpeechRecognitionSupported,
-  isNativeSpeechRecognitionSupported,
   isSpeechSynthesisSupported,
-  prepareSpeechText,
   primeSpeechVoices,
   type TtsSpeedPreset,
   type TtsTonePreset,
   unlockWebAudioAndSpeechFromUserGesture,
-  speechRecognitionErrorMessage,
   stopSpeaking,
   writeTtsGender,
   type TtsVoiceGender,
 } from "@/lib/voiceChat";
 import { useWakeLock } from "@/lib/useWakeLock";
 import { writeNeoAlexaListen } from "@/lib/neoAssistantActive";
-import { isNativeCapacitor } from "@/lib/nativeAppLinks";
-import { preferOpenAiTtsForVoiceUi, voiceChatResumeMicDelayMs } from "@/lib/voiceTtsPolicy";
-import { executeNeoActions, processNeoCommandLine } from "@/lib/neoVoiceCommands";
+import { preferOpenAiTtsForVoiceUi } from "@/lib/voiceTtsPolicy";
 import {
   isOpenAiRealtimeVoiceSupported,
   startOpenAiRealtimeVoiceSession,
 } from "@/lib/openaiRealtimeVoice";
 
 const VOICE_HISTORY_PREFIX = "neo-voice-history-";
-const VOICE_ENGINE_KEY = "neo-voice-engine";
-type VoiceEngine = "live" | "classic";
 
-/** Voice chat page only: slow, warm delivery; OpenAI path uses gpt-4o-mini-tts + marin/cedar, then tts-1-hd / tts-1 fallbacks; browser TTS uses `pickVoice` (en-IN / Hindi). */
+/** Persona preview TTS (Man / Woman) — slow, warm delivery. */
 const VOICE_CHAT_TTS_SPEED: TtsSpeedPreset = "slow";
 const VOICE_CHAT_TTS_TONE: TtsTonePreset = "warm";
-/** OpenAI HD + conversation voices; browser TTS gets calmer pacing (see `voiceAvatarTts` / `voiceChatCalmDelivery`). */
 const VOICE_CHAT_AVATAR_OPTS = { voiceChatOpenAiTts: true as const };
-/** Browser classic STT: debounce finals + flush after a pause (continuous recognition). */
-const VOICE_CLASSIC_UTTERANCE_DEBOUNCE_MS = 280;
-const VOICE_CLASSIC_FLUSH_AFTER_SPEECH_END_MS = 220;
-/**
- * After Web Speech `onend` / `no-speech`, brief pause before `start()` again — fewer OEM “tun” / focus glitches
- * than immediate restart. Same `SpeechRecognition` instance is reused for the whole session when possible.
- */
-const VOICE_CLASSIC_ONEND_RESTART_MS = 52;
 
 function IconMic({ className }: { className?: string }) {
   return (
@@ -108,13 +79,11 @@ export default function VoicePage() {
   /** Kalidokit-style A/E/I/O/U — OpenAI TTS + Web Audio, or synthetic with browser TTS */
   const mouthShapeRef = useRef<KalidokitMouthShape>({ A: 0, E: 0, I: 0, O: 0, U: 0 });
   const [personaId, setPersonaId] = useState<string | null>(null);
-  const [interim, setInterim] = useState("");
   const [err, setErr] = useState<string | null>(null);
   /** Must match SSR + first client paint — hydrate from storage in useEffect (avoids mismatch). */
   const [lang, setLang] = useState<VoiceSpeechLangCode>(DEFAULT_VOICE_SPEECH_LANG);
   const [ttsGender, setTtsGender] = useState<TtsVoiceGender>("female");
   const [history, setHistory] = useState<Turn[]>([]);
-  const [speechSupported, setSpeechSupported] = useState<boolean | null>(null);
   const [ttsSupported, setTtsSupported] = useState<boolean | null>(null);
   /** Bumps when `/api/auth/me` refreshes local profile (display name, etc.). */
   const [, setProfileSync] = useState(0);
@@ -122,75 +91,15 @@ export default function VoicePage() {
   const sessionOnRef = useRef(false);
   const thinkingRef = useRef(false);
   const speakingRef = useRef(false);
-  const recRef = useRef<SpeechRecognition | null>(null);
-  const finalBuf = useRef("");
-  const interimRef = useRef("");
   const historyRef = useRef<Turn[]>([]);
   const transcriptRef = useRef<HTMLDivElement>(null);
-  const beginListeningRef = useRef<() => void>(() => {});
   /** Monotonic id so stale `speaking` state doesn’t fight after interrupt. */
   const speakGenerationRef = useRef(0);
-  /** True while a recognition session is active — prevents overlapping `start()` calls that abort + clear text + jitter the UI. */
-  const listeningActiveRef = useRef(false);
-  /** Throttle live transcript updates — onresult can fire many times/sec and re-render the whole page. */
-  const lastInterimUiMs = useRef(0);
-  const sendTextRef = useRef<(text: string) => void>(() => {});
-  /** Legacy: second recognizer for TTS barge-in (unused — classic uses one continuous STT + ignore gate). */
-  const bargeInRecRef = useRef<SpeechRecognition | null>(null);
-  /** User said “mic off” / stop listening — no mic until tap or “mic on”. */
-  const [micPaused, setMicPaused] = useState(false);
-  const micPausedRef = useRef(false);
-  /** After assistant TTS, reopen mic without another tap (unless mic paused or thinking). */
-  const resumeMicAfterAssistantRef = useRef<() => void>(() => {});
-  /** Live = hands-free WebRTC; Classic = device speech + Neo + TTS. */
-  const [voiceEngine, setVoiceEngine] = useState<VoiceEngine>("classic");
-  const voiceEngineRef = useRef<VoiceEngine>("classic");
   const [liveConnecting, setLiveConnecting] = useState(false);
   const liveCloseRef = useRef<(() => void) | null>(null);
   const liveCancelRef = useRef<(() => void) | null>(null);
   /** True between Realtime `response.created` and `response.done` — drives transcript append vs new bubble. */
   const liveAssistStreamOpenRef = useRef(false);
-  const voiceChatStreamAbortRef = useRef<AbortController | null>(null);
-  /** Classic + browser STT: drop transcripts while assistant thinks/speaks (avoids speaker→mic feedback). */
-  const ignoreVoiceMicInputRef = useRef(false);
-  const voiceUtteranceDebounceRef = useRef<number | null>(null);
-  const voiceOnendRestartTimerRef = useRef<number | null>(null);
-
-  useLayoutEffect(() => {
-    try {
-      const v = sessionStorage.getItem(VOICE_ENGINE_KEY);
-      if (v === "live" || v === "classic") {
-        if (v === "live" && !isOpenAiRealtimeVoiceSupported()) {
-          setVoiceEngine("classic");
-          return;
-        }
-        setVoiceEngine(v);
-        return;
-      }
-    } catch {
-      /* ignore */
-    }
-    /* APK: default Classic; Web: default Live when WebRTC is available. Live is still selectable in-app on APK. */
-    setVoiceEngine(
-      isNativeCapacitor() ? "classic" : !isOpenAiRealtimeVoiceSupported() ? "classic" : "live",
-    );
-  }, []);
-
-  useEffect(() => {
-    try {
-      sessionStorage.setItem(VOICE_ENGINE_KEY, voiceEngine);
-    } catch {
-      /* ignore */
-    }
-  }, [voiceEngine]);
-
-  useEffect(() => {
-    voiceEngineRef.current = voiceEngine;
-  }, [voiceEngine]);
-
-  useEffect(() => {
-    micPausedRef.current = micPaused;
-  }, [micPaused]);
 
   useEffect(() => {
     historyRef.current = history;
@@ -315,68 +224,18 @@ export default function VoicePage() {
   }, []);
 
   useEffect(() => {
-    setSpeechSupported(isSpeechRecognitionSupported());
-    /* APK WebView: speechSynthesis missing/broken — we use /api/voice/tts-audio (OpenAI MP3) instead. */
     setTtsSupported(isSpeechSynthesisSupported() || preferOpenAiTtsForVoiceUi());
     primeSpeechVoices();
     const synth = window.speechSynthesis;
     const onVoices = () => primeSpeechVoices();
     synth?.addEventListener?.("voiceschanged", onVoices);
-    void (async () => {
-      const nativeOk = await isNativeSpeechRecognitionSupported();
-      if (nativeOk) setSpeechSupported(true);
-    })();
     return () => synth?.removeEventListener?.("voiceschanged", onVoices);
   }, []);
 
-  const stopBargeInRecognition = useCallback(() => {
-    try {
-      bargeInRecRef.current?.abort?.();
-    } catch {
-      /* ignore */
-    }
-    bargeInRecRef.current = null;
-  }, []);
+  const stopBargeInRecognition = useCallback(() => {}, []);
 
   const stopRecognitionOnly = useCallback(() => {
-    listeningActiveRef.current = false;
-    lastInterimUiMs.current = 0;
-    ignoreVoiceMicInputRef.current = false;
-    if (voiceUtteranceDebounceRef.current != null) {
-      window.clearTimeout(voiceUtteranceDebounceRef.current);
-      voiceUtteranceDebounceRef.current = null;
-    }
-    if (voiceOnendRestartTimerRef.current != null) {
-      window.clearTimeout(voiceOnendRestartTimerRef.current);
-      voiceOnendRestartTimerRef.current = null;
-    }
-    try {
-      recRef.current?.abort?.();
-    } catch {
-      /* ignore */
-    }
-    recRef.current = null;
     setListening(false);
-    setInterim("");
-    finalBuf.current = "";
-    interimRef.current = "";
-  }, []);
-
-  const silenceWebVoiceCaptureDuringAssistant = useCallback(() => {
-    if (!isSpeechRecognitionSupported()) return;
-    ignoreVoiceMicInputRef.current = true;
-    finalBuf.current = "";
-    interimRef.current = "";
-    setInterim("");
-    if (voiceUtteranceDebounceRef.current != null) {
-      window.clearTimeout(voiceUtteranceDebounceRef.current);
-      voiceUtteranceDebounceRef.current = null;
-    }
-  }, []);
-
-  const releaseWebVoiceCaptureAfterAssistant = useCallback(() => {
-    if (!isSpeechRecognitionSupported()) return;
-    ignoreVoiceMicInputRef.current = false;
   }, []);
 
   const stopVoiceOutput = useCallback(() => {
@@ -385,12 +244,6 @@ export default function VoicePage() {
   }, []);
 
   const stopSession = useCallback(() => {
-    try {
-      voiceChatStreamAbortRef.current?.abort();
-    } catch {
-      /* ignore */
-    }
-    voiceChatStreamAbortRef.current = null;
     liveAssistStreamOpenRef.current = false;
     try {
       liveCloseRef.current?.();
@@ -402,7 +255,6 @@ export default function VoicePage() {
     setLiveConnecting(false);
     sessionOnRef.current = false;
     setSessionOn(false);
-    setMicPaused(false);
     stopVoiceOutput();
     stopBargeInRecognition();
     stopRecognitionOnly();
@@ -411,664 +263,15 @@ export default function VoicePage() {
     setListening(false);
   }, [stopBargeInRecognition, stopRecognitionOnly, stopVoiceOutput]);
 
-  const sendText = useCallback(
-    async (text: string) => {
-      const t = text.trim();
-      if (!t) {
-        return;
-      }
-      const micOffPhrase =
-        /^(stop listening|mic off|mute(\s+the)?\s+mic)\b/i.test(t) ||
-        /^(माइक बंद|बंद करो\s*माइक|सुनना बंद)/i.test(t);
-      const micOnPhrase =
-        /^(start listening|mic on|unmute(\s+the)?\s+mic)\b/i.test(t) ||
-        /^(माइक चालू|सुनना शुरू)/i.test(t);
-      if (micOffPhrase && !micOnPhrase) {
-        setMicPaused(true);
-        setErr(null);
-        stopBargeInRecognition();
-        stopRecognitionOnly();
-        stopVoiceOutput();
-        speakGenerationRef.current += 1;
-        speakingRef.current = false;
-        setSpeaking(false);
-        return;
-      }
-      if (micOnPhrase) {
-        setMicPaused(false);
-        setErr(null);
-        releaseWebVoiceCaptureAfterAssistant();
-        if (sessionOnRef.current) {
-          window.setTimeout(() => {
-            if (!sessionOnRef.current || micPausedRef.current) return;
-            beginListeningRef.current();
-          }, Math.max(200, Math.round(voiceChatResumeMicDelayMs() * 0.4)));
-        }
-        return;
-      }
-
-      setErr(null);
-      stopBargeInRecognition();
-      /* Browser classic: keep one continuous STT session — avoids OS mic toggle sounds from abort/restart. */
-      if (!isSpeechRecognitionSupported()) {
-        stopRecognitionOnly();
-      }
-      stopVoiceOutput();
-
-      const { cleaned, prefs } = stripVoicePreferencePhrases(t);
-      const merged = mergeVoicePreferences(prefs);
-      const nextLang = merged.lang ? normalizeVoiceSpeechLang(merged.lang) : undefined;
-      const langChanged = Boolean(nextLang && nextLang !== lang);
-      const prevPid = normalizeVoicePersonaId(personaId ?? readStoredVoicePersonaId());
-      const personaChanged = Boolean(
-        merged.personaId && normalizeVoicePersonaId(merged.personaId) !== prevPid,
-      );
-
-      let speakLang: VoiceSpeechLangCode = lang;
-      let speakGender: TtsVoiceGender = ttsGender;
-      if (nextLang) {
-        speakLang = nextLang;
-        setLang(nextLang);
-        writeStoredVoiceSpeechLang(nextLang);
-      }
-      if (merged.personaId) {
-        const pid = normalizeVoicePersonaId(merged.personaId);
-        const p = getVoicePersona(pid);
-        speakGender = p.ttsGender;
-        writeStoredVoicePersonaId(pid);
-        writeTtsGender(p.ttsGender);
-        setPersonaId(pid);
-        setTtsGender(p.ttsGender);
-        const token = getStoredToken();
-        if (token) {
-          void patchVoicePersona(pid)
-            .then((u) => saveSession(token, u))
-            .catch(() => {
-              /* offline — local choice still applies */
-            });
-        }
-      }
-
-      const toSend = cleaned.trim();
-
-      const prefsOnly = toSend.length === 0 && (langChanged || personaChanged);
-
-      if (prefsOnly) {
-        silenceWebVoiceCaptureDuringAssistant();
-        const bits: string[] = [];
-        if (langChanged) bits.push(ackPhraseForLang(speakLang));
-        if (personaChanged)
-          bits.push(normalizeVoicePersonaId(merged.personaId) === "arjun" ? "Male voice." : "Female voice.");
-        const ack = bits.join(" ") || "Okay.";
-        const gen = ++speakGenerationRef.current;
-        speakingRef.current = true;
-        setSpeaking(true);
-        try {
-          primeSpeechVoices();
-          window.speechSynthesis?.resume();
-          unlockWebAudioAndSpeechFromUserGesture();
-          await speakTextWithAvatarLipSync(ack, speakLang, {
-            mouthShapeRef,
-            voiceGender: speakGender,
-            speedPreset: VOICE_CHAT_TTS_SPEED,
-            tonePreset: VOICE_CHAT_TTS_TONE,
-            replyMood: "neutral",
-            preferOpenAiTts: preferOpenAiTtsForVoiceUi(),
-            ...VOICE_CHAT_AVATAR_OPTS,
-          });
-        } catch {
-          /* ignore */
-        } finally {
-          if (speakGenerationRef.current === gen) {
-            speakingRef.current = false;
-            setSpeaking(false);
-          }
-          resumeMicAfterAssistantRef.current();
-        }
-        return;
-      }
-
-      if (!toSend) {
-        return;
-      }
-
-      silenceWebVoiceCaptureDuringAssistant();
-
-      /* APK: open WhatsApp / Telegram / YouTube / dial / time via native — not Chrome/WebView navigation. */
-      if (isNativeCapacitor()) {
-        try {
-          const { NeoNativeRouter } = await import("@/lib/neoNativeRouter");
-          const { handled } = await NeoNativeRouter.tryRouteCommand({ text: toSend });
-          if (handled) {
-            const t = toSend.toLowerCase();
-            const javaSpeaksTimeAlready =
-              /\b(what\s+)?(is\s+)?(the\s+)?time\b|\btime\s+now\b|\bcurrent\s+time\b|समय|टाइम\b/.test(t);
-            if (!javaSpeaksTimeAlready) {
-              const gen = ++speakGenerationRef.current;
-              speakingRef.current = true;
-              setSpeaking(true);
-              try {
-                unlockWebAudioAndSpeechFromUserGesture();
-                await speakTextWithAvatarLipSync(
-                  "Okay.",
-                  speakLang,
-                  {
-                    mouthShapeRef,
-                    voiceGender: speakGender,
-                    speedPreset: VOICE_CHAT_TTS_SPEED,
-                    tonePreset: VOICE_CHAT_TTS_TONE,
-                    replyMood: "neutral",
-                    preferOpenAiTts: preferOpenAiTtsForVoiceUi(),
-                    ...VOICE_CHAT_AVATAR_OPTS,
-                  },
-                );
-              } catch {
-                /* ignore */
-              } finally {
-                if (speakGenerationRef.current === gen) {
-                  speakingRef.current = false;
-                  setSpeaking(false);
-                }
-                resumeMicAfterAssistantRef.current();
-              }
-            } else {
-              resumeMicAfterAssistantRef.current();
-            }
-            return;
-          }
-        } catch {
-          /* fall through to JS intents */
-        }
-
-        const neo = processNeoCommandLine(toSend, "text", { speechLang: speakLang });
-        if (neo.actions.length > 0) {
-          const turnUser = { role: "user" as const, content: toSend };
-          const turnAsst = {
-            role: "assistant" as const,
-            content: neo.reply.trim() || "Done.",
-          };
-          const next: Turn[] = [...historyRef.current, turnUser, turnAsst];
-          historyRef.current = next;
-          setHistory(next);
-          const gen = ++speakGenerationRef.current;
-          speakingRef.current = true;
-          setSpeaking(true);
-          try {
-            unlockWebAudioAndSpeechFromUserGesture();
-            if (neo.reply.trim()) {
-              await speakTextWithAvatarLipSync(prepareSpeechText(neo.reply), speakLang, {
-                mouthShapeRef,
-                voiceGender: speakGender,
-                speedPreset: VOICE_CHAT_TTS_SPEED,
-                tonePreset: VOICE_CHAT_TTS_TONE,
-                replyMood: "neutral",
-                preferOpenAiTts: preferOpenAiTtsForVoiceUi(),
-                ...VOICE_CHAT_AVATAR_OPTS,
-              });
-            }
-            executeNeoActions(neo.actions);
-          } catch (ttsErr) {
-            const msg = ttsErr instanceof Error ? ttsErr.message : "TTS failed";
-            setErr(
-              preferOpenAiTtsForVoiceUi()
-                ? `${msg} — Check Neo server / OpenAI reach (DNS, internet).`
-                : `${msg} — Check volume and speakers; try Chrome or Edge.`,
-            );
-          } finally {
-            if (speakGenerationRef.current === gen) {
-              speakingRef.current = false;
-              setSpeaking(false);
-            }
-            resumeMicAfterAssistantRef.current();
-          }
-          return;
-        }
-      }
-
-      setThinking(true);
-      try {
-        const user = getStoredUser();
-        const uid = user?.id ?? "default";
-        const msgs = [...historyRef.current, { role: "user" as const, content: toSend }];
-        const pending: Turn[] = [...msgs, { role: "assistant", content: "" }];
-        historyRef.current = pending;
-        setHistory(pending);
-        voiceChatStreamAbortRef.current?.abort();
-        voiceChatStreamAbortRef.current = new AbortController();
-        const sig = voiceChatStreamAbortRef.current.signal;
-        const apiMsgs = msgs.map((m) => ({
-          role: m.role as "user" | "assistant",
-          content: m.content,
-        }));
-        const streamGen = ++speakGenerationRef.current;
-        let replyAcc = "";
-        /** True once streaming OpenAI TTS has queued audio — avoids a second full-reply speak (double voice). */
-        let streamOpenAiQueuedAudio = false;
-        let streamTts: ReturnType<typeof createVoiceChatStreamedOpenAiTtsSession> | null = null;
-        try {
-          const useOpenAiStreamTts = preferOpenAiTtsForVoiceUi();
-          streamTts = useOpenAiStreamTts
-            ? createVoiceChatStreamedOpenAiTtsSession({
-                mouthShapeRef,
-                voiceGender: speakGender,
-                speakGenerationRef: speakGenerationRef,
-                speakGenerationId: streamGen,
-                signal: sig,
-                onFirstSpeakableChunk: () => {
-                  streamOpenAiQueuedAudio = true;
-                  if (speakGenerationRef.current !== streamGen) return;
-                  setThinking(false);
-                  speakingRef.current = true;
-                  setSpeaking(true);
-                },
-              })
-            : null;
-
-          primeSpeechVoices();
-          window.speechSynthesis?.resume();
-          unlockWebAudioAndSpeechFromUserGesture();
-
-          await postChatStream(
-            apiMsgs,
-            uid,
-            { useWeb: false, signal: sig, source: "voice", speechLang: speakLang },
-            (delta) => {
-              replyAcc += delta;
-              setHistory((h) => {
-                const next = [...h];
-                const L = next.length - 1;
-                if (L >= 0 && next[L].role === "assistant") {
-                  next[L] = { role: "assistant", content: next[L].content + delta };
-                }
-                historyRef.current = next;
-                return next;
-              });
-              streamTts?.pushAssistantDelta(delta);
-            },
-          );
-
-          const reply = replyAcc.trim();
-
-          if (streamTts) {
-            try {
-              await streamTts.finish();
-            } catch (ttsErr) {
-              const msg = ttsErr instanceof Error ? ttsErr.message : "TTS failed";
-              setErr(
-                preferOpenAiTtsForVoiceUi()
-                  ? `${msg} — Check Neo server / OpenAI reach (DNS, internet).`
-                  : `${msg} — Check volume and speakers; try Chrome or Edge.`,
-              );
-            }
-            setThinking(false);
-            /* Only if streaming path never produced TTS (e.g. empty deltas) — do not repeat the full reply after chunks. */
-            if (
-              reply &&
-              speakGenerationRef.current === streamGen &&
-              !streamOpenAiQueuedAudio
-            ) {
-              const mood = inferVoiceReplyMood(reply);
-              speakingRef.current = true;
-              setSpeaking(true);
-              try {
-                await speakTextWithAvatarLipSync(prepareSpeechText(reply), speakLang, {
-                  mouthShapeRef,
-                  voiceGender: speakGender,
-                  speedPreset: VOICE_CHAT_TTS_SPEED,
-                  tonePreset: VOICE_CHAT_TTS_TONE,
-                  replyMood: mood,
-                  preferOpenAiTts: true,
-                  ...VOICE_CHAT_AVATAR_OPTS,
-                });
-              } catch (ttsErr2) {
-                const msg = ttsErr2 instanceof Error ? ttsErr2.message : "TTS failed";
-                setErr(
-                  `${msg} — Check Neo server / OpenAI reach (DNS, internet).`,
-                );
-              }
-            }
-          } else {
-            setThinking(false);
-            const mood = inferVoiceReplyMood(reply);
-            speakingRef.current = true;
-            setSpeaking(true);
-            try {
-              await speakTextWithAvatarLipSync(prepareSpeechText(reply), speakLang, {
-                mouthShapeRef,
-                voiceGender: speakGender,
-                speedPreset: VOICE_CHAT_TTS_SPEED,
-                tonePreset: VOICE_CHAT_TTS_TONE,
-                replyMood: mood,
-                preferOpenAiTts: false,
-                ...VOICE_CHAT_AVATAR_OPTS,
-              });
-            } catch (ttsErr) {
-              const msg = ttsErr instanceof Error ? ttsErr.message : "TTS failed";
-              setErr(
-                `${msg} — Check volume and speakers; try Chrome or Edge.`,
-              );
-            }
-          }
-        } finally {
-          streamTts?.dispose();
-          if (speakGenerationRef.current === streamGen) {
-            speakingRef.current = false;
-            setSpeaking(false);
-          }
-          resumeMicAfterAssistantRef.current();
-        }
-      } catch (e) {
-        if (e instanceof Error && e.name === "AbortError") {
-          setThinking(false);
-          setHistory((h) => {
-            const next = [...h];
-            const L = next.length - 1;
-            if (L >= 0 && next[L].role === "assistant" && next[L].content === "") {
-              next.pop();
-            }
-            historyRef.current = next;
-            return next;
-          });
-          releaseWebVoiceCaptureAfterAssistant();
-          return;
-        }
-        setErr(
-          e instanceof Error
-            ? e.message
-            : "Chat API failed — check /neo-api/health on this site."
-        );
-        setThinking(false);
-        setHistory((h) => {
-          const next = [...h];
-          const L = next.length - 1;
-          if (L >= 0 && next[L].role === "assistant" && next[L].content === "") {
-            next.pop();
-          }
-          historyRef.current = next;
-          return next;
-        });
-        speakingRef.current = false;
-        setSpeaking(false);
-        releaseWebVoiceCaptureAfterAssistant();
-        /* resumeMic already ran in inner `finally` after stream + TTS */
-      }
-    },
-    [
-      lang,
-      ttsGender,
-      personaId,
-      releaseWebVoiceCaptureAfterAssistant,
-      silenceWebVoiceCaptureDuringAssistant,
-      stopBargeInRecognition,
-      stopRecognitionOnly,
-      stopVoiceOutput,
-    ]
-  );
-
-  useEffect(() => {
-    sendTextRef.current = (text: string) => {
-      void sendText(text);
-    };
-  }, [sendText]);
-
-  /** Same continuous Web Speech instance: avoids destroy/recreate cycles that often trigger OS mic cues. */
-  const tryResumeSpeechRecognition = useCallback((): boolean => {
-    if (!isSpeechRecognitionSupported()) return false;
-    if (voiceEngineRef.current === "live") return false;
-    const r = recRef.current;
-    if (!r || !sessionOnRef.current || micPausedRef.current) return false;
-    try {
-      r.start();
-      listeningActiveRef.current = true;
-      setListening(true);
-      return true;
-    } catch {
-      return false;
-    }
-  }, []);
-
-  const beginListening = useCallback(() => {
-    if (voiceEngineRef.current === "live") return;
-    if (!sessionOnRef.current) return;
-    if (micPausedRef.current) return;
-
-    if (!isSpeechRecognitionSupported()) {
-      /* Native one-shot: keep strict turn-taking — no parallel capture during assistant output. */
-      if (thinkingRef.current) return;
-      if (speakingRef.current) return;
-      if (listeningActiveRef.current) return;
-      stopAvatarTtsAudio();
-      stopSpeaking();
-      listeningActiveRef.current = true;
-      setListening(true);
-      setInterim("");
-      setErr(null);
-      void (async () => {
-        const { text, error } = await captureNativeSpeechOnce(lang, (it) => {
-          const now = Date.now();
-          if (now - lastInterimUiMs.current >= 90) {
-            lastInterimUiMs.current = now;
-            interimRef.current = it;
-            setInterim(it);
-          }
-        });
-        listeningActiveRef.current = false;
-        setListening(false);
-        setInterim("");
-        interimRef.current = "";
-        lastInterimUiMs.current = 0;
-
-        if (!sessionOnRef.current) return;
-        if (error) {
-          setErr(error);
-          sessionOnRef.current = false;
-          setSessionOn(false);
-          return;
-        }
-        if (text.trim()) {
-          void sendText(text.trim());
-          return;
-        }
-      })();
-      return;
-    }
-
-    /* Browser classic: one continuous STT session — keep the same instance until session end or hard error. */
-    if (recRef.current != null && !listeningActiveRef.current) {
-      if (tryResumeSpeechRecognition()) {
-        return;
-      }
-      try {
-        recRef.current.abort?.();
-      } catch {
-        /* ignore */
-      }
-      recRef.current = null;
-    }
-
-    if (listeningActiveRef.current && recRef.current) {
-      return;
-    }
-
-    stopAvatarTtsAudio();
-    stopSpeaking();
-
-    if (voiceOnendRestartTimerRef.current != null) {
-      window.clearTimeout(voiceOnendRestartTimerRef.current);
-      voiceOnendRestartTimerRef.current = null;
-    }
-    try {
-      recRef.current?.abort?.();
-    } catch {
-      /* ignore */
-    }
-    recRef.current = null;
-    if (voiceUtteranceDebounceRef.current != null) {
-      window.clearTimeout(voiceUtteranceDebounceRef.current);
-      voiceUtteranceDebounceRef.current = null;
-    }
-    finalBuf.current = "";
-    interimRef.current = "";
-    setInterim("");
-    setErr(null);
-
-    const rec = createSpeechRecognition(lang, { continuous: true });
-    if (!rec) {
-      setErr("Could not start speech recognition.");
-      return;
-    }
-
-    const flushVoiceUtterance = () => {
-      voiceUtteranceDebounceRef.current = null;
-      const said = `${finalBuf.current.trim()} ${interimRef.current.trim()}`.trim();
-      interimRef.current = "";
-      finalBuf.current = "";
-      lastInterimUiMs.current = 0;
-      setInterim("");
-      if (!sessionOnRef.current || micPausedRef.current) return;
-      if (!said || ignoreVoiceMicInputRef.current) return;
-      sendTextRef.current(said);
-    };
-
-    rec.onresult = (ev: SpeechRecognitionEvent) => {
-      if (ignoreVoiceMicInputRef.current) return;
-      let interimText = "";
-      for (let i = ev.resultIndex; i < ev.results.length; i++) {
-        const piece = ev.results[i][0].transcript;
-        if (ev.results[i].isFinal) {
-          finalBuf.current += piece;
-        } else {
-          interimText += piece;
-        }
-      }
-      const it = interimText.trim();
-      interimRef.current = it;
-      const now = Date.now();
-      if (now - lastInterimUiMs.current >= 100) {
-        lastInterimUiMs.current = now;
-        setInterim(it);
-      }
-      if (voiceUtteranceDebounceRef.current != null) {
-        window.clearTimeout(voiceUtteranceDebounceRef.current);
-      }
-      voiceUtteranceDebounceRef.current = window.setTimeout(
-        flushVoiceUtterance,
-        VOICE_CLASSIC_UTTERANCE_DEBOUNCE_MS,
-      ) as unknown as number;
-    };
-
-    (rec as SpeechRecognition & { onspeechend?: () => void }).onspeechend = () => {
-      if (ignoreVoiceMicInputRef.current) return;
-      if (voiceUtteranceDebounceRef.current != null) {
-        window.clearTimeout(voiceUtteranceDebounceRef.current);
-      }
-      voiceUtteranceDebounceRef.current = window.setTimeout(
-        flushVoiceUtterance,
-        VOICE_CLASSIC_FLUSH_AFTER_SPEECH_END_MS,
-      ) as unknown as number;
-    };
-
-    const scheduleClassicRecognitionRestart = (recSnapshot: SpeechRecognition) => {
-      if (voiceOnendRestartTimerRef.current != null) {
-        window.clearTimeout(voiceOnendRestartTimerRef.current);
-      }
-      voiceOnendRestartTimerRef.current = window.setTimeout(() => {
-        voiceOnendRestartTimerRef.current = null;
-        if (recRef.current !== recSnapshot || !sessionOnRef.current || micPausedRef.current) return;
-        try {
-          recSnapshot.start();
-          listeningActiveRef.current = true;
-          setListening(true);
-        } catch {
-          listeningActiveRef.current = false;
-          setListening(false);
-          recRef.current = null;
-          if (sessionOnRef.current && !micPausedRef.current) {
-            beginListeningRef.current();
-          }
-        }
-      }, VOICE_CLASSIC_ONEND_RESTART_MS) as unknown as number;
-    };
-
-    rec.onerror = (ev: SpeechRecognitionErrorEvent) => {
-      if (ev.error === "aborted") return;
-      listeningActiveRef.current = false;
-      if (ev.error === "no-speech") {
-        if (voiceUtteranceDebounceRef.current != null) {
-          window.clearTimeout(voiceUtteranceDebounceRef.current);
-          voiceUtteranceDebounceRef.current = null;
-        }
-        listeningActiveRef.current = false;
-        /* Keep `rec` / recRef — same quiet restart path as `onend` (no destroy → fewer OS sounds). */
-        scheduleClassicRecognitionRestart(rec);
-        return;
-      }
-      setListening(false);
-      recRef.current = null;
-      if (voiceUtteranceDebounceRef.current != null) {
-        window.clearTimeout(voiceUtteranceDebounceRef.current);
-        voiceUtteranceDebounceRef.current = null;
-      }
-      const msg = speechRecognitionErrorMessage(ev.error);
-      if (msg) setErr(msg);
-      if (ev.error === "not-allowed" || ev.error === "service-not-allowed" || ev.error === "audio-capture") {
-        sessionOnRef.current = false;
-        setSessionOn(false);
-        return;
-      }
-    };
-
-    rec.onend = () => {
-      if (!sessionOnRef.current || micPausedRef.current) {
-        listeningActiveRef.current = false;
-        setListening(false);
-        recRef.current = null;
-        return;
-      }
-      /* Session still on: keep UI “listening” through the micro-gap — only the ref drops until `start()` succeeds. */
-      listeningActiveRef.current = false;
-      scheduleClassicRecognitionRestart(rec);
-    };
-
-    recRef.current = rec;
-    try {
-      rec.start();
-      listeningActiveRef.current = true;
-      setListening(true);
-    } catch {
-      listeningActiveRef.current = false;
-      setErr("Mic is busy — try again.");
-      setListening(false);
-    }
-  }, [lang, sendText, tryResumeSpeechRecognition]);
-
-  useEffect(() => {
-    beginListeningRef.current = beginListening;
-    resumeMicAfterAssistantRef.current = () => {
-      window.setTimeout(() => {
-        if (!sessionOnRef.current || micPausedRef.current || thinkingRef.current) return;
-        releaseWebVoiceCaptureAfterAssistant();
-        if (
-          isSpeechRecognitionSupported() &&
-          recRef.current != null &&
-          !listeningActiveRef.current
-        ) {
-          if (tryResumeSpeechRecognition()) {
-            return;
-          }
-        }
-        /* Continuous browser STT: avoid extra TTS graph stops that some stacks surface as UI noise. */
-        if (!(isSpeechRecognitionSupported() && listeningActiveRef.current)) {
-          stopVoiceOutput();
-        }
-        if (listeningActiveRef.current) return;
-        beginListeningRef.current();
-      }, voiceChatResumeMicDelayMs());
-    };
-  }, [beginListening, releaseWebVoiceCaptureAfterAssistant, stopVoiceOutput, tryResumeSpeechRecognition]);
-
   const startLiveVoice = useCallback(async () => {
     if (!sessionOnRef.current) return;
+    if (!isOpenAiRealtimeVoiceSupported()) {
+      setErr("Live voice needs HTTPS and WebRTC — update the app or use a device with a current WebView.");
+      setLiveConnecting(false);
+      sessionOnRef.current = false;
+      setSessionOn(false);
+      return;
+    }
     setErr(null);
     setLiveConnecting(true);
     speakingRef.current = false;
@@ -1172,68 +375,35 @@ export default function VoicePage() {
     }
   }, [lang, personaId]);
 
-  /** Manual mic / interrupt. After each assistant reply we auto-reopen the mic (unless paused). Tap during AI speech = interrupt + listen. */
+  /** Interrupt assistant audio (OpenAI Realtime). */
   const tapToSpeak = useCallback(() => {
-    setMicPaused(false);
     if (!sessionOnRef.current) return;
-    if (voiceEngineRef.current === "live") {
-      unlockWebAudioAndSpeechFromUserGesture();
-      if (speakingRef.current) {
-        liveCancelRef.current?.();
-        speakingRef.current = false;
-        setSpeaking(false);
-      }
-      return;
-    }
-    /* Classic keeps browser STT running — interrupt must run before the “already listening” guard. */
+    unlockWebAudioAndSpeechFromUserGesture();
     if (speakingRef.current) {
-      unlockWebAudioAndSpeechFromUserGesture();
-      speakGenerationRef.current += 1;
-      stopVoiceOutput();
+      liveCancelRef.current?.();
       speakingRef.current = false;
       setSpeaking(false);
-      stopBargeInRecognition();
-      if (isSpeechRecognitionSupported()) {
-        ignoreVoiceMicInputRef.current = false;
-        finalBuf.current = "";
-        interimRef.current = "";
-        setInterim("");
-        if (voiceUtteranceDebounceRef.current != null) {
-          window.clearTimeout(voiceUtteranceDebounceRef.current);
-          voiceUtteranceDebounceRef.current = null;
-        }
-      }
-      if (!listeningActiveRef.current) beginListeningRef.current();
-      return;
     }
-    if (listeningActiveRef.current) return;
-    if (thinkingRef.current) return;
-    unlockWebAudioAndSpeechFromUserGesture();
-    beginListeningRef.current();
-  }, [stopBargeInRecognition, stopVoiceOutput]);
+  }, []);
 
   const toggleMic = useCallback(() => {
     if (sessionOnRef.current) {
       stopSession();
       return;
     }
-    /* User gesture: unlock audio, then open session + mic once (no separate “Tap to speak” needed). */
+    if (!isOpenAiRealtimeVoiceSupported()) {
+      setErr("Live voice needs HTTPS and WebRTC — update Android System WebView or Chrome.");
+      return;
+    }
     unlockWebAudioAndSpeechFromUserGesture();
     primeSpeechVoices();
-    setMicPaused(false);
     stopRecognitionOnly();
     stopVoiceOutput();
     stopBargeInRecognition();
     setErr(null);
     sessionOnRef.current = true;
     setSessionOn(true);
-    if (voiceEngineRef.current === "live") {
-      void startLiveVoice();
-      return;
-    }
-    requestAnimationFrame(() => {
-      beginListeningRef.current?.();
-    });
+    void startLiveVoice();
   }, [stopBargeInRecognition, stopSession, stopRecognitionOnly, stopVoiceOutput, startLiveVoice]);
 
   useEffect(() => {
@@ -1309,20 +479,9 @@ export default function VoicePage() {
 
   const headerTitle = useMemo(() => {
     if (!sessionOn) return "Voice chat";
-    if (voiceEngine === "live") {
-      if (liveConnecting) return "Live — connecting…";
-      return speaking ? "Live — assistant is speaking" : "Live — speak anytime";
-    }
-    return listening
-      ? "Listening — go ahead"
-      : thinking
-        ? "One sec…"
-        : speaking
-          ? "Replying — interrupt anytime"
-          : micPaused
-            ? "Mic paused"
-            : "I'm here";
-  }, [sessionOn, voiceEngine, liveConnecting, listening, thinking, speaking, micPaused]);
+    if (liveConnecting) return "Live — connecting…";
+    return speaking ? "Live — assistant is speaking" : "Live — speak anytime";
+  }, [sessionOn, liveConnecting, speaking]);
 
   return (
     <div className="relative z-[1] flex min-h-0 flex-1 flex-col bg-[#080a0f] md:min-h-0">
@@ -1365,57 +524,13 @@ export default function VoicePage() {
       />
 
       <div className="mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col px-4 py-6 md:max-w-xl">
-        <div
-          className="mb-4 flex w-full flex-col gap-2 rounded-2xl border border-white/[0.08] bg-black/35 p-1.5"
-          role="tablist"
-          aria-label="Voice mode"
-        >
-          <div className="flex w-full gap-1">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={voiceEngine === "live"}
-              disabled={!isOpenAiRealtimeVoiceSupported()}
-              title={
-                !isOpenAiRealtimeVoiceSupported()
-                  ? "WebRTC / secure context not available in this WebView — use Classic."
-                  : "OpenAI Realtime — continuous hands-free voice"
-              }
-              onClick={() => {
-                if (sessionOn) stopSession();
-                setVoiceEngine("live");
-              }}
-              className={`flex-1 rounded-xl px-3 py-2 text-center text-[11px] font-semibold transition sm:text-xs ${
-                voiceEngine === "live"
-                  ? "bg-[#00D4FF]/18 text-white shadow-[inset_0_0_0_1px_rgba(0,212,255,0.35)]"
-                  : "text-white/45 hover:bg-white/[0.06] hover:text-white/85 disabled:cursor-not-allowed disabled:opacity-40"
-              }`}
-            >
-              Live
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={voiceEngine === "classic"}
-              onClick={() => {
-                if (sessionOn) stopSession();
-                setVoiceEngine("classic");
-              }}
-              className={`flex-1 rounded-xl px-3 py-2 text-center text-[11px] font-semibold transition sm:text-xs ${
-                voiceEngine === "classic"
-                  ? "bg-[#00D4FF]/18 text-white shadow-[inset_0_0_0_1px_rgba(0,212,255,0.35)]"
-                  : "text-white/45 hover:bg-white/[0.06] hover:text-white/85"
-              }`}
-            >
-              Classic
-            </button>
-          </div>
-          <p className="px-2 pb-1 text-center text-[10px] leading-relaxed text-white/38">
-            Live uses OpenAI Realtime over WebRTC (mic stays open, low-latency replies). Classic uses this
-            device&apos;s speech recognition + Neo chat + TTS. With server TTS, the API{" "}
-            <code className="text-white/55">model</code> is set for you: voice chat prefers{" "}
-            <code className="text-white/55">gpt-4o-mini-tts</code>, then <code className="text-white/55">tts-1-hd</code>, then{" "}
-            <code className="text-white/55">tts-1</code> — same idea as OpenAI&apos;s docs (higher tiers sound more natural).
+        <div className="mb-4 rounded-2xl border border-white/[0.08] bg-black/35 px-3 py-2.5 text-center">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-[#00D4FF]/75">
+            OpenAI Realtime
+          </p>
+          <p className="mt-1 text-[10px] leading-relaxed text-white/42">
+            Hands-free voice over WebRTC — tap the mic to start or end the session. Man / Woman sets the
+            assistant persona for this channel.
           </p>
         </div>
 
@@ -1459,18 +574,14 @@ export default function VoicePage() {
         ) : null}
 
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center">
-        {voiceEngine === "live" && !isOpenAiRealtimeVoiceSupported() ? (
+        {!isOpenAiRealtimeVoiceSupported() ? (
           <p className="mb-6 max-w-sm text-center text-[11px] leading-relaxed text-amber-400/90">
-            Live needs a secure page (HTTPS), WebRTC, and mic. Update the WebView / device, or use Classic here.
+            Live needs HTTPS and WebRTC. Update Android System WebView / Chrome on this device.
           </p>
         ) : null}
-        {(speechSupported === false && voiceEngine === "classic") || ttsSupported === false ? (
+        {ttsSupported === false ? (
           <p className="mb-8 max-w-sm text-center text-[11px] leading-relaxed text-white/35">
-            {speechSupported === false && voiceEngine === "classic"
-              ? isNativeCapacitor()
-                ? "Microphone permission is required — allow it in the app settings."
-                : "Classic voice input needs Chrome or Edge on desktop."
-              : "Speech output works best in Chrome or Edge."}
+            Persona preview audio may be limited in this browser — the live session still uses OpenAI voice.
           </p>
         ) : null}
 
@@ -1481,20 +592,7 @@ export default function VoicePage() {
             listening={listening}
             thinking={thinking}
           />
-          {sessionOn && voiceEngine === "classic" && !listening && !thinking ? (
-            <button
-              type="button"
-              onClick={tapToSpeak}
-              className="mb-3 mt-1 rounded-2xl border border-[#00D4FF]/35 bg-[#00D4FF]/10 px-5 py-2.5 text-sm font-semibold text-[#a5f3fc] transition hover:bg-[#00D4FF]/18"
-            >
-              {speaking
-                ? "Tap to interrupt"
-                : micPaused
-                  ? "Tap — turn mic on"
-                  : "Tap if mic did not restart"}
-            </button>
-          ) : null}
-          {sessionOn && voiceEngine === "live" && speaking ? (
+          {sessionOn && speaking ? (
             <button
               type="button"
               onClick={tapToSpeak}
@@ -1526,16 +624,6 @@ export default function VoicePage() {
           </button>
         </div>
 
-        {interim && listening ? (
-          <p className="mt-8 max-w-md border-l-2 border-[#00D4FF]/35 pl-3 text-center text-[13px] italic text-white/55 md:text-left">
-            {interim}
-          </p>
-        ) : null}
-        {sessionOn && micPaused && !listening ? (
-          <p className="mt-4 max-w-md text-center text-[11px] leading-relaxed text-white/45">
-            Mic paused — tap the button above or say &quot;mic on&quot; / &quot;start listening&quot;.
-          </p>
-        ) : null}
         {err ? (
           <p className="mt-6 max-w-md text-center text-xs leading-relaxed text-amber-400/95" role="alert">
             {err}
