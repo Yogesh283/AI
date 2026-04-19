@@ -35,8 +35,13 @@ import {
 /** Lower = faster flush after you pause (wake listen on Profile). */
 const DEBOUNCE_MS = 260;
 const FLUSH_AFTER_SPEECH_END_MS = 160;
-/** After each recognition session ends, keep the mic off this long before listening again (TTS + next “Hello Neo”). */
-const ALEXA_MIC_RESTART_COOLDOWN_MS = 4000;
+/**
+ * After Web Speech `onend`, wait before `start()` again — long enough that short Neo TTS usually finishes
+ * (avoids mic catching the reply), short enough that wake listen feels “always on” in the background.
+ */
+const HELLO_NEO_MIC_RESTART_BASE_MS = 1400;
+/** Tiny delay before `start()` after the base cooldown — fewer OEM “tun” / focus glitches than immediate start. */
+const HELLO_NEO_ONEND_START_JITTER_MS = 52;
 
 async function speakReply(text: string, lang: string) {
   primeSpeechVoices();
@@ -68,9 +73,10 @@ type Props = {
 };
 
 /**
- * Tap-to-talk + optional wake listen (foreground only). Commands run only after **Neo** / **Hello Neo**,
- * or during a short post-wake window (~8s). Wake listen mic pauses a few seconds after each session so it is not
- * constantly hot; say **Hello Neo** again for the next command. Profile toggles; `variant="profile"` only on Profile.
+ * Tap-to-talk + optional wake listen (foreground only). Commands run only after **Neo** / **Hello Neo** / **हेलो नियो**,
+ * or during a short post-wake window (~8s). Wake listen uses one continuous `SpeechRecognition` session; after each
+ * engine `onend` it restarts quietly (cooldown + tiny jitter) — no extra UI tones; other speech is ignored until wake.
+ * Profile toggles; `variant="profile"` only on Profile.
  */
 export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
   const isProfile = variant === "profile";
@@ -337,12 +343,16 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
         if (alexaStopRef.current || !alexaModeRef.current) return;
         const r = alexaRecRef.current;
         if (!r) return;
-        try {
-          r.start();
-        } catch {
-          /* ignore */
-        }
-      }, ALEXA_MIC_RESTART_COOLDOWN_MS) as unknown as number;
+        window.setTimeout(() => {
+          if (alexaStopRef.current || !alexaModeRef.current) return;
+          if (alexaRecRef.current !== r) return;
+          try {
+            r.start();
+          } catch {
+            /* ignore */
+          }
+        }, HELLO_NEO_ONEND_START_JITTER_MS);
+      }, HELLO_NEO_MIC_RESTART_BASE_MS) as unknown as number;
       alexaRestartTimerRef.current = tid;
     };
 
@@ -445,7 +455,8 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
             className="border-t border-white/[0.06] bg-white/[0.04] px-5 py-2 text-center text-[11px] leading-snug text-white/50"
           >
             Neo is active — say your command now (~8s, no need to say &quot;Neo&quot; again). After that, say{" "}
-            <span className="text-white/70">Hello Neo</span> again. The mic pauses briefly after each reply.
+            <span className="text-white/70">Hello Neo</span> again. Wake listen restarts quietly in the background — no
+            extra tones.
           </div>
         ) : null}
         {alexaMode ? (
@@ -519,7 +530,7 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
             className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-center text-[11px] leading-snug text-white/50"
           >
             Neo is active — say your command now (~8s, no need to say &quot;Neo&quot; again). Then say{" "}
-            <span className="text-white/70">Hello Neo</span> again. Mic pauses briefly after each reply.
+            <span className="text-white/70">Hello Neo</span> again. Wake listen restarts quietly — no extra tones.
           </div>
         ) : null}
         {alexaMode ? (

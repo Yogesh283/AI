@@ -24,6 +24,11 @@ import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * Foreground “Hello Neo” wake listener: one {@link SpeechRecognizer}, short relisten delays, no per-phrase
+ * destroy/recreate. Commands run only after wake phrase + tail (see {@link #consumeRecognizerResults}).
+ * While {@link NeoCommandRouter} TTS plays, {@link NeoCommandRouter#isAISpeaking()} blocks feedback.
+ */
 public class WakeWordForegroundService extends Service {
     public static final String ACTION_START = "com.neo.assistant.action.START_WAKE";
     public static final String ACTION_STOP = "com.neo.assistant.action.STOP_WAKE";

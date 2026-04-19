@@ -67,6 +67,8 @@ const VOICE_CHAT_AVATAR_OPTS = { voiceChatOpenAiTts: true as const };
 /** Browser classic STT: debounce finals + flush after a pause (continuous recognition). */
 const VOICE_CLASSIC_UTTERANCE_DEBOUNCE_MS = 280;
 const VOICE_CLASSIC_FLUSH_AFTER_SPEECH_END_MS = 220;
+/** After Web Speech `onend`, brief pause before `start()` again — fewer OEM “tun” / focus glitches than immediate restart. */
+const VOICE_CLASSIC_ONEND_RESTART_MS = 52;
 
 function IconMic({ className }: { className?: string }) {
   return (
@@ -149,6 +151,7 @@ export default function VoicePage() {
   /** Classic + browser STT: drop transcripts while assistant thinks/speaks (avoids speaker→mic feedback). */
   const ignoreVoiceMicInputRef = useRef(false);
   const voiceUtteranceDebounceRef = useRef<number | null>(null);
+  const voiceOnendRestartTimerRef = useRef<number | null>(null);
 
   useLayoutEffect(() => {
     try {
@@ -336,6 +339,10 @@ export default function VoicePage() {
     if (voiceUtteranceDebounceRef.current != null) {
       window.clearTimeout(voiceUtteranceDebounceRef.current);
       voiceUtteranceDebounceRef.current = null;
+    }
+    if (voiceOnendRestartTimerRef.current != null) {
+      window.clearTimeout(voiceOnendRestartTimerRef.current);
+      voiceOnendRestartTimerRef.current = null;
     }
     try {
       recRef.current?.abort?.();
@@ -848,6 +855,10 @@ export default function VoicePage() {
     stopAvatarTtsAudio();
     stopSpeaking();
 
+    if (voiceOnendRestartTimerRef.current != null) {
+      window.clearTimeout(voiceOnendRestartTimerRef.current);
+      voiceOnendRestartTimerRef.current = null;
+    }
     try {
       recRef.current?.abort?.();
     } catch {
@@ -944,13 +955,21 @@ export default function VoicePage() {
         recRef.current = null;
         return;
       }
-      try {
-        rec.start();
-      } catch {
-        listeningActiveRef.current = false;
-        setListening(false);
-        recRef.current = null;
+      const recSnapshot = rec;
+      if (voiceOnendRestartTimerRef.current != null) {
+        window.clearTimeout(voiceOnendRestartTimerRef.current);
       }
+      voiceOnendRestartTimerRef.current = window.setTimeout(() => {
+        voiceOnendRestartTimerRef.current = null;
+        if (recRef.current !== recSnapshot || !sessionOnRef.current || micPausedRef.current) return;
+        try {
+          recSnapshot.start();
+        } catch {
+          listeningActiveRef.current = false;
+          setListening(false);
+          recRef.current = null;
+        }
+      }, VOICE_CLASSIC_ONEND_RESTART_MS) as unknown as number;
     };
 
     recRef.current = rec;
@@ -969,9 +988,12 @@ export default function VoicePage() {
     beginListeningRef.current = beginListening;
     resumeMicAfterAssistantRef.current = () => {
       window.setTimeout(() => {
-        stopVoiceOutput();
-        if (!sessionOnRef.current || micPausedRef.current || thinkingRef.current) return;
         releaseWebVoiceCaptureAfterAssistant();
+        if (!sessionOnRef.current || micPausedRef.current || thinkingRef.current) return;
+        /* Continuous browser STT: mic never stopped — avoid extra TTS graph stops that some stacks surface as UI noise. */
+        if (!(isSpeechRecognitionSupported() && listeningActiveRef.current)) {
+          stopVoiceOutput();
+        }
         if (listeningActiveRef.current) return;
         beginListeningRef.current();
       }, voiceChatResumeMicDelayMs());
