@@ -94,6 +94,20 @@ export function NeoGoogleSignIn({
         );
       }
     } catch (e) {
+      const code =
+        typeof e === "object" && e !== null && "code" in e
+          ? String((e as { code?: string }).code ?? "")
+          : "";
+      const raw =
+        e instanceof Error ? e.message : typeof e === "string" ? e : JSON.stringify(e);
+      /* Native plugin maps GetCredentialCancellationException → SIGN_IN_CANCELED (often overlay / back, not only "user cancel"). */
+      if (code === "SIGN_IN_CANCELED" || /canceled|cancelled/i.test(raw)) {
+        onGoogleErrorRef.current?.(
+          "Google sign-in was interrupted (another dialog on screen, back button, or missing Android setup). " +
+            "Try again with no mic/notification popups. In Google Cloud, add this debug APK SHA-1 for package com.neo.assistant (Android OAuth client) and use the same Web client ID as the server.",
+        );
+        return;
+      }
       const msg =
         e instanceof Error
           ? e.message

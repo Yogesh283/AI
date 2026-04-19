@@ -18,6 +18,9 @@ $env:CAP_SERVER_URL = "http://localhost:3000"
 Write-Host "Using CAP_SERVER_URL=$env:CAP_SERVER_URL" -ForegroundColor Cyan
 Write-Host "Working directory: $(Get-Location)" -ForegroundColor DarkGray
 
+& node.exe "$PSScriptRoot\apply-google-signin-patch.cjs"
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
 & npx.cmd cap sync android
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
