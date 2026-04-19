@@ -59,9 +59,13 @@ export function NeoGoogleSignIn({
   onCredentialRef.current = onCredential;
   onGoogleErrorRef.current = onGoogleError;
 
-  /* Dynamic import is client-only — Capacitor bridge is present; never use GIS (Chrome) on Android APK. */
+  /*
+   * Never use GIS (`GoogleLogin`) inside the Android shell: it opens accounts.google.com in Chrome and never returns.
+   * Prefer Capacitor's native flag; keep `isNativeCapacitor()` as fallback if a WebView edge case reports platform late.
+   */
   const inAppAndroidGoogle =
-    Capacitor.getPlatform() === "android" && isNativeCapacitor();
+    Capacitor.getPlatform() === "android" &&
+    (Capacitor.isNativePlatform() || isNativeCapacitor());
 
   useEffect(() => {
     if (!inAppAndroidGoogle || !cid) return;

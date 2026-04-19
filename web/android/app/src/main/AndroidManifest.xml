@@ -3,6 +3,9 @@
 
     <!-- Android 11+: without this, PackageManager cannot see WhatsApp/Telegram/YouTube → resolveActivity is null → Play Store opens. -->
     <queries>
+        <!-- Credential Manager / Sign in with Google talks to Play services; without this, API 30+ can fail to resolve GMS. -->
+        <package android:name="com.google.android.gms" />
+        <package android:name="com.android.vending" />
         <package android:name="com.whatsapp" />
         <package android:name="com.whatsapp.w4b" />
         <package android:name="org.telegram.messenger" />

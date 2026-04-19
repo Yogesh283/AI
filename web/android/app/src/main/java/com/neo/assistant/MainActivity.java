@@ -23,8 +23,12 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
         /* Apply UA / cookies before first paint so the initial request to server.url is not stuck with "; wv". */
         configureWebViewForVoice();
-        /* Defer mic prompt so it does not stack on top of Google sign-in / first WebView interactions. */
-        getWindow().getDecorView().postDelayed(this::ensureMicPermission, 2000);
+        /*
+         * Defer mic so it never stacks on Credential Manager / "Continue with Google".
+         * 2s was still too early for slow networks; 15s keeps login/register usable first.
+         * Voice / SpeechRecognition still request mic when the user opens those flows.
+         */
+        getWindow().getDecorView().postDelayed(this::ensureMicPermission, 15000);
         maybeStopWakeService();
         // Bridge may exist before first resume — allow media playback ASAP for TTS MP3.
         View decor = getWindow().getDecorView();
