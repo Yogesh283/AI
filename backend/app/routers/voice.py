@@ -143,6 +143,20 @@ def _realtime_model() -> str:
     return (os.getenv("OPENAI_REALTIME_MODEL") or "gpt-4o-mini-realtime-preview").strip()
 
 
+def _realtime_server_vad() -> dict[str, object]:
+    """
+    Reduce false “user is speaking” cuts from speaker bleed-through (phone mic hears assistant audio).
+    interrupt_response=False: assistant finishes the line; user still taps “interrupt” to cancel.
+    """
+    return {
+        "type": "server_vad",
+        "threshold": 0.55,
+        "prefix_padding_ms": 400,
+        "silence_duration_ms": 900,
+        "interrupt_response": False,
+    }
+
+
 async def _build_realtime_instructions(
     *,
     uid: str,
@@ -247,6 +261,7 @@ async def post_realtime_token(
         "audio": {
             "input": {
                 "transcription": {"model": "whisper-1"},
+                "turn_detection": _realtime_server_vad(),
             },
             "output": {"voice": out_voice},
         },
@@ -258,7 +273,10 @@ async def post_realtime_token(
             "type": "realtime",
             "model": model,
             "instructions": instructions[:32000],
-            "audio": {"output": {"voice": out_voice}},
+            "audio": {
+                "input": {"turn_detection": _realtime_server_vad()},
+                "output": {"voice": out_voice},
+            },
         }
         data, err = await mint_openai_realtime_client_secret(session_payload=session_payload, expires_seconds=600)
     if err or not data:

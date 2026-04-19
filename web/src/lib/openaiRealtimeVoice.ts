@@ -40,9 +40,12 @@ function parseServerEvent(raw: string): Record<string, unknown> | null {
   }
 }
 
+type RealtimeEventLocks = { assistantDeltaSource: "output" | "legacy" | null };
+
 function routeRealtimeEvent(
   ev: Record<string, unknown>,
   cb: OpenAiRealtimeVoiceCallbacks,
+  locks: RealtimeEventLocks,
 ): void {
   const type = String(ev.type || "");
   if (type === "error") {
@@ -59,11 +62,22 @@ function routeRealtimeEvent(
     if (t) cb.onUserTranscript?.(t);
     return;
   }
-  if (
-    type.includes("audio_transcript") &&
-    type.endsWith(".delta") &&
-    !type.includes("done")
-  ) {
+  /* Some sessions emit both GA + legacy delta streams for the same speech — first channel wins per response. */
+  if (type === "response.output_audio_transcript.delta") {
+    if (locks.assistantDeltaSource === "legacy") return;
+    locks.assistantDeltaSource = locks.assistantDeltaSource ?? "output";
+    const d =
+      typeof ev.delta === "string"
+        ? ev.delta
+        : typeof (ev as { text?: unknown }).text === "string"
+          ? String((ev as { text: string }).text)
+          : "";
+    if (d) cb.onAssistantTranscriptDelta?.(d);
+    return;
+  }
+  if (type === "response.audio_transcript.delta") {
+    if (locks.assistantDeltaSource === "output") return;
+    locks.assistantDeltaSource = locks.assistantDeltaSource ?? "legacy";
     const d =
       typeof ev.delta === "string"
         ? ev.delta
@@ -82,10 +96,12 @@ function routeRealtimeEvent(
     return;
   }
   if (type === "response.created") {
+    locks.assistantDeltaSource = null;
     cb.onAssistantSpeaking?.(true);
     return;
   }
   if (type === "response.done" || type === "response.completed") {
+    locks.assistantDeltaSource = null;
     cb.onAssistantSpeaking?.(false);
     return;
   }
@@ -122,9 +138,10 @@ export async function startOpenAiRealtimeVoiceSession(
   };
 
   const dc = pc.createDataChannel("oai-events");
+  const eventLocks: RealtimeEventLocks = { assistantDeltaSource: null };
   dc.onmessage = (e) => {
     const ev = parseServerEvent(String(e.data || ""));
-    if (ev) routeRealtimeEvent(ev, callbacks);
+    if (ev) routeRealtimeEvent(ev, callbacks, eventLocks);
   };
 
   /* One mic stream for the whole Realtime session — tracks stay live until `close()` (no per-turn getUserMedia). */

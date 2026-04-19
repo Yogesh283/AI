@@ -20,7 +20,6 @@ import {
 import type { KalidokitMouthShape } from "@/lib/vrmKalidokitMouth";
 import { speakTextWithAvatarLipSync, stopAvatarTtsAudio } from "@/lib/voiceAvatarTts";
 import {
-  isSpeechSynthesisSupported,
   primeSpeechVoices,
   type TtsSpeedPreset,
   type TtsTonePreset,
@@ -84,7 +83,6 @@ export default function VoicePage() {
   const [lang, setLang] = useState<VoiceSpeechLangCode>(DEFAULT_VOICE_SPEECH_LANG);
   const [ttsGender, setTtsGender] = useState<TtsVoiceGender>("female");
   const [history, setHistory] = useState<Turn[]>([]);
-  const [ttsSupported, setTtsSupported] = useState<boolean | null>(null);
   /** Bumps when `/api/auth/me` refreshes local profile (display name, etc.). */
   const [, setProfileSync] = useState(0);
 
@@ -224,7 +222,6 @@ export default function VoicePage() {
   }, []);
 
   useEffect(() => {
-    setTtsSupported(isSpeechSynthesisSupported() || preferOpenAiTtsForVoiceUi());
     primeSpeechVoices();
     const synth = window.speechSynthesis;
     const onVoices = () => primeSpeechVoices();
@@ -300,6 +297,10 @@ export default function VoicePage() {
           const line = t.trim();
           if (!line) return;
           setHistory((h) => {
+            const last = h[h.length - 1];
+            if (last?.role === "user" && last.content.trim() === line) {
+              return h;
+            }
             const next = [...h, { role: "user" as const, content: line }];
             historyRef.current = next;
             return next;
@@ -331,6 +332,9 @@ export default function VoicePage() {
             const next = [...h];
             const L = next.length - 1;
             if (L >= 0 && next[L].role === "assistant") {
+              if (next[L].content.trim() === line) {
+                return h;
+              }
               next[L] = { role: "assistant", content: line };
               historyRef.current = next;
               return next;
@@ -343,20 +347,8 @@ export default function VoicePage() {
         onAssistantSpeaking: (on) => {
           speakingRef.current = on;
           setSpeaking(on);
-          if (on) {
-            const gap = !liveAssistStreamOpenRef.current;
-            liveAssistStreamOpenRef.current = true;
-            setHistory((h) => {
-              const last = h[h.length - 1];
-              if (last?.role === "assistant" && last.content === "") return h;
-              if (last?.role === "assistant" && last.content !== "" && !gap) return h;
-              const next = [...h, { role: "assistant" as const, content: "" }];
-              historyRef.current = next;
-              return next;
-            });
-          } else {
-            liveAssistStreamOpenRef.current = false;
-          }
+          /* New response: keep false until the first delta creates/opens the row — avoids appending into the prior reply. */
+          liveAssistStreamOpenRef.current = false;
         },
         onError: (msg) => {
           setErr(msg);
@@ -383,6 +375,7 @@ export default function VoicePage() {
       liveCancelRef.current?.();
       speakingRef.current = false;
       setSpeaking(false);
+      liveAssistStreamOpenRef.current = false;
     }
   }, []);
 
@@ -524,16 +517,6 @@ export default function VoicePage() {
       />
 
       <div className="mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col px-4 py-6 md:max-w-xl">
-        <div className="mb-4 rounded-2xl border border-white/[0.08] bg-black/35 px-3 py-2.5 text-center">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-[#00D4FF]/75">
-            OpenAI Realtime
-          </p>
-          <p className="mt-1 text-[10px] leading-relaxed text-white/42">
-            Hands-free voice over WebRTC — tap the mic to start or end the session. Man / Woman sets the
-            assistant persona for this channel.
-          </p>
-        </div>
-
         {history.length > 0 ? (
           <div className="mb-5 w-full shrink-0">
             <div className="mb-3 flex items-center justify-between gap-2">
@@ -579,12 +562,6 @@ export default function VoicePage() {
             Live needs HTTPS and WebRTC. Update Android System WebView / Chrome on this device.
           </p>
         ) : null}
-        {ttsSupported === false ? (
-          <p className="mb-8 max-w-sm text-center text-[11px] leading-relaxed text-white/35">
-            Persona preview audio may be limited in this browser — the live session still uses OpenAI voice.
-          </p>
-        ) : null}
-
         <div className="relative flex flex-col items-center">
           <VoiceSessionWaveform
             sessionOn={sessionOn}
