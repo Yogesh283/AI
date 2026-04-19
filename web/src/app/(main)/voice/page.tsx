@@ -55,7 +55,7 @@ const VOICE_HISTORY_PREFIX = "neo-voice-history-";
 const VOICE_ENGINE_KEY = "neo-voice-engine";
 type VoiceEngine = "live" | "classic";
 
-/** Voice chat page only: slow, warm delivery; OpenAI path uses gpt-4o-mini-tts + marin/cedar; browser TTS uses `pickVoice` (en-IN / Hindi). */
+/** Voice chat page only: slow, warm delivery; OpenAI path uses gpt-4o-mini-tts + marin/cedar, then tts-1-hd / tts-1 fallbacks; browser TTS uses `pickVoice` (en-IN / Hindi). */
 const VOICE_CHAT_TTS_SPEED: TtsSpeedPreset = "slow";
 const VOICE_CHAT_TTS_TONE: TtsTonePreset = "warm";
 /** OpenAI HD + conversation voices; browser TTS gets calmer pacing (see `voiceAvatarTts` / `voiceChatCalmDelivery`). */
@@ -498,7 +498,7 @@ export default function VoicePage() {
               try {
                 unlockWebAudioAndSpeechFromUserGesture();
                 await speakTextWithAvatarLipSync(
-                  speakLang.startsWith("hi") ? "ठीक है।" : "Okay.",
+                  "Okay.",
                   speakLang,
                   {
                     mouthShapeRef,
@@ -559,8 +559,8 @@ export default function VoicePage() {
             const msg = ttsErr instanceof Error ? ttsErr.message : "TTS failed";
             setErr(
               preferOpenAiTtsForVoiceUi()
-                ? `${msg} — Neo server / OpenAI reach check karein (DNS, internet).`
-                : `${msg} — Volume / speakers check karein; Chrome ya Edge try karein.`,
+                ? `${msg} — Check Neo server / OpenAI reach (DNS, internet).`
+                : `${msg} — Check volume and speakers; try Chrome or Edge.`,
             );
           } finally {
             if (speakGenerationRef.current === gen) {
@@ -589,7 +589,11 @@ export default function VoicePage() {
           content: m.content,
         }));
         let replyAcc = "";
-        await postChatStream(apiMsgs, uid, { useWeb: false, signal: sig, source: "voice" }, (delta) => {
+        await postChatStream(
+          apiMsgs,
+          uid,
+          { useWeb: false, signal: sig, source: "voice", speechLang: speakLang },
+          (delta) => {
           replyAcc += delta;
           setHistory((h) => {
             const next = [...h];
@@ -627,8 +631,8 @@ export default function VoicePage() {
             ttsErr instanceof Error ? ttsErr.message : "TTS failed";
           setErr(
             preferOpenAiTtsForVoiceUi()
-              ? `${msg} — Neo server / OpenAI reach check karein (DNS, internet).`
-              : `${msg} — Volume / speakers check karein; Chrome ya Edge try karein.`
+              ? `${msg} — Check Neo server / OpenAI reach (DNS, internet).`
+              : `${msg} — Check volume and speakers; try Chrome or Edge.`
           );
         } finally {
           if (speakGenerationRef.current === gen) {
@@ -740,7 +744,7 @@ export default function VoicePage() {
 
     const rec = createSpeechRecognition(lang);
     if (!rec) {
-      setErr("Speech recognition start nahi ho paya.");
+      setErr("Could not start speech recognition.");
       return;
     }
 
@@ -802,7 +806,7 @@ export default function VoicePage() {
       setListening(true);
     } catch {
       listeningActiveRef.current = false;
-      setErr("Mic already busy — dubara try karein.");
+      setErr("Mic is busy — try again.");
       setListening(false);
     }
   }, [lang, sendText]);
@@ -1245,7 +1249,10 @@ export default function VoicePage() {
           </div>
           <p className="px-2 pb-1 text-center text-[10px] leading-relaxed text-white/38">
             Live uses OpenAI Realtime over WebRTC (mic stays open, low-latency replies). Classic uses this
-            device&apos;s speech recognition + Neo chat + TTS.
+            device&apos;s speech recognition + Neo chat + TTS. With server TTS, the API{" "}
+            <code className="text-white/55">model</code> is set for you: voice chat prefers{" "}
+            <code className="text-white/55">gpt-4o-mini-tts</code>, then <code className="text-white/55">tts-1-hd</code>, then{" "}
+            <code className="text-white/55">tts-1</code> — same idea as OpenAI&apos;s docs (higher tiers sound more natural).
           </p>
         </div>
 
@@ -1298,7 +1305,7 @@ export default function VoicePage() {
           <p className="mb-8 max-w-sm text-center text-[11px] leading-relaxed text-white/35">
             {speechSupported === false && voiceEngine === "classic"
               ? isNativeCapacitor()
-                ? "Mic permission dena zaroori hai — app settings mein allow karein."
+                ? "Microphone permission is required — allow it in the app settings."
                 : "Classic voice input needs Chrome or Edge on desktop."
               : "Speech output works best in Chrome or Edge."}
           </p>

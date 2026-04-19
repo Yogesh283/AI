@@ -17,7 +17,7 @@ function trimChatContext(messages: { role: "user" | "assistant" | "system"; cont
 export async function postChat(
   messages: { role: "user" | "assistant" | "system"; content: string }[],
   userId = "default",
-  opts?: { source?: ChatSource; useWeb?: boolean }
+  opts?: { source?: ChatSource; useWeb?: boolean; speechLang?: string }
 ) {
   const token = getStoredToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -25,13 +25,20 @@ export async function postChat(
   const url = chatUrl();
   const source = opts?.source ?? "chat";
   const use_web = opts?.useWeb ?? false;
+  const speech_lang = opts?.speechLang?.trim() || undefined;
   let r: Response;
   try {
     const trimmedMessages = trimChatContext(messages);
     r = await fetch(url, {
       method: "POST",
       headers,
-      body: JSON.stringify({ messages: trimmedMessages, user_id: userId, source, use_web }),
+      body: JSON.stringify({
+        messages: trimmedMessages,
+        user_id: userId,
+        source,
+        use_web,
+        ...(speech_lang ? { speech_lang } : {}),
+      }),
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -62,7 +69,7 @@ export async function postChat(
 export async function postChatStream(
   messages: { role: "user" | "assistant" | "system"; content: string }[],
   userId: string,
-  opts: { useWeb?: boolean; signal?: AbortSignal; source?: ChatSource },
+  opts: { useWeb?: boolean; signal?: AbortSignal; source?: ChatSource; speechLang?: string },
   onDelta: (chunk: string) => void,
 ): Promise<void> {
   const token = getStoredToken();
@@ -71,6 +78,7 @@ export async function postChatStream(
   const url = `${chatUrl()}/stream`;
   const source: ChatSource = opts.source ?? "chat";
   const use_web = opts.useWeb ?? false;
+  const speech_lang = opts.speechLang?.trim() || undefined;
   let r: Response;
   try {
     r = await fetch(url, {
@@ -81,6 +89,7 @@ export async function postChatStream(
         user_id: userId,
         source,
         use_web,
+        ...(speech_lang ? { speech_lang } : {}),
       }),
       signal: opts.signal,
     });

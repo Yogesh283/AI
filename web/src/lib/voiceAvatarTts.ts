@@ -170,7 +170,7 @@ export async function playMp3BlobWithLipSync(
 
 /**
  * OpenAI `gpt-4o-mini-tts` + **marin** / **cedar** + human-like pacing instructions (OpenAI recommends marin/cedar for dialogue).
- * Classic short prompts stay `tts-1` + nova/onyx.
+ * Other OpenAI paths default to `tts-1-hd` + nova/onyx unless a model is set explicitly.
  */
 const HUMAN_LIKE_TTS_INSTRUCTIONS =
   "Speak as a real person would on a voice call: warm, relaxed chest voice, slightly slower than news-radio, with tiny natural pauses between phrases. Vary pitch and rhythm a little so it never sounds monotone or machine-read. Clear consonants; if Hindi and English mix, keep both easy to follow. Sound caring and present, not salesy or robotic.";
@@ -205,9 +205,11 @@ async function fetchOpenAiTtsBlob(
   const model: "tts-1" | "tts-1-hd" | "gpt-4o-mini-tts" =
     fetchOpts?.model === "gpt-4o-mini-tts"
       ? "gpt-4o-mini-tts"
-      : fetchOpts?.model === "tts-1-hd"
-        ? "tts-1-hd"
-        : "tts-1";
+      : fetchOpts?.model === "tts-1"
+        ? "tts-1"
+        : fetchOpts?.model === "tts-1-hd"
+          ? "tts-1-hd"
+          : "tts-1-hd";
 
   const payload: Record<string, unknown> = {
     text: trimmed,
@@ -342,21 +344,28 @@ async function tryOpenAiTts(
     voiceStyle?: "default" | "conversation";
   },
 ): Promise<void> {
+  const voiceChatTts =
+    fetchOpts?.model === "gpt-4o-mini-tts" && fetchOpts?.voiceStyle === "conversation";
+
   let blob: Blob;
-  try {
-    blob = await fetchOpenAiTtsBlob(text, voiceGender, fetchOpts);
-  } catch (e) {
-    if (
-      fetchOpts?.model === "gpt-4o-mini-tts" &&
-      fetchOpts?.voiceStyle === "conversation"
-    ) {
-      blob = await fetchOpenAiTtsBlob(text, voiceGender, {
-        model: "tts-1-hd",
-        voiceStyle: "conversation",
-      });
-    } else {
-      throw e instanceof Error ? e : new Error(String(e));
+  if (voiceChatTts) {
+    try {
+      blob = await fetchOpenAiTtsBlob(text, voiceGender, fetchOpts);
+    } catch {
+      try {
+        blob = await fetchOpenAiTtsBlob(text, voiceGender, {
+          model: "tts-1-hd",
+          voiceStyle: "conversation",
+        });
+      } catch {
+        blob = await fetchOpenAiTtsBlob(text, voiceGender, {
+          model: "tts-1",
+          voiceStyle: "conversation",
+        });
+      }
     }
+  } else {
+    blob = await fetchOpenAiTtsBlob(text, voiceGender, fetchOpts);
   }
 
   /* APK / WebView without `speechSynthesis`: Web Audio analyser path is flaky — simple `<audio>` MP3 only. */
@@ -379,7 +388,7 @@ export async function tryPlayOpenAiTtsPlain(
   voiceGender?: TtsVoiceGender,
 ): Promise<boolean> {
   try {
-    const blob = await fetchOpenAiTtsBlob(text, voiceGender, undefined);
+    const blob = await fetchOpenAiTtsBlob(text, voiceGender, { model: "tts-1-hd" });
     await playMp3BlobSimple(blob);
     return true;
   } catch {
@@ -419,7 +428,9 @@ export async function speakTextWithAvatarLipSync(
         text,
         ref,
         opts.voiceGender,
-        voiceChat ? { model: "gpt-4o-mini-tts", voiceStyle: "conversation" } : undefined,
+        voiceChat
+          ? { model: "gpt-4o-mini-tts", voiceStyle: "conversation" }
+          : { model: "tts-1-hd", voiceStyle: "default" },
       );
       return;
     } catch (e) {

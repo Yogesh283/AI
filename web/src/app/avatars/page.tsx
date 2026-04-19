@@ -69,11 +69,12 @@ export default function AvatarsPage() {
 
         <details className="mt-4 rounded-2xl border border-white/[0.08] bg-black/25 p-4 text-left ring-1 ring-white/[0.04]">
           <summary className="cursor-pointer list-none text-sm font-semibold text-white/85 [&::-webkit-details-marker]:hidden">
-            अन्य 3D विकल्प (Unity के अलावा) ▾
+            Other 3D options (besides Unity) ▾
           </summary>
           <ul className="mt-3 space-y-2.5 text-[12px] leading-relaxed text-white/50">
             <li>
-              <span className="font-semibold text-white/70">Unreal Engine</span> — शक्तिशाली 3D / एनीमेशन; डेस्कटॉप या बिल्ड टारगेट।{" "}
+              <span className="font-semibold text-white/70">Unreal Engine</span> — high-end 3D and animation; desktop
+              or custom build targets.{" "}
               <a
                 href="https://www.unrealengine.com/"
                 target="_blank"
@@ -84,7 +85,8 @@ export default function AvatarsPage() {
               </a>
             </li>
             <li>
-              <span className="font-semibold text-white/70">Three.js / Babylon.js</span> — ब्राउज़र में WebGL रियल-टाइम 3D (आमतौर पर glTF/GLB)।{" "}
+              <span className="font-semibold text-white/70">Three.js / Babylon.js</span> — real-time WebGL 3D in the
+              browser (usually glTF/GLB).{" "}
               <a href="https://threejs.org/" target="_blank" rel="noopener noreferrer" className="text-[#00D4FF]/90 underline-offset-2 hover:underline">
                 threejs.org
               </a>
@@ -99,7 +101,8 @@ export default function AvatarsPage() {
               </a>
             </li>
             <li>
-              <span className="font-semibold text-white/70">Ready Player Me</span> — कम-कोड 3D अवतार + API इंटीग्रेशन।{" "}
+              <span className="font-semibold text-white/70">Ready Player Me</span> — low-code 3D avatars plus API
+              integration.{" "}
               <a
                 href="https://readyplayer.me/"
                 target="_blank"
@@ -111,8 +114,8 @@ export default function AvatarsPage() {
             </li>
           </ul>
           <p className="mt-3 text-[11px] text-white/35">
-            पूरी तुलना और <code className="text-white/45">model.fbx</code> नोट्स रिपो में{" "}
-            <code className="text-cyan-300/80">avatar/README.md</code> में हैं।
+            Full comparison and <code className="text-white/45">model.fbx</code> notes live in the repo under{" "}
+            <code className="text-cyan-300/80">avatar/README.md</code>.
           </p>
         </details>
       </header>

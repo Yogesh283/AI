@@ -68,7 +68,7 @@ export function voiceLangLabel(code: VoiceSpeechLangCode): string {
 export function neoWakeAckPhrase(code: VoiceSpeechLangCode): string {
   switch (code) {
     case "hi-IN":
-      return "जी, सुन रहे हैं। अब बताइए क्या करना है — जैसे व्हाट्सऐप खोलो या यूट्यूब।";
+      return "सुन रहे हैं। बताइए क्या करवाना है—जैसे व्हाट्सऐप या यूट्यूब खुलवाना हो तो कह दीजिए।";
     case "en-IN":
     case "en-US":
       return "Yes — what would you like? For example, open WhatsApp, Telegram, or YouTube.";
@@ -82,7 +82,7 @@ export function neoWakeAckPhrase(code: VoiceSpeechLangCode): string {
     case "pa-IN":
       return "Yes — what would you like me to do?";
     case "ur-IN":
-      return "جی، سن رہے ہیں۔ اب بتائیں کیا کرنا ہے۔";
+      return "Yes — what would you like me to do?";
     case "es-ES":
       return "Sí, te escucho. Dime.";
     case "fr-FR":
@@ -112,31 +112,16 @@ export function neoWorkingAckPhrase(
   code: VoiceSpeechLangCode,
   gender: "male" | "female" = "female",
 ): string {
-  const maleHi = "जी, मैं अभी चेक करता हूँ।";
-  const femaleHi = "जी, मैं अभी चेक करती हूँ।";
-  const hi = gender === "male" ? maleHi : femaleHi;
-  const en = "On it — just a moment.";
-  if (code === "hi-IN" || code === "ur-IN") return hi;
-  if (code.startsWith("en")) return en;
-  if (
-    code === "ta-IN" ||
-    code === "te-IN" ||
-    code === "bn-IN" ||
-    code === "mr-IN" ||
-    code === "gu-IN" ||
-    code === "kn-IN" ||
-    code === "ml-IN" ||
-    code === "pa-IN"
-  ) {
-    return hi;
+  if (code === "hi-IN" || (code || "").toLowerCase().startsWith("hi")) {
+    return gender === "male" ? "बस एक पल, कर रहा हूँ।" : "बस एक पल, कर रही हूँ।";
   }
-  return en;
+  return "On it — just a moment.";
 }
 
 export function ackPhraseForLang(code: VoiceSpeechLangCode): string {
   switch (code) {
     case "hi-IN":
-      return "Theek hai, ab Hindi.";
+      return "ठीक है, अब से केवल हिंदी में जवाब दूँगा।";
     case "en-IN":
     case "en-US":
       return "Okay, English from now.";
@@ -184,15 +169,7 @@ export function voiceSessionWelcomeLines(
   lang: VoiceSpeechLangCode,
   displayName: string | undefined,
 ): { isHindi: boolean; withName: string; withoutName: string } {
-  const isHindi = lang === "hi-IN";
   const nm = displayName?.trim();
-  if (isHindi) {
-    return {
-      isHindi: true,
-      withName: nm ? `Namaste ${nm}.` : "Namaste.",
-      withoutName: "Namaste.",
-    };
-  }
   return {
     isHindi: false,
     withName: nm ? `Hello ${nm}.` : "Hello.",

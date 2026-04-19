@@ -152,9 +152,9 @@ async def chat_completion(
     last = messages[-1]["content"] if messages else ""
     return ChatCompletionResult(
         text=(
-            "Namaste! Main NeoXAI hoon — abhi demo mode mein hoon (OpenAI key set nahi hai).\n\n"
-            f"Aapne kaha: «{last}»\n\n"
-            "`.env` mein `OPENAI_API_KEY` add karne par yahi endpoint GPT se jawab dega."
+            "Hi — NeoXAI is running in demo mode (no OpenAI API key is set).\n\n"
+            f"You said: «{last}»\n\n"
+            "Add `OPENAI_API_KEY` to `.env` and this endpoint will answer with GPT."
         ),
         model=None,
     )
@@ -187,7 +187,7 @@ async def _openai_chat(messages: list[dict[str, str]], api_key: str) -> ChatComp
             return ChatCompletionResult(
                 text=(
                     f"[OpenAI {e.response.status_code}] {msg}\n\n"
-                    "Key / billing check karein: platform.openai.com"
+                    "Check your API key and billing at platform.openai.com"
                 ),
                 model="gpt-4o-mini",
             )
@@ -196,7 +196,7 @@ async def _openai_chat(messages: list[dict[str, str]], api_key: str) -> ChatComp
             return ChatCompletionResult(
                 text=(
                     f"[OpenAI network] {type(e).__name__}: {e}\n\n"
-                    "Server se api.openai.com reach ho raha hai ya nahi check karein (firewall / DNS / outbound HTTPS)."
+                    "Check whether this server can reach api.openai.com (firewall / DNS / outbound HTTPS)."
                 ),
                 model="gpt-4o-mini",
             )
@@ -205,7 +205,7 @@ async def _openai_chat(messages: list[dict[str, str]], api_key: str) -> ChatComp
         except ValueError as e:
             logger.warning("OpenAI invalid JSON: %s", e)
             return ChatCompletionResult(
-                text="[OpenAI] Invalid response — dubara try karein.",
+                text="[OpenAI] Invalid response — please try again.",
                 model="gpt-4o-mini",
             )
         try:
@@ -219,7 +219,7 @@ async def _openai_chat(messages: list[dict[str, str]], api_key: str) -> ChatComp
         except (TypeError, ValueError, KeyError, IndexError) as e:
             logger.warning("OpenAI unexpected response shape: %s", e)
             return ChatCompletionResult(
-                text="[OpenAI] Unexpected reply format — dubara try karein.",
+                text="[OpenAI] Unexpected reply format — please try again.",
                 model="gpt-4o-mini",
             )
         usage = data.get("usage") or {}
@@ -247,8 +247,8 @@ async def stream_openai_chat_deltas(
     """
     if not api_key:
         demo = (
-            "Namaste! Main NeoXAI hoon — abhi demo mode mein hoon (OpenAI key set nahi hai).\n\n"
-            "`.env` mein OPENAI_API_KEY add karne par yahi chat streaming se jawab dega."
+            "Hi — NeoXAI is running in demo mode (no OpenAI API key is set).\n\n"
+            "Add OPENAI_API_KEY to `.env` and this chat stream will use GPT."
         )
         step = 14
         for i in range(0, len(demo), step):
@@ -386,7 +386,7 @@ async def synthesize_openai_tts(
     text: str,
     *,
     voice: str = "alloy",
-    model: str = "tts-1",
+    model: str = "tts-1-hd",
     instructions: str | None = None,
 ) -> tuple[bytes, str]:
     """
@@ -406,9 +406,9 @@ async def synthesize_openai_tts(
     if v not in _OPENAI_TTS_VOICES:
         v = "alloy"
 
-    m = (model or "tts-1").strip()
+    m = (model or "tts-1-hd").strip()
     if m not in ("tts-1", "tts-1-hd", "gpt-4o-mini-tts"):
-        m = "tts-1"
+        m = "tts-1-hd"
 
     _hd_only_voices = frozenset(
         {"alloy", "ash", "coral", "echo", "fable", "onyx", "nova", "sage", "shimmer"},

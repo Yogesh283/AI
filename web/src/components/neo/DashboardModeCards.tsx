@@ -88,10 +88,10 @@ export function DashboardModeCards() {
               {title}
             </h1>
             <p className="mx-auto mt-3 max-w-md text-[14px] leading-relaxed text-white/55 sm:text-[15px]">
-              Voice, chat, memory — ek hi assistant, sab connected. Neeche se mode chuno ya quick links use karo.
+              Voice, chat, and memory — one assistant, all connected. Pick a mode below or use the quick links.
             </p>
             <p className="mx-auto mt-2 max-w-lg text-[12px] leading-relaxed text-white/38">
-              Same account everywhere: browser ya app — settings & memory sync.
+              Same account everywhere: browser or app — settings and memory stay in sync.
             </p>
           </header>
 
@@ -117,7 +117,7 @@ export function DashboardModeCards() {
               </div>
               <h2 className="text-lg font-bold tracking-tight text-white">Voice chat</h2>
               <p className="mt-1.5 flex-1 text-[13px] leading-relaxed text-white/50">
-                Hands-free — mic se bolo, 3D assistant jawab degi.
+                Hands-free — speak into the mic and the 3D assistant replies.
               </p>
               <span className="mt-4 flex items-center gap-1.5 text-xs font-semibold text-[#7eeafb]">
                 Start session <Chevron />
@@ -138,7 +138,7 @@ export function DashboardModeCards() {
               </div>
               <h2 className="text-lg font-bold tracking-tight text-white">Open chat</h2>
               <p className="mt-1.5 flex-1 text-[13px] leading-relaxed text-white/50">
-                Type karo — lambi threads, code, aur detail ke liye best.
+                Type away — best for long threads, code, and detailed answers.
               </p>
               <span className="mt-4 flex items-center gap-1.5 text-xs font-semibold text-[#00D4FF]/90">
                 Open thread <Chevron />

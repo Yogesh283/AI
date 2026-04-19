@@ -35,6 +35,8 @@ import {
 /** Lower = faster flush after you pause (wake listen on Profile). */
 const DEBOUNCE_MS = 260;
 const FLUSH_AFTER_SPEECH_END_MS = 160;
+/** After each recognition session ends, keep the mic off this long before listening again (TTS + next “Hello Neo”). */
+const ALEXA_MIC_RESTART_COOLDOWN_MS = 4000;
 
 async function speakReply(text: string, lang: string) {
   primeSpeechVoices();
@@ -67,7 +69,8 @@ type Props = {
 
 /**
  * Tap-to-talk + optional wake listen (foreground only). Commands run only after **Neo** / **Hello Neo**,
- * or during the short post-wake window — random speech is ignored. Profile toggles; `variant="profile"` only on Profile.
+ * or during a short post-wake window (~8s). Wake listen mic pauses a few seconds after each session so it is not
+ * constantly hot; say **Hello Neo** again for the next command. Profile toggles; `variant="profile"` only on Profile.
  */
 export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
   const isProfile = variant === "profile";
@@ -75,7 +78,7 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
   const [listening, setListening] = useState(false);
   const [alexaMode, setAlexaMode] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
-  /** True while the post–wake-word command window is active (~25s). */
+  /** True while the post–wake-word command window is active (a few seconds after “Hello Neo” only). */
   const [neoFollowUpOpen, setNeoFollowUpOpen] = useState(false);
   const recRef = useRef<SpeechRecognition | null>(null);
   const finalBuf = useRef("");
@@ -84,6 +87,7 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const alexaStopRef = useRef(false);
   const alexaModeRef = useRef(false);
+  const alexaRestartTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     alexaModeRef.current = alexaMode;
@@ -128,6 +132,10 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
 
   const stopAlexa = useCallback(() => {
     alexaStopRef.current = true;
+    if (alexaRestartTimerRef.current) {
+      clearTimeout(alexaRestartTimerRef.current);
+      alexaRestartTimerRef.current = null;
+    }
     try {
       alexaRecRef.current?.abort?.();
     } catch {
@@ -322,13 +330,20 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
       if (msg && ev.error !== "aborted") setHint(msg);
     };
     rec.onend = () => {
-      if (!alexaStopRef.current && alexaModeRef.current) {
+      if (alexaStopRef.current || !alexaModeRef.current) return;
+      if (alexaRestartTimerRef.current) clearTimeout(alexaRestartTimerRef.current);
+      const tid = window.setTimeout(() => {
+        alexaRestartTimerRef.current = null;
+        if (alexaStopRef.current || !alexaModeRef.current) return;
+        const r = alexaRecRef.current;
+        if (!r) return;
         try {
-          rec.start();
+          r.start();
         } catch {
           /* ignore */
         }
-      }
+      }, ALEXA_MIC_RESTART_COOLDOWN_MS) as unknown as number;
+      alexaRestartTimerRef.current = tid;
     };
 
     try {
@@ -382,8 +397,8 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
         <div className="border-b border-white/[0.07] px-5 py-3.5">
           <h2 className="text-sm font-semibold text-white/90">Try Neo</h2>
           <p className="mt-0.5 text-xs text-white/40">
-            Say <span className="text-white/60">Neo</span> or <span className="text-white/60">नियो</span> (or Hello
-            Neo), then e.g. music, YouTube, WhatsApp, Telegram, contacts, or time.{" "}
+            Say <span className="text-white/60">Neo</span> or Hello Neo, then e.g. music, YouTube, WhatsApp, Telegram,
+            contacts, or time.{" "}
             {isNativeCapacitor()
               ? "Wake listen runs in the app while Hello Neo wake is on (see Profile); other speech is ignored until you say the wake phrase."
               : "Wake listen only runs while you stay on this page; other speech is ignored until you say the wake phrase."}
@@ -429,7 +444,8 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
             aria-live="polite"
             className="border-t border-white/[0.06] bg-white/[0.04] px-5 py-2 text-center text-[11px] leading-snug text-white/50"
           >
-            Neo is active — say your command now (no need to say &quot;Neo&quot; again).
+            Neo is active — say your command now (~8s, no need to say &quot;Neo&quot; again). After that, say{" "}
+            <span className="text-white/70">Hello Neo</span> again. The mic pauses briefly after each reply.
           </div>
         ) : null}
         {alexaMode ? (
@@ -502,7 +518,8 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
             aria-live="polite"
             className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-center text-[11px] leading-snug text-white/50"
           >
-            Neo is active — say your command now (no need to say &quot;Neo&quot; again).
+            Neo is active — say your command now (~8s, no need to say &quot;Neo&quot; again). Then say{" "}
+            <span className="text-white/70">Hello Neo</span> again. Mic pauses briefly after each reply.
           </div>
         ) : null}
         {alexaMode ? (

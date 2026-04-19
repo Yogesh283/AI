@@ -75,9 +75,9 @@ def _live_datetime_reply(now_ist: datetime) -> str:
     t12 = now_ist.strftime("%I:%M %p").lstrip("0")
     t24 = now_ist.strftime("%H:%M")
     return (
-        f"Abhi live India time (IST) {t12} ({t24}) hai.\n"
-        f"Aaj ki date {date_label}, {day_label} hai.\n\n"
-        "If you want, main isi ke basis par aaj ka quick schedule bana doon."
+        f"Live India time (IST) is {t12} ({t24}).\n"
+        f"Today's date is {date_label} ({day_label}).\n\n"
+        "If you want, I can sketch a quick schedule for today based on this."
     )
 
 
@@ -102,6 +102,31 @@ def _compact_line(text: str, max_len: int = 180) -> str:
     if len(t) <= max_len:
         return t
     return t[: max_len - 3].rstrip() + "..."
+
+
+def _shuddh_hindi_applies(last_user: str, speech_lang: str | None) -> bool:
+    """True when we should force Devanagari-only, no-English assistant replies."""
+    sl = (speech_lang or "").strip().lower()
+    if sl.startswith("hi"):
+        return True
+    t = (last_user or "").strip()
+    if not t:
+        return False
+    deva = len(re.findall(r"[\u0900-\u097F]", t))
+    if deva >= 6:
+        return True
+    return deva >= 3 and deva / max(len(t), 1) >= 0.12
+
+
+SHUDDH_HINDI_RULE = (
+    "CRITICAL — Shuddh Hindi only: The user is using Hindi (speech_lang hi-* or Hindi script in their message). "
+    "Write your ENTIRE reply in standard Hindi using ONLY Devanagari script. "
+    "Do not use English words, Latin letters for English, or Hinglish. "
+    "Sound natural and clear, like a fluent Hindi speaker; keep flow easy to read aloud (voice). "
+    "Technical or unfamiliar terms: explain with simple Hindi or established Hindi equivalents. "
+    "If live web snippets are in English, convey their meaning in Hindi — do not paste English from snippets. "
+    "This overrides any bilingual or Hinglish guidance elsewhere in this system message."
+)
 
 
 def _is_recall_query(text: str) -> bool:
@@ -134,8 +159,8 @@ def _recall_reply_from_timeline(rows: list[dict[str, str]]) -> str:
     user_rows = [r for r in rows if r.get("role") == "user" and str(r.get("content") or "").strip()]
     if not user_rows:
         return (
-            "Abhi mere paas is user ke liye purani conversation timeline nahi mili. "
-            "Aap jo yaad karna chahte ho woh line likho, main usko memory mein pin kar dunga."
+            "I don’t have a previous conversation timeline for this user yet. "
+            "Send the line you want remembered and I’ll pin it to memory."
         )
     last = user_rows[-1]
     when = str(last.get("created_at") or "").replace("T", " ")[:19]
@@ -146,7 +171,7 @@ def _recall_reply_from_timeline(rows: list[dict[str, str]]) -> str:
         for x in sample
     )
     return (
-        f"Haan, humari pichli baat [{when}] par hui thi.\n"
+        f"Yes — we last spoke around [{when}].\n"
         f"Last topic: \"{last_topic}\".\n\n"
         "Recent user topics:\n"
         f"{bullets}"
@@ -165,6 +190,8 @@ class ChatRequest(BaseModel):
     source: Literal["chat", "voice", "tools"] = "chat"
     # When True and GOOGLE_CSE_* are set, last user message is used for Google Custom Search snippets.
     use_web: bool = False
+    # BCP-47 hint from client (e.g. hi-IN). When Hindi, assistant replies in Shuddh Hindi only (see system prompt).
+    speech_lang: str | None = Field(default=None, max_length=32)
 
 
 class ChatResponse(BaseModel):
@@ -246,28 +273,46 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
         "for time-sensitive facts (prices, sports results, who is in office, etc.). "
         f"When live web snippets are provided below, they are the source for current ({live_year}) facts."
     )
+    hindi_only = _shuddh_hindi_applies(last_user, body.speech_lang)
+
     voice_mode_extra = ""
     if body.source == "voice":
-        voice_mode_extra = (
-            " Voice mode output rules: talk naturally like two humans on a phone call—same rhythm and warmth. "
-            "Prefer short, clear spoken sentences (no dense paragraphs). "
-            "Avoid markdown, bullets, tables, and code formatting unless user explicitly asks for code. "
-            "Mirror the user's language style from their latest message (Hindi, English, or mixed Hinglish) "
-            "and keep default replies concise (around 2-4 short lines) unless they ask for detail. "
-            "Listen-first: let the user finish; do not talk over them or fill silence unnecessarily; "
-            "acknowledge briefly then answer in a calm, attentive way, matching the assistant persona "
-            "(warm professional woman vs steady professional man) without being loud or domineering."
-        )
+        if hindi_only:
+            voice_mode_extra = (
+                " Voice mode: reply only in Shuddh Hindi (Devanagari), no English — same natural phone-call rhythm. "
+                "Prefer short, clear spoken sentences; no markdown unless they ask for code. "
+                "Listen-first; brief acknowledgment then answer; match persona tone calmly."
+            )
+        else:
+            voice_mode_extra = (
+                " Voice mode output rules: talk naturally like two humans on a phone call—same rhythm and warmth. "
+                "Prefer short, clear spoken sentences (no dense paragraphs). "
+                "Avoid markdown, bullets, tables, and code formatting unless user explicitly asks for code. "
+                "Mirror the user's language style from their latest message (Hindi, English, or mixed Hinglish) "
+                "and keep default replies concise (around 2-4 short lines) unless they ask for detail. "
+                "Listen-first: let the user finish; do not talk over them or fill silence unnecessarily; "
+                "acknowledge briefly then answer in a calm, attentive way, matching the assistant persona "
+                "(warm professional woman vs steady professional man) without being loud or domineering."
+            )
 
+    hinglish_line = "" if hindi_only else " Hinglish is welcome when they mix Hindi and English."
     conversation_style = (
         "Conversation feel: this is a real back-and-forth with one human. Be warm, direct, and natural—"
         "varied sentence length, plain words, no corporate script. "
         "Avoid stock-bot openers (e.g. 'I'd be happy to help', 'Great question', 'Certainly', "
         "'As an AI language model', 'How may I assist you today'). "
         "Do not label yourself as an AI or model unless they explicitly ask. "
-        "Match their energy: casual if they are casual, brief if they are brief, more detail only when they want it. "
-        "Hinglish is welcome when they mix Hindi and English."
+        "Match their energy: casual if they are casual, brief if they are brief, more detail only when they want it."
+        f"{hinglish_line}"
     )
+
+    lang_priority = (
+        "Prioritize their goals; your entire reply must be Shuddh Hindi (Devanagari only, no English words). "
+        if hindi_only
+        else "Prioritize their goals; bilingual Hindi/English. "
+    )
+
+    shuddh_block = f" {SHUDDH_HINDI_RULE} " if hindi_only else " "
 
     system_extra = (
         f"{conversation_style} "
@@ -280,8 +325,9 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
         "Treat this as a personal assistant chat, not one-off Q&A. Maintain continuity across sessions. "
         "If user asks what they discussed before or when they talked, answer from known conversation timeline below. "
         "Do not say you have no memory if timeline/current chat context is available. "
-        f"Prioritize their goals; bilingual Hindi/English. "
+        f"{lang_priority}"
         f"{voice_mode_extra}"
+        f"{shuddh_block}"
         f"Known preferences / memory hints: {mem[-5:] if mem else 'none yet'}."
     )
     system_extra += (

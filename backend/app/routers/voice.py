@@ -54,8 +54,8 @@ async def transcribe(audio: UploadFile | None = File(None)) -> dict:
             "text": "",
             "error": "transcription_failed",
             "hint": (
-                "OpenAI Whisper ne jawab nahi diya — server par api.openai.com reach / key / billing check karein "
-                "(curl -sI https://api.openai.com; HTTPS_PROXY agar proxy lagta ho)."
+                "OpenAI Whisper returned no text — check api.openai.com reach, API key, and billing on the server "
+                "(e.g. curl -sI https://api.openai.com; set HTTPS_PROXY if you use a proxy)."
             ),
         }
 
@@ -75,7 +75,7 @@ async def tts_stub(payload: TtsBody) -> dict:
 class TtsAudioBody(BaseModel):
     text: str = ""
     voice: str = Field(default="nova", description="OpenAI TTS voice (e.g. marin, cedar, coral)")
-    model: str = Field(default="tts-1", description="tts-1 | tts-1-hd | gpt-4o-mini-tts")
+    model: str = Field(default="tts-1-hd", description="tts-1 | tts-1-hd | gpt-4o-mini-tts")
     instructions: str | None = Field(
         default=None,
         max_length=4096,
@@ -104,17 +104,17 @@ async def tts_audio(payload: TtsAudioBody) -> Response:
         raise HTTPException(
             status_code=503,
             detail=(
-                "openai_unreachable — server se https://api.openai.com connect nahi ho raha "
-                "(firewall / DNS / IPv6 / outbound HTTPS). SSH par: curl -sI https://api.openai.com | head -1. "
-                "Agar proxy chahiye to backend env mein HTTPS_PROXY set karein; OPENAI_HTTP_MAX_RETRIES=3 default."
+                "openai_unreachable — this server cannot reach https://api.openai.com "
+                "(firewall / DNS / IPv6 / outbound HTTPS). On the host: curl -sI https://api.openai.com | head -1. "
+                "If you need a proxy, set HTTPS_PROXY in the backend env; OPENAI_HTTP_MAX_RETRIES=3 by default."
             ),
         )
     if not raw:
         raise HTTPException(
             status_code=502,
             detail=(
-                "tts_failed — OpenAI ne MP3 nahi diya (billing / quota / model). "
-                "Key aur usage: platform.openai.com"
+                "tts_failed — OpenAI did not return MP3 audio (billing / quota / model). "
+                "Check your key and usage at platform.openai.com"
             ),
         )
     return Response(
@@ -125,7 +125,7 @@ async def tts_audio(payload: TtsAudioBody) -> Response:
 
 
 class RealtimeTokenBody(BaseModel):
-    """Browser mints ephemeral key for OpenAI Realtime WebRTC (ChatGPT-style live voice)."""
+    """Browser mints ephemeral key for OpenAI Realtime WebRTC (live voice)."""
 
     speech_lang: str = Field(default="en-IN", max_length=32, description="BCP-47 hint for user language")
     persona_id: str = Field(default="sara", max_length=32, description="arjun | sara — maps to output voice")
@@ -176,11 +176,22 @@ async def _build_realtime_instructions(
     voice_persona = "steady, calm male assistant (Arjun)" if persona_id.strip().lower() == "arjun" else "warm female assistant (Sara)"
     lang_hint = (speech_lang or "en-IN").strip()
     live_year = now_utc.year
+    if lang_hint.lower().startswith("hi"):
+        lang_line = (
+            f"User speech locale: {lang_hint}. CRITICAL: They are using Hindi. "
+            "Respond ONLY in Shuddh Hindi (Devanagari script). Do not use English words, Latin letters, or Hinglish. "
+            "Sound like a natural Hindi speaker on a phone call — short, clear, flowing sentences. "
+            "Explain technical ideas in simple Hindi.\n"
+        )
+    else:
+        lang_line = (
+            f"User speech locale hint: {lang_hint} — mirror Hindi, English, or Hinglish as they speak.\n"
+        )
     return (
         "You are NeoXAI — this user's personal voice assistant. "
         f"Address them naturally as «{name}» when it fits. "
         f"Persona: {voice_persona}. "
-        f"User speech locale hint: {lang_hint} — mirror Hindi, English, or Hinglish as they speak.\n"
+        f"{lang_line}"
         "Voice mode rules: sound like a natural phone call — short clear sentences, no markdown or bullet lists "
         "unless they explicitly want detail. Do not read URLs character-by-character. "
         "Avoid stock-bot phrases ('I'd be happy to help', 'Great question', 'As an AI'). "

@@ -116,11 +116,7 @@ export function openWhatsAppInNewTab(): boolean {
 }
 
 export function whatsAppOpenAck(lang: VoiceSpeechLangCode, mode: "new-tab" | "same-tab"): string {
-  if (lang.startsWith("hi")) {
-    return mode === "new-tab"
-      ? "व्हाट्सएप नई टैब में खोल रहा हूँ।"
-      : "व्हाट्सएप यहीं खोल रहा हूँ — ब्राउज़र ने नई टैब ब्लॉक की। वापस ऐप पर बैक से आएँ।";
-  }
+  void lang;
   return mode === "new-tab"
     ? "Opening WhatsApp in a new tab."
     : "Opening WhatsApp here — a new tab was blocked. Use Back to return to the app.";

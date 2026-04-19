@@ -278,6 +278,43 @@ Phone ko USB se PC se jodo, **USB debugging** on. WebView ko **`http://localhost
 
 Neo **server** se `https://api.openai.com` HTTPS nikalna zaroori hai (chat + Whisper + TTS). VPS par check: `curl -sI https://api.openai.com | head -1` → `HTTP/2 401` ya `403` theek hai (auth); **connection timeout / failed** = firewall / DNS / IPv6 / provider block. Proxy ho to backend env: `HTTPS_PROXY=...` (code `trust_env=True` use karta hai). `OPENAI_HTTP_MAX_RETRIES` (default 3) `.env` se badal sakte ho.
 
+### Android APK — background voice assistant (wake word, commands, mic)
+
+This answers the common product spec: **wake phrase** (e.g. “Hello Neo”) → **short command window** (“open WhatsApp”, “read messages”, “call contact”, “open YouTube”) → **spoken reply in the user’s language** → **do not leave the mic “hunting” forever** (fewer system beeps / battery).
+
+#### What Neo ships today (this repo)
+
+| Piece | Role | Where |
+|--------|------|--------|
+| Foreground service | Android 10+ needs a **visible notification** while using the mic; type `microphone` is declared on the wake service. | `WakeWordForegroundService.java`, `AndroidManifest.xml` |
+| Speech → text | **`SpeechRecognizer`** + `RecognizerIntent` (Google on-device / OEM), not Python. One-shot utterances; silence timeouts (`EXTRA_SPEECH_INPUT_*_SILENCE_LENGTH_MILLIS`) end each capture. | `WakeWordForegroundService.java` |
+| Wake + command | **Keyword in transcript**: “hello neo”, “neo”, “नियो”, “हेलो नियो” — then **rest of same string** is routed as the command (so wake + command can be one recognition pass). After each pass the service waits **~1.8–5.5s** before listening again (longer after a real command or wake-only) so the mic is not immediately hot again. | `extractWakeCommand()` + `pendingRelistenMs` in `WakeWordForegroundService.java` |
+| App integration | **Intents / URIs**: WhatsApp (`whatsapp://`), Telegram (`tg://`), YouTube search, contacts, `tel:` digits, volume, time. Short **TTS** then open (so the user hears the next step). | `NeoCommandRouter.java` |
+| Mic when screen off | Default: **stop** listening on `ACTION_SCREEN_OFF` to reduce pocket noise. Optional **listen while locked** via prefs / Profile (see `NeoPrefs.KEY_WAKE_SCREEN_OFF`, `MainActivity.onPause`). | `WakeWordForegroundService.java`, `MainActivity.java` |
+| Boot | `NeoBootReceiver` exists, but **auto-start wake on boot** was disabled in the manifest on purpose (battery / surprise mic). Wake starts when the user turns it on in the app. | `AndroidManifest.xml` (comment) |
+
+**Important limitation:** `SpeechRecognizer` is **not** a true always-on, low-power **wake word** engine (unlike dedicated SDKs). It runs **recognition sessions** in a loop with small delays after each result/error. For a stricter “mic only after wake” product, consider **Picovoice Porcupine**, **Snowboy** (deprecated), or **on-device hotword** APIs, then open the mic for a **second** `SpeechRecognizer` pass for the command only.
+
+#### Libraries / APIs (suggested stack)
+
+| Need | Practical options | Neo today |
+|------|-------------------|-----------|
+| Voice → text (command) | `SpeechRecognizer` (built-in), or **Google Cloud Speech-to-Text** / **Azure** for higher accuracy | `SpeechRecognizer` |
+| Wake word (low power) | **Porcupine**, vendor hotword, or always-on assistant pipeline | Wake substring match on **full** `SpeechRecognizer` text |
+| Language (Hindi vs English) | **ML Kit Language ID**, `Locale` + user setting, or **multilingual** cloud STT | `EXTRA_LANGUAGE` uses **`Locale.getDefault()`** — improve with explicit Hindi/English or ML Kit if you need auto-detect |
+| Spoken reply | **Android `TextToSpeech`** | `NeoCommandRouter` + `TextToSpeech` |
+| Open WhatsApp / Telegram / YouTube | **`Intent`**, `PackageManager.getLaunchIntentForPackage`, custom URI schemes | `NeoCommandRouter.java` |
+| Web UI same commands | TypeScript intent layer (regex EN + HI) | `web/src/lib/neoVoiceCommands.ts`, `whatsappOpenCommand.ts`, `telegramOpenCommand.ts` |
+
+#### Mic “on only for wake, then off” (pattern)
+
+1. **Phase A — hotword:** tiny model always listening **without** full cloud STT, or aggressive **VAD + local** model.  
+2. **Phase B — command:** start `SpeechRecognizer` once; on `onResults` / timeout, **stop** and run the command.  
+3. **Phase C — TTS:** speak acknowledgment / next step (`TextToSpeech` or in-app audio).  
+4. **Phase D:** delay (e.g. 300–800 ms) before returning to Phase A so the assistant does not **immediately** re-open the mic and clip the end of TTS.
+
+Neo’s service already **stops** each recognition when the engine ends the session and **restarts** after a short delay for the next wake/command cycle; tightening Phase D or splitting **wake** vs **command** recognizers is the main upgrade path for “no repeated mic toggling sound.”
+
 
 
 

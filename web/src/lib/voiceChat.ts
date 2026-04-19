@@ -71,7 +71,7 @@ export async function captureNativeSpeechOnce(
       perms = await plugin.requestPermissions();
     }
     if (perms.speechRecognition !== "granted") {
-      return { text: "", error: "Mic blocked — app permission settings mein allow karein." };
+      return { text: "", error: "Mic blocked — allow it in the app permission settings." };
     }
 
     let best = "";
@@ -145,17 +145,17 @@ export function unlockWebAudioAndSpeechFromUserGesture(): void {
 function speechRecognitionErrorMessage(code: string): string {
   switch (code) {
     case "not-allowed":
-      return "Mic blocked — site settings mein allow karein.";
+      return "Mic blocked — allow it in this site’s browser settings.";
     case "no-speech":
-      return "Kuch sunai nahi diya — zor se bolkar dubara try karein.";
+      return "No speech detected — speak a bit louder and try again.";
     case "network":
-      return "Speech service network error — internet check karein.";
+      return "Speech service network error — check your internet connection.";
     case "aborted":
       return "";
     case "audio-capture":
-      return "Mic nahi mil raha — device check karein.";
+      return "No microphone found — check your device.";
     case "service-not-allowed":
-      return "Browser ne speech service band ki hai.";
+      return "The browser disabled the speech service.";
     default:
       return code ? `Speech: ${code}` : "Speech error";
   }

@@ -78,7 +78,7 @@ export default function MemoryPage() {
                 <p className="mt-1 text-sm text-white/80">
                   {user
                     ? `${user.display_name} · ${user.email}`
-                    : "Guest — login karke apni saved chats yahan dikhengi"}
+                    : "Guest — sign in to see your saved chats here."}
                 </p>
               </div>
 
@@ -134,15 +134,15 @@ export default function MemoryPage() {
               <p className="text-sm text-white/50">Loading…</p>
             ) : !user ? (
               <p className="text-sm text-white/55">
-                Pehle login / register karein — uske baad jo bhi NeoXAI se chat
-                karenge (MySQL on ho to) yahan dikhega.
+                Sign in or register first. After that, anything you chat with NeoXAI (when MySQL is enabled) will
+                show up here.
               </p>
             ) : chats.length === 0 ? (
               <p className="text-sm text-white/55">
-                Abhi koi entry nahi. Pehle <strong className="text-white/75">Chat</strong> ya{" "}
-                <strong className="text-white/75">Voice</strong> mein message bhejein — phir yahan
-                history dikhegi. Server par MySQL on ho to data restart ke baad bhi rehta hai; bina
-                MySQL ke jo is server process ne yaad rakha hai woh yahan aa sakta hai.
+                No entries yet. Send a message from <strong className="text-white/75">Chat</strong> or{" "}
+                <strong className="text-white/75">Voice</strong> first — then your history will appear here. With
+                MySQL enabled on the server, data can persist across restarts; without it, you may still see what this
+                server process kept in memory.
               </p>
             ) : (
               chats.map((m) => (

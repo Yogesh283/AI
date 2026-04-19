@@ -87,13 +87,11 @@ export function stripWakePrefix(
 }
 
 export function wakeWordReminderLine(lang: VoiceSpeechLangCode): string {
-  if (lang.startsWith("hi")) {
-    return "पहले नियो बोलें, फिर अपना सवाल।";
-  }
+  void lang;
   return "Say Neo first, then your question.";
 }
 
 /** Short hint for the Voice UI — user calls the assistant by the name Neo. */
 export function wakePhraseHint(): string {
-  return "Neo · NeoXAI · नियो";
+  return "Neo · NeoXAI";
 }

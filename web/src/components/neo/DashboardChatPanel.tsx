@@ -33,8 +33,8 @@ type Msg = { role: "user" | "assistant"; content: string };
 function initialMsgs(displayName?: string | null): Msg[] {
   const name = shortDisplayNameForGreeting(displayName ?? undefined);
   const line = name
-    ? `Hey ${name} — main ${NEO_ASSISTANT_NAME}. Yahan bilkul waise hi baat kar sakte ho jaise kisi insaan se: jo man ho poochho, Hindi ya English, short ya detail; main sun ke saath hoon.`
-    : `Hi — main ${NEO_ASSISTANT_NAME}. Seedha likho jaise chat pe kisi dost se baat karte ho; main yahan hoon.`;
+    ? `Hey ${name} — I'm ${NEO_ASSISTANT_NAME}. Chat here like you would with a person: ask anything, in Hindi or English, short or detailed — I'm listening.`
+    : `Hi — I'm ${NEO_ASSISTANT_NAME}. Just type like you would to a friend; I'm here.`;
   return [{ role: "assistant", content: line }];
 }
 
@@ -151,7 +151,7 @@ export function DashboardChatPanel() {
       return;
     }
     if (!isSpeechRecognitionSupported()) {
-      setVoiceHint("Voice: Chrome ya Edge use karein (mic allow).");
+      setVoiceHint("Voice: use Chrome or Edge and allow the microphone.");
       return;
     }
     if (loading) return;
@@ -162,7 +162,7 @@ export function DashboardChatPanel() {
 
     const rec = createSpeechRecognition("hi-IN");
     if (!rec) {
-      setVoiceHint("Speech recognition start nahi ho paya.");
+      setVoiceHint("Could not start speech recognition.");
       return;
     }
 
@@ -207,7 +207,7 @@ export function DashboardChatPanel() {
       rec.start();
       setVoiceListening(true);
     } catch {
-      setVoiceHint("Mic busy — dubara try karein.");
+      setVoiceHint("Mic is busy — try again.");
     }
   }, [voiceListening, stopVoice, loading, input]);
 
@@ -456,7 +456,7 @@ export function DashboardChatPanel() {
               }`}
               aria-pressed={voiceListening}
               aria-label={voiceListening ? "Stop voice input" : "Voice input"}
-              title={voiceListening ? "Rokne ke liye dabayein" : "Bol kar type karein"}
+              title={voiceListening ? "Press to stop" : "Speak to type"}
             >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
                 <path
@@ -485,7 +485,7 @@ export function DashboardChatPanel() {
             </p>
           ) : voiceListening ? (
             <p className="mt-2.5 text-center text-[11px] text-emerald-400/85">
-              Sun raha hoon… mic dubara dabao to band
+              Listening… press the mic again to stop
             </p>
           ) : null}
         </div>

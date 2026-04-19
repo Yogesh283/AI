@@ -44,6 +44,8 @@ public class WakeWordForegroundService extends Service {
     /** Ignore duplicate final transcripts (screen-off partial quirks / echo). */
     private long lastHandledCommandMs;
     private String lastHandledCommandKey = "";
+    /** After each recognition pass, wait before opening the mic again (TTS + “say Hello Neo again” rhythm). */
+    private volatile int pendingRelistenMs = 450;
 
     @Override
     public void onCreate() {
@@ -175,7 +177,7 @@ public class WakeWordForegroundService extends Service {
             public void onResults(android.os.Bundle results) {
                 handleResults(results);
                 if (!shouldListen || !mayUseMicNow()) return;
-                restartWithDelay(120);
+                restartWithDelay(pendingRelistenMs);
             }
 
             @Override
@@ -193,7 +195,12 @@ public class WakeWordForegroundService extends Service {
         recognizerIntent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 500L);
     }
 
+    private static final int RELISTEN_MS_NO_WAKE = 1800;
+    private static final int RELISTEN_MS_WAKE_ONLY = 4200;
+    private static final int RELISTEN_MS_AFTER_COMMAND = 5500;
+
     private void handleResults(android.os.Bundle bundle) {
+        pendingRelistenMs = RELISTEN_MS_NO_WAKE;
         if (!mayUseMicNow()) return;
         if (bundle == null) return;
         ArrayList<String> matches = bundle.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
@@ -202,21 +209,28 @@ public class WakeWordForegroundService extends Service {
         if (said.isEmpty()) return;
 
         String command = extractWakeCommand(said);
-        if (command == null) return;
+        if (command == null) {
+            pendingRelistenMs = RELISTEN_MS_NO_WAKE;
+            return;
+        }
 
         if (command.isEmpty()) {
+            /* Wake heard (e.g. "hello neo") with no command tail — pause before listening again. */
+            pendingRelistenMs = RELISTEN_MS_WAKE_ONLY;
             return;
         }
 
         String key = command.trim().toLowerCase(Locale.ROOT);
         long now = System.currentTimeMillis();
         if (key.equals(lastHandledCommandKey) && (now - lastHandledCommandMs) < 3200) {
+            pendingRelistenMs = RELISTEN_MS_AFTER_COMMAND;
             return;
         }
         lastHandledCommandKey = key;
         lastHandledCommandMs = now;
 
         NeoCommandRouter.execute(this, command);
+        pendingRelistenMs = RELISTEN_MS_AFTER_COMMAND;
     }
 
     private String extractWakeCommand(String said) {

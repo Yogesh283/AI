@@ -1,6 +1,20 @@
 /**
- * Wake: **Neo** / **नियो** (or Hello Neo / हेलो नियो). Routing: WhatsApp / Telegram / tel:.
- * Example: "Neo open WhatsApp", Hindi wake + commands supported.
+ * **Neo voice commands — intent router (this file).**
+ *
+ * This repo does **not** use Python `SpeechRecognition`, Vosk, Kivy, or Pyjnius. Those are valid choices if you
+ * build a standalone assistant in Python + Android JNI; here the stack is:
+ *
+ * - **Speech → text**: browser Web Speech API (`voiceChat.ts`), Capacitor/native one-shot capture where applicable,
+ *   and the Voice page / Hello Neo UI (`HelloNeoVoiceStrip.tsx`, `voice/page.tsx`).
+ * - **Text → actions**: this module matches wake phrases (`wakeWord.ts`) and routes intents (English + Hindi regex
+ *   patterns) to `NeoAction[]` — open WhatsApp/Telegram (`whatsappOpenCommand.ts`, `telegramOpenCommand.ts`),
+ *   `tel:` links, YouTube/music intents, etc. `executeNeoActions()` performs `window.open`, `location`, or native
+ *   deep links (`nativeAppLinks.ts`).
+ * - **Spoken feedback**: callers pass `silentReplies` for voice; short `reply` strings are spoken via browser TTS or
+ *   OpenAI TTS (`voiceAvatarTts.ts`). After **Hello Neo** with no tail, a short command window opens (`neoVoiceSession`);
+ *   then the user should say **Hello Neo** again for the next cycle (see Hello Neo strip + native wake service delays).
+ *
+ * Wake: **Neo** / **नियो** (or Hello Neo / हेलो नियो). Example: “Neo, open WhatsApp”.
  */
 
 import {
@@ -39,9 +53,33 @@ export type NeoProcessOptions = {
   speechLang?: VoiceSpeechLangCode;
 };
 
+/** True when user text is mostly Hindi script — Shuddh Hindi command replies apply. */
+export function queryLooksHindi(q: string): boolean {
+  const t = q.trim();
+  if (!t) return false;
+  const deva = (t.match(/[\u0900-\u097F]/g) ?? []).length;
+  return deva >= 4 || deva / Math.max(t.length, 1) >= 0.06;
+}
+
+function preferHindiReply(q: string, speechLang?: VoiceSpeechLangCode): boolean {
+  return queryLooksHindi(q) || (speechLang ?? "").toLowerCase().startsWith("hi");
+}
+
+function cmdReply(en: string, hi: string, q: string, speechLang?: VoiceSpeechLangCode): string {
+  return preferHindiReply(q, speechLang) ? hi : en;
+}
+
 /** After a “busy” line, skip repeating a generic “Opening …” TTS. */
 export function isShortOpenActionReply(reply: string): boolean {
-  return /^Opening (music|contacts|YouTube|WhatsApp|Telegram)\.?$/i.test(reply.trim());
+  const t = reply.trim();
+  if (/^Opening (music|contacts|YouTube|WhatsApp|Telegram)\.?$/i.test(t)) return true;
+  return (
+    /^व्हाट्सऐप खोल रहे हैं/u.test(t) ||
+    /^टेलीग्राम खोल रहे हैं/u.test(t) ||
+    /^यूट्यूब खोल रहे हैं/u.test(t) ||
+    /^संगीत ऐप खोल रहे हैं/u.test(t) ||
+    /^संपर्क सूची खोल रहे हैं/u.test(t)
+  );
 }
 
 /**
@@ -93,7 +131,11 @@ export function extractTelHrefFromCommand(text: string): string | null {
 }
 
 /** Core intents on command text only (no wake). `silentReplies`: voice — no TTS when no action. */
-export function runNeoIntents(q: string, silentReplies = false): { reply: string; actions: NeoAction[] } {
+export function runNeoIntents(
+  q: string,
+  silentReplies = false,
+  speechLang?: VoiceSpeechLangCode,
+): { reply: string; actions: NeoAction[] } {
   const trimmed = q.trim();
   if (!trimmed) {
     return { reply: "", actions: [] };
@@ -112,13 +154,15 @@ export function runNeoIntents(q: string, silentReplies = false): { reply: string
     ) &&
     /\b(message|messages|sms|मैसेज|chat|whatsapp|telegram|व्हाट्स|टेली)\b/i.test(trimmed);
   if (wantsReadInbox && !openAppOnly) {
-    const useHindi = /[\u0900-\u097F]/.test(trimmed);
     return {
       reply: silentReplies
         ? ""
-        : useHindi
-          ? "व्हाट्सऐप या टेलीग्राम के अंदर के मैसेज की पूरी डिटेल यहाँ से नहीं पढ़ सकते। बोलिए: नियो, व्हाट्सऐप खोलो — फिर ऐप में देखें।"
-          : "I can't read full WhatsApp or Telegram message text from here for privacy. Say Neo, open WhatsApp — then read inside the app.",
+        : cmdReply(
+            "I can't read full WhatsApp or Telegram message text from here for privacy. Say Neo, open WhatsApp — then read inside the app.",
+            "निजता के कारण यहाँ से व्हाट्सऐप या टेलीग्राम के भीतर के संदेश पूरी तरह नहीं पढ़े जा सकते। पहले नियो कहकर ऐप खुलवा लें, फिर ऐप में देखें।",
+            trimmed,
+            speechLang,
+          ),
       actions: [],
     };
   }
@@ -128,8 +172,12 @@ export function runNeoIntents(q: string, silentReplies = false): { reply: string
     /(समय|टाइम)\s*(क्या|बताओ|कितना|अभी)/i.test(trimmed);
   if (timeIntent) {
     const now = new Date();
-    const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    return { reply: `It's ${time}.`, actions: [] };
+    const h = preferHindiReply(trimmed, speechLang);
+    const time = now.toLocaleTimeString(h ? "hi-IN" : undefined, { hour: "2-digit", minute: "2-digit" });
+    return {
+      reply: h ? `अभी का समय ${time} है।` : `It's ${time}.`,
+      actions: [],
+    };
   }
 
   const wantsMusicApp =
@@ -137,7 +185,10 @@ export function runNeoIntents(q: string, silentReplies = false): { reply: string
     /\bopen\s+my\s+music\b/i.test(trimmed);
   if (isNativeCapacitor() && wantsMusicApp) {
     const url = "intent://#Intent;package=com.google.android.apps.youtube.music;end";
-    return { reply: "Opening music.", actions: [{ kind: "open_url", url }] };
+    return {
+      reply: cmdReply("Opening music.", "संगीत ऐप खोल रहे हैं।", trimmed, speechLang),
+      actions: [{ kind: "open_url", url }],
+    };
   }
 
   const contactsOpen =
@@ -148,7 +199,7 @@ export function runNeoIntents(q: string, silentReplies = false): { reply: string
     /\b(खोल|open)\b.*(संपर्क|फोन\s*बुक)/i.test(trimmed);
   if (isNativeCapacitor() && contactsOpen) {
     return {
-      reply: "Opening contacts.",
+      reply: cmdReply("Opening contacts.", "संपर्क सूची खोल रहे हैं।", trimmed, speechLang),
       actions: [{ kind: "open_url", url: "content://com.android.contacts/contacts" }],
     };
   }
@@ -168,7 +219,10 @@ export function runNeoIntents(q: string, silentReplies = false): { reply: string
     const url = isNativeCapacitor()
       ? buildYouTubeAppSearchUrl(query)
       : `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
-    return { reply: "Opening YouTube.", actions: [{ kind: "open_url", url }] };
+    return {
+      reply: cmdReply("Opening YouTube.", "यूट्यूब खोल रहे हैं।", trimmed, speechLang),
+      actions: [{ kind: "open_url", url }],
+    };
   }
 
   const volumeIntent =
@@ -177,24 +231,38 @@ export function runNeoIntents(q: string, silentReplies = false): { reply: string
     return {
       reply: silentReplies
         ? ""
-        : "Volume control is available in the Android APK background listener.",
+        : cmdReply(
+            "Volume control is available in the Android APK background listener.",
+            "आवाज़ कम-ज़्यादा एपीके की पृष्ठभूमि सुनने वाली सुविधा में मिलेगी।",
+            trimmed,
+            speechLang,
+          ),
       actions: [],
     };
   }
 
   if (shouldOpenWhatsAppFromCommand(trimmed)) {
     const url = isNativeCapacitor() ? buildWhatsAppAppUrl(trimmed) : buildWhatsAppWebUrl(trimmed);
-    return { reply: "Opening WhatsApp.", actions: [{ kind: "open_url", url }] };
+    return {
+      reply: cmdReply("Opening WhatsApp.", "व्हाट्सऐप खोल रहे हैं।", trimmed, speechLang),
+      actions: [{ kind: "open_url", url }],
+    };
   }
 
   if (shouldOpenTelegramFromCommand(trimmed)) {
     const url = isNativeCapacitor() ? buildTgAppUrl(trimmed) : buildTelegramWebUrl(trimmed);
-    return { reply: "Opening Telegram.", actions: [{ kind: "open_url", url }] };
+    return {
+      reply: cmdReply("Opening Telegram.", "टेलीग्राम खोल रहे हैं।", trimmed, speechLang),
+      actions: [{ kind: "open_url", url }],
+    };
   }
 
   const telEarly = extractTelHrefFromCommand(trimmed);
   if (telEarly) {
-    return { reply: "Calling that number.", actions: [{ kind: "tel", href: telEarly }] };
+    return {
+      reply: cmdReply("Calling that number.", "उस नंबर पर कॉल लगा रहे हैं।", trimmed, speechLang),
+      actions: [{ kind: "tel", href: telEarly }],
+    };
   }
 
   const msgIntent = /(read|check|see|inbox|message|chat|who\s*messaged|what\s*message|unread|missed)/i;
@@ -214,8 +282,12 @@ export function runNeoIntents(q: string, silentReplies = false): { reply: string
     listenWhatsAppRead
   ) {
     return {
-      reply:
+      reply: cmdReply(
         "I cannot read your WhatsApp inbox from this app — that needs the WhatsApp app on your phone, like Alexa cannot read a private app for you. Say Neo open WhatsApp to open WhatsApp Web.",
+        "यह ऐप आपके व्हाट्सऐप का आंतरिक संदेश नहीं पढ़ सकता — वह फ़ोन पर व्हाट्सऐप में ही देखें। नियो कहकर व्हाट्सऐप वेब खुलवा सकते हैं।",
+        trimmed,
+        speechLang,
+      ),
       actions: [],
     };
   }
@@ -227,8 +299,12 @@ export function runNeoIntents(q: string, silentReplies = false): { reply: string
     )
   ) {
     return {
-      reply:
+      reply: cmdReply(
         "I cannot read your Telegram messages here — same limit as Alexa with another company's app. Say Neo open Telegram to open Telegram Web.",
+        "टेलीग्राम के भीतर के संदेश यहाँ नहीं पढ़े जा सकते। नियो कहकर टेलीग्राम वेब खुलवा सकते हैं।",
+        trimmed,
+        speechLang,
+      ),
       actions: [],
     };
   }
@@ -237,7 +313,12 @@ export function runNeoIntents(q: string, silentReplies = false): { reply: string
     return {
       reply: silentReplies
         ? ""
-        : "I don't have that contact's number saved. Say the full number with country code.",
+        : cmdReply(
+            "I don't have that contact's number saved. Say the full number with country code.",
+            "उस संपर्क का नंबर यहाँ सेव नहीं मिला। देश कोड सहित पूरा नंबर बोलिए।",
+            trimmed,
+            speechLang,
+          ),
       actions: [],
     };
   }
@@ -245,7 +326,12 @@ export function runNeoIntents(q: string, silentReplies = false): { reply: string
   return {
     reply: silentReplies
       ? ""
-      : "Say: open WhatsApp, open my Telegram channel, or call plus nine one and your number.",
+      : cmdReply(
+          "Say: open WhatsApp, open my Telegram channel, or call plus nine one and your number.",
+          "कहिए—व्हाट्सऐप खोलो, टेलीग्राम खोलो, या नौ एक और फिर अपना नंबर बोलकर कॉल लगाओ।",
+          trimmed,
+          speechLang,
+        ),
     actions: [],
   };
 }
@@ -258,13 +344,16 @@ export function processNeoCommandLine(
   const trimmed = input.trim();
   if (!trimmed) {
     return {
-      reply: mode === "voice" || mode === "voice-followup" ? "" : "Say Neo, then your command.",
+      reply:
+        mode === "voice" || mode === "voice-followup"
+          ? ""
+          : cmdReply("Say Neo, then your command.", "पहले «नियो» कहिए, फिर अपनी आज्ञा।", "", options?.speechLang),
       actions: [],
     };
   }
 
   if (mode === "voice-followup") {
-    return runNeoIntents(trimmed, true);
+    return runNeoIntents(trimmed, true, options?.speechLang);
   }
 
   if (mode === "text") {
@@ -272,16 +361,21 @@ export function processNeoCommandLine(
     const cmd = hadWake ? rest : trimmed;
     if (!cmd) {
       return {
-        reply: 'Examples: "Neo, open WhatsApp" or "open Telegram".',
+        reply: cmdReply(
+          'Examples: "Neo, open WhatsApp" or "open Telegram".',
+          "उदाहरण—«नियो, व्हाट्सऐप खोलो» या «टेलीग्राम खोलो»।",
+          trimmed,
+          options?.speechLang,
+        ),
         actions: [],
       };
     }
-    return runNeoIntents(cmd, false);
+    return runNeoIntents(cmd, false, options?.speechLang);
   }
 
   /* voice */
   if (isNeoFollowUpActive()) {
-    const r = runNeoIntents(trimmed, true);
+    const r = runNeoIntents(trimmed, true, options?.speechLang);
     if (r.actions.length > 0) clearNeoFollowUpSession();
     return r;
   }
@@ -300,7 +394,7 @@ export function processNeoCommandLine(
     return { reply: neoWakeAckPhrase(lang), actions: [] };
   }
 
-  const r = runNeoIntents(rest, true);
+  const r = runNeoIntents(rest, true, options?.speechLang);
   if (r.actions.length > 0) clearNeoFollowUpSession();
   return r;
 }
