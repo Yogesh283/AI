@@ -1,5 +1,5 @@
 /**
- * OpenAI Realtime API over WebRTC — ChatGPT-style continuous speech session.
+ * OpenAI Realtime API over WebRTC — continuous hands-free speech session.
  * @see https://platform.openai.com/docs/guides/realtime-webrtc
  */
 
@@ -22,7 +22,9 @@ export type OpenAiRealtimeVoiceCallbacks = {
   onConnection?: (state: "connecting" | "open" | "closed") => void;
   /** User line from input transcription (when enabled server-side). */
   onUserTranscript?: (text: string) => void;
-  /** Assistant spoken text (when model emits transcript events). */
+  /** Assistant transcript streamed token-by-token while audio plays. */
+  onAssistantTranscriptDelta?: (delta: string) => void;
+  /** Assistant full line when the model finalizes transcript (reconcile / no-delta clients). */
   onAssistantTranscript?: (text: string) => void;
   /** Model started / finished an audio response (best-effort). */
   onAssistantSpeaking?: (speaking: boolean) => void;
@@ -55,6 +57,20 @@ function routeRealtimeEvent(
   if (type === "conversation.item.input_audio_transcription.completed") {
     const t = String(ev.transcript || "").trim();
     if (t) cb.onUserTranscript?.(t);
+    return;
+  }
+  if (
+    type.includes("audio_transcript") &&
+    type.endsWith(".delta") &&
+    !type.includes("done")
+  ) {
+    const d =
+      typeof ev.delta === "string"
+        ? ev.delta
+        : typeof (ev as { text?: unknown }).text === "string"
+          ? String((ev as { text: string }).text)
+          : "";
+    if (d) cb.onAssistantTranscriptDelta?.(d);
     return;
   }
   if (

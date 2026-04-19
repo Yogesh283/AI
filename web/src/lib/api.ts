@@ -56,20 +56,20 @@ export async function postChat(
 }
 
 /**
- * ChatGPT-style streaming: POST /api/chat/stream (SSE). Calls `onDelta` for each token chunk.
+ * Streaming chat: POST /api/chat/stream (SSE). Calls `onDelta` for each token chunk.
  * Server sends `data: {"d":"..."}` lines, then `data: {"done":true}`; errors: `{"e":"..."}`.
  */
 export async function postChatStream(
   messages: { role: "user" | "assistant" | "system"; content: string }[],
   userId: string,
-  opts: { useWeb?: boolean; signal?: AbortSignal },
+  opts: { useWeb?: boolean; signal?: AbortSignal; source?: ChatSource },
   onDelta: (chunk: string) => void,
 ): Promise<void> {
   const token = getStoredToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token) headers.Authorization = `Bearer ${token}`;
   const url = `${chatUrl()}/stream`;
-  const source: ChatSource = "chat";
+  const source: ChatSource = opts.source ?? "chat";
   const use_web = opts.useWeb ?? false;
   let r: Response;
   try {

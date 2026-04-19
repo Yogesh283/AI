@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { MainTopNav } from "@/components/neo/MainTopNav";
 import { fetchMe, getStoredToken, getStoredUser, patchVoicePersona, saveSession } from "@/lib/auth";
-import { postChat, postVoiceRealtimeToken } from "@/lib/api";
+import { postChatStream, postVoiceRealtimeToken } from "@/lib/api";
 import {
   mergeVoicePreferences,
   stripVoicePreferencePhrases,
@@ -55,7 +55,7 @@ const VOICE_HISTORY_PREFIX = "neo-voice-history-";
 const VOICE_ENGINE_KEY = "neo-voice-engine";
 type VoiceEngine = "live" | "classic";
 
-/** Voice chat page only: slow, warm delivery; OpenAI path uses gpt-4o-mini-tts + marin/cedar (ChatGPT-like); browser TTS uses `pickVoice` (en-IN / Hindi). */
+/** Voice chat page only: slow, warm delivery; OpenAI path uses gpt-4o-mini-tts + marin/cedar; browser TTS uses `pickVoice` (en-IN / Hindi). */
 const VOICE_CHAT_TTS_SPEED: TtsSpeedPreset = "slow";
 const VOICE_CHAT_TTS_TONE: TtsTonePreset = "warm";
 /** OpenAI HD + conversation voices; browser TTS gets calmer pacing (see `voiceAvatarTts` / `voiceChatCalmDelivery`). */
@@ -130,12 +130,15 @@ export default function VoicePage() {
   const micPausedRef = useRef(false);
   /** After assistant TTS, reopen mic without another tap (unless mic paused or thinking). */
   const resumeMicAfterAssistantRef = useRef<() => void>(() => {});
-  /** ChatGPT-style OpenAI Realtime WebRTC vs browser STT + chat + TTS. */
+  /** Live = hands-free WebRTC; Classic = device speech + Neo + TTS. */
   const [voiceEngine, setVoiceEngine] = useState<VoiceEngine>("classic");
   const voiceEngineRef = useRef<VoiceEngine>("classic");
   const [liveConnecting, setLiveConnecting] = useState(false);
   const liveCloseRef = useRef<(() => void) | null>(null);
   const liveCancelRef = useRef<(() => void) | null>(null);
+  /** True between Realtime `response.created` and `response.done` — drives transcript append vs new bubble. */
+  const liveAssistStreamOpenRef = useRef(false);
+  const voiceChatStreamAbortRef = useRef<AbortController | null>(null);
 
   useLayoutEffect(() => {
     try {
@@ -337,6 +340,13 @@ export default function VoicePage() {
   }, []);
 
   const stopSession = useCallback(() => {
+    try {
+      voiceChatStreamAbortRef.current?.abort();
+    } catch {
+      /* ignore */
+    }
+    voiceChatStreamAbortRef.current = null;
+    liveAssistStreamOpenRef.current = false;
     try {
       liveCloseRef.current?.();
     } catch {
@@ -568,13 +578,30 @@ export default function VoicePage() {
         const user = getStoredUser();
         const uid = user?.id ?? "default";
         const msgs = [...historyRef.current, { role: "user" as const, content: toSend }];
-        const { reply } = await postChat(msgs, uid, {
-          source: "voice",
-          useWeb: false,
+        const pending: Turn[] = [...msgs, { role: "assistant", content: "" }];
+        historyRef.current = pending;
+        setHistory(pending);
+        voiceChatStreamAbortRef.current?.abort();
+        voiceChatStreamAbortRef.current = new AbortController();
+        const sig = voiceChatStreamAbortRef.current.signal;
+        const apiMsgs = msgs.map((m) => ({
+          role: m.role as "user" | "assistant",
+          content: m.content,
+        }));
+        let replyAcc = "";
+        await postChatStream(apiMsgs, uid, { useWeb: false, signal: sig, source: "voice" }, (delta) => {
+          replyAcc += delta;
+          setHistory((h) => {
+            const next = [...h];
+            const L = next.length - 1;
+            if (L >= 0 && next[L].role === "assistant") {
+              next[L] = { role: "assistant", content: next[L].content + delta };
+            }
+            historyRef.current = next;
+            return next;
+          });
         });
-        const next: Turn[] = [...msgs, { role: "assistant", content: reply }];
-        historyRef.current = next;
-        setHistory(next);
+        const reply = replyAcc.trim();
         setThinking(false);
 
         const mood = inferVoiceReplyMood(reply);
@@ -611,12 +638,34 @@ export default function VoicePage() {
           resumeMicAfterAssistantRef.current();
         }
       } catch (e) {
+        if (e instanceof Error && e.name === "AbortError") {
+          setThinking(false);
+          setHistory((h) => {
+            const next = [...h];
+            const L = next.length - 1;
+            if (L >= 0 && next[L].role === "assistant" && next[L].content === "") {
+              next.pop();
+            }
+            historyRef.current = next;
+            return next;
+          });
+          return;
+        }
         setErr(
           e instanceof Error
             ? e.message
             : "Chat API failed — check /neo-api/health on this site."
         );
         setThinking(false);
+        setHistory((h) => {
+          const next = [...h];
+          const L = next.length - 1;
+          if (L >= 0 && next[L].role === "assistant" && next[L].content === "") {
+            next.pop();
+          }
+          historyRef.current = next;
+          return next;
+        });
         speakingRef.current = false;
         setSpeaking(false);
         resumeMicAfterAssistantRef.current();
@@ -776,6 +825,7 @@ export default function VoicePage() {
     setLiveConnecting(true);
     speakingRef.current = false;
     setSpeaking(false);
+    liveAssistStreamOpenRef.current = false;
     try {
       unlockWebAudioAndSpeechFromUserGesture();
       const pid = normalizeVoicePersonaId(personaId ?? readStoredVoicePersonaId());
@@ -804,18 +854,58 @@ export default function VoicePage() {
             return next;
           });
         },
+        onAssistantTranscriptDelta: (delta) => {
+          if (!delta) return;
+          setHistory((h) => {
+            const next = [...h];
+            const L = next.length - 1;
+            const appendHere =
+              L >= 0 &&
+              next[L].role === "assistant" &&
+              liveAssistStreamOpenRef.current;
+            if (appendHere) {
+              next[L] = { role: "assistant", content: next[L].content + delta };
+            } else {
+              next.push({ role: "assistant", content: delta });
+              liveAssistStreamOpenRef.current = true;
+            }
+            historyRef.current = next;
+            return next;
+          });
+        },
         onAssistantTranscript: (t) => {
           const line = t.trim();
           if (!line) return;
           setHistory((h) => {
-            const next = [...h, { role: "assistant" as const, content: line }];
-            historyRef.current = next;
-            return next;
+            const next = [...h];
+            const L = next.length - 1;
+            if (L >= 0 && next[L].role === "assistant") {
+              next[L] = { role: "assistant", content: line };
+              historyRef.current = next;
+              return next;
+            }
+            const merged: Turn[] = [...next, { role: "assistant", content: line }];
+            historyRef.current = merged;
+            return merged;
           });
         },
         onAssistantSpeaking: (on) => {
           speakingRef.current = on;
           setSpeaking(on);
+          if (on) {
+            const gap = !liveAssistStreamOpenRef.current;
+            liveAssistStreamOpenRef.current = true;
+            setHistory((h) => {
+              const last = h[h.length - 1];
+              if (last?.role === "assistant" && last.content === "") return h;
+              if (last?.role === "assistant" && last.content !== "" && !gap) return h;
+              const next = [...h, { role: "assistant" as const, content: "" }];
+              historyRef.current = next;
+              return next;
+            });
+          } else {
+            liveAssistStreamOpenRef.current = false;
+          }
         },
         onError: (msg) => {
           setErr(msg);
@@ -1052,7 +1142,7 @@ export default function VoicePage() {
     if (!sessionOn) return "Voice chat";
     if (voiceEngine === "live") {
       if (liveConnecting) return "Live — connecting…";
-      return speaking ? "Live — Neo is speaking" : "Live — speak anytime";
+      return speaking ? "Live — assistant is speaking" : "Live — speak anytime";
     }
     return listening
       ? "Listening — go ahead"
@@ -1122,7 +1212,7 @@ export default function VoicePage() {
                   ? "APK: use Classic (device speech)."
                   : !isOpenAiRealtimeVoiceSupported()
                     ? "Browser WebRTC / mic not available."
-                    : "OpenAI Realtime — continuous speech like ChatGPT voice"
+                    : "OpenAI Realtime — continuous hands-free voice"
               }
               onClick={() => {
                 if (sessionOn) stopSession();
@@ -1134,7 +1224,7 @@ export default function VoicePage() {
                   : "text-white/45 hover:bg-white/[0.06] hover:text-white/85 disabled:cursor-not-allowed disabled:opacity-40"
               }`}
             >
-              Live (ChatGPT-style)
+              Live
             </button>
             <button
               type="button"
@@ -1189,7 +1279,7 @@ export default function VoicePage() {
                   <span className="text-[9px] font-bold uppercase tracking-wide text-white/35">
                     {turn.role === "user" ? profileName : assistantLabel}
                   </span>
-                  <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-white/88 break-words">
+                  <p className="mt-1 text-[13px] leading-relaxed text-white/88 break-words">
                     {turn.content}
                   </p>
                 </div>

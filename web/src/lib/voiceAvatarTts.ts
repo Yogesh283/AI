@@ -169,11 +169,11 @@ export async function playMp3BlobWithLipSync(
 }
 
 /**
- * OpenAI `gpt-4o-mini-tts` + **marin** / **cedar** + pacing instructions — closest to ChatGPT advanced voice
- * (OpenAI docs recommend marin/cedar for natural dialogue). Classic short prompts stay `tts-1` + nova/onyx.
+ * OpenAI `gpt-4o-mini-tts` + **marin** / **cedar** + human-like pacing instructions (OpenAI recommends marin/cedar for dialogue).
+ * Classic short prompts stay `tts-1` + nova/onyx.
  */
-const CHATGPT_LIKE_TTS_INSTRUCTIONS =
-  "Speak in a warm, natural conversational tone like a premium voice assistant. Clear pacing with light expressiveness — not robotic or flat, not theatrical. Natural intonation for questions and statements. If the text mixes Hindi and English, keep both clear.";
+const HUMAN_LIKE_TTS_INSTRUCTIONS =
+  "Speak as a real person would on a voice call: warm, relaxed chest voice, slightly slower than news-radio, with tiny natural pauses between phrases. Vary pitch and rhythm a little so it never sounds monotone or machine-read. Clear consonants; if Hindi and English mix, keep both easy to follow. Sound caring and present, not salesy or robotic.";
 
 /**
  * OpenAI TTS voice ids (see backend `_OPENAI_TTS_VOICES`).
@@ -215,7 +215,7 @@ async function fetchOpenAiTtsBlob(
     model,
   };
   if (model === "gpt-4o-mini-tts" && voiceStyle === "conversation") {
-    payload.instructions = CHATGPT_LIKE_TTS_INSTRUCTIONS;
+    payload.instructions = HUMAN_LIKE_TTS_INSTRUCTIONS;
   }
 
   const res = await fetch(`${apiOrigin()}/api/voice/tts-audio`, {
@@ -396,7 +396,7 @@ export type SpeakWithAvatarLipSyncOpts = {
   /** If true, use OpenAI MP3 + Web Audio lip sync (optional). Default: browser TTS only (same as before). */
   preferOpenAiTts?: boolean;
   /**
-   * Voice chat page only: OpenAI `gpt-4o-mini-tts` + marin/cedar + style instructions (ChatGPT-like); browser path gets calmer delivery.
+   * Voice chat page only: OpenAI `gpt-4o-mini-tts` + marin/cedar + style instructions (natural pacing); browser path gets calmer delivery.
    */
   voiceChatOpenAiTts?: boolean;
 };

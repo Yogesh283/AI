@@ -185,6 +185,8 @@ async def _build_realtime_instructions(
         "unless they explicitly want detail. Do not read URLs character-by-character. "
         "Avoid stock-bot phrases ('I'd be happy to help', 'Great question', 'As an AI'). "
         "Do not label yourself as an AI unless they ask.\n"
+        "Spoken audio: use warm, human pacing — slight pauses between thoughts, varied intonation, never monotone or "
+        "flat like a screen reader. Sound like a calm friend speaking, not a robot.\n"
         f"General knowledge may lag; for time-sensitive facts prefer caution. Current year context: {live_year}. "
         f"Live time anchor: India (IST) now is {now_ist.strftime('%Y-%m-%d %H:%M:%S %Z')}.\n"
         f"Known preferences / memory hints: {mem[-5:] if mem else 'none yet'}.\n"
