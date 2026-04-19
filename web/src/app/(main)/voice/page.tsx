@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { MainTopNav } from "@/components/neo/MainTopNav";
 import { fetchMe, getStoredToken, getStoredUser, patchVoicePersona, saveSession } from "@/lib/auth";
-import { postChat } from "@/lib/api";
+import { postChat, postVoiceRealtimeToken } from "@/lib/api";
 import {
   mergeVoicePreferences,
   stripVoicePreferencePhrases,
@@ -46,10 +46,16 @@ import { writeNeoAlexaListen } from "@/lib/neoAssistantActive";
 import { isNativeCapacitor } from "@/lib/nativeAppLinks";
 import { preferOpenAiTtsForVoiceUi, voiceChatResumeMicDelayMs } from "@/lib/voiceTtsPolicy";
 import { executeNeoActions, processNeoCommandLine } from "@/lib/neoVoiceCommands";
+import {
+  isOpenAiRealtimeVoiceSupported,
+  startOpenAiRealtimeVoiceSession,
+} from "@/lib/openaiRealtimeVoice";
 
 const VOICE_HISTORY_PREFIX = "neo-voice-history-";
+const VOICE_ENGINE_KEY = "neo-voice-engine";
+type VoiceEngine = "live" | "classic";
 
-/** Voice chat page only: slow, warm delivery; Man / Woman both use en-IN–biased voices from `pickVoice` (Indian English / Hindi). */
+/** Voice chat page only: slow, warm delivery; OpenAI path uses HD + coral/ash; browser TTS uses `pickVoice` (en-IN / Hindi). */
 const VOICE_CHAT_TTS_SPEED: TtsSpeedPreset = "slow";
 const VOICE_CHAT_TTS_TONE: TtsTonePreset = "warm";
 /** OpenAI HD + conversation voices; browser TTS gets calmer pacing (see `voiceAvatarTts` / `voiceChatCalmDelivery`). */
@@ -124,6 +130,41 @@ export default function VoicePage() {
   const micPausedRef = useRef(false);
   /** After assistant TTS, reopen mic without another tap (unless mic paused or thinking). */
   const resumeMicAfterAssistantRef = useRef<() => void>(() => {});
+  /** ChatGPT-style OpenAI Realtime WebRTC vs browser STT + chat + TTS. */
+  const [voiceEngine, setVoiceEngine] = useState<VoiceEngine>("classic");
+  const voiceEngineRef = useRef<VoiceEngine>("classic");
+  const [liveConnecting, setLiveConnecting] = useState(false);
+  const liveCloseRef = useRef<(() => void) | null>(null);
+  const liveCancelRef = useRef<(() => void) | null>(null);
+
+  useLayoutEffect(() => {
+    try {
+      const v = sessionStorage.getItem(VOICE_ENGINE_KEY);
+      if (v === "live" || v === "classic") {
+        if (v === "live" && (isNativeCapacitor() || !isOpenAiRealtimeVoiceSupported())) {
+          setVoiceEngine("classic");
+          return;
+        }
+        setVoiceEngine(v);
+        return;
+      }
+    } catch {
+      /* ignore */
+    }
+    setVoiceEngine(isNativeCapacitor() || !isOpenAiRealtimeVoiceSupported() ? "classic" : "live");
+  }, []);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(VOICE_ENGINE_KEY, voiceEngine);
+    } catch {
+      /* ignore */
+    }
+  }, [voiceEngine]);
+
+  useEffect(() => {
+    voiceEngineRef.current = voiceEngine;
+  }, [voiceEngine]);
 
   useEffect(() => {
     micPausedRef.current = micPaused;
@@ -296,12 +337,23 @@ export default function VoicePage() {
   }, []);
 
   const stopSession = useCallback(() => {
+    try {
+      liveCloseRef.current?.();
+    } catch {
+      /* ignore */
+    }
+    liveCloseRef.current = null;
+    liveCancelRef.current = null;
+    setLiveConnecting(false);
     sessionOnRef.current = false;
     setSessionOn(false);
     setMicPaused(false);
     stopVoiceOutput();
     stopBargeInRecognition();
     stopRecognitionOnly();
+    speakingRef.current = false;
+    setSpeaking(false);
+    setListening(false);
   }, [stopBargeInRecognition, stopRecognitionOnly, stopVoiceOutput]);
 
   const sendText = useCallback(
@@ -580,6 +632,7 @@ export default function VoicePage() {
   }, [sendText]);
 
   const beginListening = useCallback(() => {
+    if (voiceEngineRef.current === "live") return;
     if (!sessionOnRef.current) return;
     if (micPausedRef.current) return;
     /* Turn-taking: mic while idle, or after interrupt — not while waiting for API. */
@@ -717,10 +770,83 @@ export default function VoicePage() {
     };
   }, [beginListening, stopVoiceOutput]);
 
+  const startLiveVoice = useCallback(async () => {
+    if (!sessionOnRef.current) return;
+    setErr(null);
+    setLiveConnecting(true);
+    speakingRef.current = false;
+    setSpeaking(false);
+    try {
+      unlockWebAudioAndSpeechFromUserGesture();
+      const pid = normalizeVoicePersonaId(personaId ?? readStoredVoicePersonaId());
+      const tok = await postVoiceRealtimeToken({
+        speech_lang: lang,
+        persona_id: pid,
+      });
+      const live = await startOpenAiRealtimeVoiceSession(tok.client_secret, {
+        onConnection: (s) => {
+          if (!sessionOnRef.current) return;
+          if (s === "open") {
+            setLiveConnecting(false);
+            setListening(true);
+          }
+          if (s === "closed") {
+            setLiveConnecting(false);
+            setListening(false);
+          }
+        },
+        onUserTranscript: (t) => {
+          const line = t.trim();
+          if (!line) return;
+          setHistory((h) => {
+            const next = [...h, { role: "user" as const, content: line }];
+            historyRef.current = next;
+            return next;
+          });
+        },
+        onAssistantTranscript: (t) => {
+          const line = t.trim();
+          if (!line) return;
+          setHistory((h) => {
+            const next = [...h, { role: "assistant" as const, content: line }];
+            historyRef.current = next;
+            return next;
+          });
+        },
+        onAssistantSpeaking: (on) => {
+          speakingRef.current = on;
+          setSpeaking(on);
+        },
+        onError: (msg) => {
+          setErr(msg);
+        },
+      });
+      liveCloseRef.current = live.close;
+      liveCancelRef.current = live.cancelAssistant;
+    } catch (e) {
+      liveCloseRef.current = null;
+      liveCancelRef.current = null;
+      setLiveConnecting(false);
+      setListening(false);
+      sessionOnRef.current = false;
+      setSessionOn(false);
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  }, [lang, personaId]);
+
   /** Manual mic / interrupt. After each assistant reply we auto-reopen the mic (unless paused). Tap during AI speech = interrupt + listen. */
   const tapToSpeak = useCallback(() => {
     setMicPaused(false);
     if (!sessionOnRef.current) return;
+    if (voiceEngineRef.current === "live") {
+      unlockWebAudioAndSpeechFromUserGesture();
+      if (speakingRef.current) {
+        liveCancelRef.current?.();
+        speakingRef.current = false;
+        setSpeaking(false);
+      }
+      return;
+    }
     if (listeningActiveRef.current) return;
     if (thinkingRef.current) return;
     if (speakingRef.current) {
@@ -752,14 +878,25 @@ export default function VoicePage() {
     setErr(null);
     sessionOnRef.current = true;
     setSessionOn(true);
+    if (voiceEngineRef.current === "live") {
+      void startLiveVoice();
+      return;
+    }
     requestAnimationFrame(() => {
       beginListeningRef.current?.();
     });
-  }, [stopBargeInRecognition, stopSession, stopRecognitionOnly, stopVoiceOutput]);
+  }, [stopBargeInRecognition, stopSession, stopRecognitionOnly, stopVoiceOutput, startLiveVoice]);
 
   useEffect(() => {
     return () => {
       sessionOnRef.current = false;
+      try {
+        liveCloseRef.current?.();
+      } catch {
+        /* ignore */
+      }
+      liveCloseRef.current = null;
+      liveCancelRef.current = null;
       try {
         const r = recRef.current;
         if (r && "abort" in r) (r as SpeechRecognition).abort();
@@ -773,6 +910,10 @@ export default function VoicePage() {
 
   /** While assistant voice plays (browser STT), listen for user speech — stop TTS and treat as next message. */
   useEffect(() => {
+    if (voiceEngine !== "classic") {
+      stopBargeInRecognition();
+      return;
+    }
     if (!sessionOn || !speaking || micPaused) {
       stopBargeInRecognition();
       return;
@@ -850,7 +991,7 @@ export default function VoicePage() {
       if (debounceTimer) window.clearTimeout(debounceTimer);
       stopBargeInRecognition();
     };
-  }, [sessionOn, speaking, micPaused, lang, stopBargeInRecognition, stopVoiceOutput]);
+  }, [voiceEngine, sessionOn, speaking, micPaused, lang, stopBargeInRecognition, stopVoiceOutput]);
 
   const profileName = getStoredUser()?.display_name?.trim() || "You";
 
@@ -907,21 +1048,22 @@ export default function VoicePage() {
   const activePersonaId = normalizeVoicePersonaId(personaId);
   const assistantLabel = getVoicePersona(activePersonaId).name;
 
-  const headerTitle = useMemo(
-    () =>
-      !sessionOn
-        ? "Voice chat"
-        : listening
-          ? "Listening — go ahead"
-          : thinking
-            ? "One sec…"
-            : speaking
-              ? "Replying — interrupt anytime"
-              : micPaused
-                ? "Mic paused"
-                : "I'm here",
-    [sessionOn, listening, thinking, speaking, micPaused],
-  );
+  const headerTitle = useMemo(() => {
+    if (!sessionOn) return "Voice chat";
+    if (voiceEngine === "live") {
+      if (liveConnecting) return "Live — connecting…";
+      return speaking ? "Live — Neo is speaking" : "Live — speak anytime";
+    }
+    return listening
+      ? "Listening — go ahead"
+      : thinking
+        ? "One sec…"
+        : speaking
+          ? "Replying — interrupt anytime"
+          : micPaused
+            ? "Mic paused"
+            : "I'm here";
+  }, [sessionOn, voiceEngine, liveConnecting, listening, thinking, speaking, micPaused]);
 
   return (
     <div className="relative z-[1] flex min-h-0 flex-1 flex-col bg-[#080a0f] md:min-h-0">
@@ -964,6 +1106,59 @@ export default function VoicePage() {
       />
 
       <div className="mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col px-4 py-6 md:max-w-xl">
+        <div
+          className="mb-4 flex w-full flex-col gap-2 rounded-2xl border border-white/[0.08] bg-black/35 p-1.5"
+          role="tablist"
+          aria-label="Voice mode"
+        >
+          <div className="flex w-full gap-1">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={voiceEngine === "live"}
+              disabled={isNativeCapacitor() || !isOpenAiRealtimeVoiceSupported()}
+              title={
+                isNativeCapacitor()
+                  ? "APK: use Classic (device speech)."
+                  : !isOpenAiRealtimeVoiceSupported()
+                    ? "Browser WebRTC / mic not available."
+                    : "OpenAI Realtime — continuous speech like ChatGPT voice"
+              }
+              onClick={() => {
+                if (sessionOn) stopSession();
+                setVoiceEngine("live");
+              }}
+              className={`flex-1 rounded-xl px-3 py-2 text-center text-[11px] font-semibold transition sm:text-xs ${
+                voiceEngine === "live"
+                  ? "bg-[#00D4FF]/18 text-white shadow-[inset_0_0_0_1px_rgba(0,212,255,0.35)]"
+                  : "text-white/45 hover:bg-white/[0.06] hover:text-white/85 disabled:cursor-not-allowed disabled:opacity-40"
+              }`}
+            >
+              Live (ChatGPT-style)
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={voiceEngine === "classic"}
+              onClick={() => {
+                if (sessionOn) stopSession();
+                setVoiceEngine("classic");
+              }}
+              className={`flex-1 rounded-xl px-3 py-2 text-center text-[11px] font-semibold transition sm:text-xs ${
+                voiceEngine === "classic"
+                  ? "bg-[#00D4FF]/18 text-white shadow-[inset_0_0_0_1px_rgba(0,212,255,0.35)]"
+                  : "text-white/45 hover:bg-white/[0.06] hover:text-white/85"
+              }`}
+            >
+              Classic
+            </button>
+          </div>
+          <p className="px-2 pb-1 text-center text-[10px] leading-relaxed text-white/38">
+            Live uses OpenAI Realtime over WebRTC (mic stays open, low-latency replies). Classic uses this
+            device&apos;s speech recognition + Neo chat + TTS.
+          </p>
+        </div>
+
         {history.length > 0 ? (
           <div className="mb-5 w-full shrink-0">
             <div className="mb-3 flex items-center justify-between gap-2">
@@ -1004,12 +1199,17 @@ export default function VoicePage() {
         ) : null}
 
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center">
-        {speechSupported === false || ttsSupported === false ? (
+        {voiceEngine === "live" && !isOpenAiRealtimeVoiceSupported() ? (
+          <p className="mb-6 max-w-sm text-center text-[11px] leading-relaxed text-amber-400/90">
+            Live voice needs HTTPS (or localhost), WebRTC, and mic access — try Chrome or Edge on desktop.
+          </p>
+        ) : null}
+        {(speechSupported === false && voiceEngine === "classic") || ttsSupported === false ? (
           <p className="mb-8 max-w-sm text-center text-[11px] leading-relaxed text-white/35">
-            {speechSupported === false
+            {speechSupported === false && voiceEngine === "classic"
               ? isNativeCapacitor()
                 ? "Mic permission dena zaroori hai — app settings mein allow karein."
-                : "Voice input needs Chrome or Edge on desktop."
+                : "Classic voice input needs Chrome or Edge on desktop."
               : "Speech output works best in Chrome or Edge."}
           </p>
         ) : null}
@@ -1021,7 +1221,7 @@ export default function VoicePage() {
             listening={listening}
             thinking={thinking}
           />
-          {sessionOn && !listening && !thinking ? (
+          {sessionOn && voiceEngine === "classic" && !listening && !thinking ? (
             <button
               type="button"
               onClick={tapToSpeak}
@@ -1032,6 +1232,15 @@ export default function VoicePage() {
                 : micPaused
                   ? "Tap — turn mic on"
                   : "Tap if mic did not restart"}
+            </button>
+          ) : null}
+          {sessionOn && voiceEngine === "live" && speaking ? (
+            <button
+              type="button"
+              onClick={tapToSpeak}
+              className="mb-3 mt-1 rounded-2xl border border-[#00D4FF]/35 bg-[#00D4FF]/10 px-5 py-2.5 text-sm font-semibold text-[#a5f3fc] transition hover:bg-[#00D4FF]/18"
+            >
+              Tap to interrupt
             </button>
           ) : null}
           <button

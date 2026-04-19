@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
+from collections.abc import AsyncIterator
 from typing import Any
 from dataclasses import dataclass
 from pathlib import Path
@@ -233,6 +235,96 @@ async def _openai_chat(messages: list[dict[str, str]], api_key: str) -> ChatComp
         )
 
 
+async def stream_openai_chat_deltas(
+    messages: list[dict[str, str]],
+    api_key: str,
+    *,
+    usage_holder: list[dict[str, Any]] | None = None,
+) -> AsyncIterator[str]:
+    """
+    Yields assistant content fragments from OpenAI chat.completions (stream=True).
+    Optional usage_holder receives the last `usage` object from the stream when present.
+    """
+    if not api_key:
+        demo = (
+            "Namaste! Main NeoXAI hoon — abhi demo mode mein hoon (OpenAI key set nahi hai).\n\n"
+            "`.env` mein OPENAI_API_KEY add karne par yahi chat streaming se jawab dega."
+        )
+        step = 14
+        for i in range(0, len(demo), step):
+            yield demo[i : i + step]
+            await asyncio.sleep(0.025)
+        return
+
+    async def _read_stream(response: httpx.Response) -> AsyncIterator[str]:
+        async for line in response.aiter_lines():
+            if not line or line.startswith(":"):
+                continue
+            if not line.startswith("data: "):
+                continue
+            raw = line[6:].strip()
+            if raw == "[DONE]":
+                break
+            try:
+                chunk = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if usage_holder is not None and isinstance(chunk.get("usage"), dict):
+                usage_holder.clear()
+                usage_holder.append(chunk["usage"])
+            choices = chunk.get("choices")
+            if not isinstance(choices, list) or not choices:
+                continue
+            c0 = choices[0]
+            if not isinstance(c0, dict):
+                continue
+            delta = c0.get("delta")
+            if not isinstance(delta, dict):
+                continue
+            piece = delta.get("content")
+            if isinstance(piece, str) and piece:
+                yield piece
+
+    async with _openai_async_client() as client:
+        for use_usage in (True, False):
+            payload: dict[str, Any] = {
+                "model": "gpt-4o-mini",
+                "messages": messages,
+                "temperature": 0.76,
+                "stream": True,
+            }
+            if use_usage:
+                payload["stream_options"] = {"include_usage": True}
+            try:
+                async with client.stream(
+                    "POST",
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                ) as response:
+                    if response.status_code == 400 and use_usage:
+                        await response.aread()
+                        continue
+                    try:
+                        response.raise_for_status()
+                    except httpx.HTTPStatusError as e:
+                        try:
+                            err = e.response.json().get("error", {})
+                            msg = err.get("message", e.response.text)
+                        except Exception:
+                            msg = e.response.text or str(e)
+                        raise RuntimeError(f"[OpenAI {e.response.status_code}] {msg}") from e
+                    async for piece in _read_stream(response):
+                        yield piece
+                return
+            except httpx.RequestError as e:
+                logger.warning("OpenAI stream network: %s", e)
+                raise RuntimeError(f"[OpenAI network] {type(e).__name__}: {e}") from e
+
+
 async def transcribe_audio_whisper(
     audio_bytes: bytes,
     filename: str,
@@ -342,3 +434,52 @@ async def synthesize_openai_tts(
             logger.warning("OpenAI TTS HTTP %s: %s", e.response.status_code, msg)
             return b"", "http"
         return r.content, ""
+
+
+async def mint_openai_realtime_client_secret(
+    *,
+    session_payload: dict[str, Any],
+    expires_seconds: int = 600,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """
+    POST /v1/realtime/client_secrets — returns OpenAI JSON on success, else (None, error_message).
+    Caller builds `session_payload` (type, model, instructions, audio, …).
+    """
+    key = _openai_api_key()
+    if not key:
+        return None, "openai_not_configured"
+    body: dict[str, Any] = {"session": session_payload}
+    if expires_seconds and expires_seconds > 0:
+        body["expires_after"] = {"anchor": "created_at", "seconds": min(expires_seconds, 3600)}
+
+    async with _openai_async_client() as client:
+        try:
+            r = await _post_openai_with_retries(
+                client,
+                "https://api.openai.com/v1/realtime/client_secrets",
+                headers={
+                    "Authorization": f"Bearer {key}",
+                    "Content-Type": "application/json",
+                },
+                json=body,
+            )
+        except httpx.RequestError as e:
+            logger.warning("OpenAI realtime client_secrets network: %s", e)
+            return None, f"openai_network:{e}"
+        try:
+            r.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            try:
+                err = e.response.json().get("error", {})
+                msg = err.get("message", e.response.text)
+            except Exception:
+                msg = e.response.text or str(e)
+            logger.warning("OpenAI realtime client_secrets HTTP %s: %s", e.response.status_code, msg)
+            return None, f"openai_http_{e.response.status_code}:{msg}"
+        try:
+            data = r.json()
+        except ValueError:
+            return None, "openai_invalid_json"
+        if not isinstance(data, dict):
+            return None, "openai_unexpected_shape"
+        return data, None

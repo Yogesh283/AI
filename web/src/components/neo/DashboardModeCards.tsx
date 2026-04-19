@@ -3,7 +3,11 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { getStoredUser } from "@/lib/auth";
 import { getNeoAvatar, readStoredAvatarId } from "@/lib/avatars";
+import { IconChat, IconCube3D, IconMemory, IconMicCenter, IconUser } from "@/components/neo/NeoIcons";
+import { useSiteBrand } from "@/components/SiteBrandProvider";
+import { shortDisplayNameForGreeting } from "@/lib/siteBranding";
 
 function ChatBubbleThumb() {
   return (
@@ -32,78 +36,133 @@ function ChatBubbleThumb() {
   );
 }
 
+function Chevron() {
+  return (
+    <svg className="h-5 w-5 shrink-0 text-white/25 transition group-hover:translate-x-0.5 group-hover:text-[#00D4FF]/80" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+const quickLinks = [
+  { href: "/memory", label: "Memory", Icon: IconMemory },
+  { href: "/profile", label: "Profile", Icon: IconUser },
+  { href: "/customize", label: "Avatars", Icon: IconCube3D },
+  { href: "/voice-personas", label: "Voice style", Icon: IconMicCenter },
+] as const;
+
 export function DashboardModeCards() {
+  const { brandName } = useSiteBrand();
   const [avatarId, setAvatarId] = useState<string | null>(null);
+  const [greetName, setGreetName] = useState<string | undefined>(undefined);
+
   useEffect(() => {
     setAvatarId(readStoredAvatarId());
+    const u = getStoredUser();
+    setGreetName(shortDisplayNameForGreeting(u?.display_name));
   }, []);
 
   const voiceThumb = getNeoAvatar(avatarId);
   const voiceThumbUnoptimized = voiceThumb.imageSrc.endsWith(".svg");
 
+  const title = greetName ? `Welcome back, ${greetName}` : "You're in";
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col justify-center px-4 pb-8 pt-4 sm:px-6 md:px-10">
-      <div className="mx-auto w-full max-w-lg">
-        <nav className="mb-8 flex flex-wrap items-center justify-center gap-3 sm:gap-4 md:mb-10" aria-label="Primary">
-          <Link
-            href="/voice"
-            className="inline-flex min-w-[140px] flex-1 items-center justify-center rounded-xl bg-gradient-to-r from-[#00D4FF] to-[#0891b2] px-5 py-3 text-center text-sm font-bold text-[#050912] shadow-[0_4px_24px_rgba(0,212,255,0.35)] transition hover:brightness-105 sm:flex-initial sm:px-8 sm:py-3.5 sm:text-base"
-          >
-            Voice chat
-          </Link>
-          <Link
-            href="/chat"
-            className="inline-flex min-w-[140px] flex-1 items-center justify-center rounded-xl border border-[#00D4FF]/45 bg-[#0c121c] px-5 py-3 text-center text-sm font-bold text-white shadow-[0_0_20px_rgba(0,212,255,0.12)] transition hover:border-[#00D4FF]/70 hover:bg-[#101820] sm:flex-initial sm:px-8 sm:py-3.5 sm:text-base"
-          >
-            Open chat
-          </Link>
-        </nav>
+    <div className="flex min-h-0 flex-1 flex-col justify-center px-4 pb-10 pt-6 sm:px-6 md:px-10 md:pb-12 md:pt-8">
+      <div className="mx-auto w-full max-w-2xl">
+        <div className="relative overflow-hidden rounded-[1.75rem] border border-white/[0.12] bg-gradient-to-b from-white/[0.07] via-[#0c1018]/90 to-[#080b11] p-6 shadow-[0_0_0_1px_rgba(0,212,255,0.06),0_24px_80px_rgba(0,0,0,0.45)] sm:p-8 md:p-10">
+          <div
+            className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-[#00D4FF]/[0.07] blur-3xl"
+            aria-hidden
+          />
+          <div
+            className="pointer-events-none absolute -bottom-16 -left-16 h-56 w-56 rounded-full bg-[#7c3aed]/[0.08] blur-3xl"
+            aria-hidden
+          />
 
-        <header className="mb-6 text-center md:mb-8">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/40">
-            Home
-          </p>
-          <h1 className="mt-2 bg-gradient-to-r from-white via-white to-white/75 bg-clip-text text-2xl font-extrabold tracking-tight text-transparent sm:text-3xl">
-            Welcome
-          </h1>
-          <p className="mx-auto mt-3 max-w-md text-[14px] leading-relaxed text-white/55 sm:text-[15px]">
-            Use voice for hands-free talk, or chat to type — same assistant.
-          </p>
-        </header>
+          <header className="relative text-center">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#00D4FF]/70">
+              {brandName} · Home
+            </p>
+            <h1 className="mt-3 bg-gradient-to-r from-white via-[#e8fbff] to-white/70 bg-clip-text text-2xl font-extrabold tracking-tight text-transparent sm:text-3xl md:text-[2rem]">
+              {title}
+            </h1>
+            <p className="mx-auto mt-3 max-w-md text-[14px] leading-relaxed text-white/55 sm:text-[15px]">
+              Voice, chat, memory — ek hi assistant, sab connected. Neeche se mode chuno ya quick links use karo.
+            </p>
+            <p className="mx-auto mt-2 max-w-lg text-[12px] leading-relaxed text-white/38">
+              Same account everywhere: browser ya app — settings & memory sync.
+            </p>
+          </header>
 
-        <div className="flex flex-col gap-4 sm:flex-row sm:justify-center sm:gap-6">
-          <Link
-            href="/voice"
-            className="group flex flex-1 items-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 transition hover:border-[#00D4FF]/35 hover:bg-white/[0.05] sm:max-w-xs sm:flex-initial"
-          >
-            <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-white/[0.08] bg-black/40">
-              <Image
-                src={voiceThumb.imageSrc}
-                alt=""
-                fill
-                className="object-cover object-center"
-                sizes="48px"
-                unoptimized={voiceThumbUnoptimized}
-              />
-            </div>
-            <div className="min-w-0 text-left">
-              <h2 className="text-sm font-semibold text-white/90">Neo Assistant</h2>
-              <p className="text-[12px] text-white/45">Voice & mic</p>
-            </div>
-          </Link>
+          <div className="relative mt-8 grid gap-4 sm:grid-cols-2 sm:gap-5">
+            <Link
+              href="/voice"
+              className="group relative flex flex-col overflow-hidden rounded-2xl border border-white/[0.1] bg-gradient-to-br from-[#00D4FF]/[0.12] to-transparent p-5 transition hover:border-[#00D4FF]/40 hover:shadow-[0_0_40px_rgba(0,212,255,0.12)] sm:p-6"
+            >
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-white/[0.12] bg-black/50 shadow-inner">
+                  <Image
+                    src={voiceThumb.imageSrc}
+                    alt=""
+                    fill
+                    className="object-cover object-center"
+                    sizes="56px"
+                    unoptimized={voiceThumbUnoptimized}
+                  />
+                </div>
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#00D4FF]/15 text-[#00D4FF] ring-1 ring-[#00D4FF]/25">
+                  <IconMicCenter />
+                </span>
+              </div>
+              <h2 className="text-lg font-bold tracking-tight text-white">Voice chat</h2>
+              <p className="mt-1.5 flex-1 text-[13px] leading-relaxed text-white/50">
+                Hands-free — mic se bolo, 3D assistant jawab degi.
+              </p>
+              <span className="mt-4 flex items-center gap-1.5 text-xs font-semibold text-[#7eeafb]">
+                Start session <Chevron />
+              </span>
+            </Link>
 
-          <Link
-            href="/chat"
-            className="group flex flex-1 items-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 transition hover:border-[#00D4FF]/35 hover:bg-white/[0.05] sm:max-w-xs sm:flex-initial"
-          >
-            <div className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-[#00D4FF]/25 bg-[#0c121a]">
-              <ChatBubbleThumb />
+            <Link
+              href="/chat"
+              className="group relative flex flex-col overflow-hidden rounded-2xl border border-white/[0.1] bg-gradient-to-br from-white/[0.05] to-transparent p-5 transition hover:border-[#00D4FF]/35 hover:bg-white/[0.04] sm:p-6"
+            >
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[#00D4FF]/20 bg-[#0a1018]">
+                  <ChatBubbleThumb />
+                </div>
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.06] text-white/70 ring-1 ring-white/[0.1]">
+                  <IconChat />
+                </span>
+              </div>
+              <h2 className="text-lg font-bold tracking-tight text-white">Open chat</h2>
+              <p className="mt-1.5 flex-1 text-[13px] leading-relaxed text-white/50">
+                Type karo — lambi threads, code, aur detail ke liye best.
+              </p>
+              <span className="mt-4 flex items-center gap-1.5 text-xs font-semibold text-[#00D4FF]/90">
+                Open thread <Chevron />
+              </span>
+            </Link>
+          </div>
+
+          <div className="relative mt-8 border-t border-white/[0.08] pt-6">
+            <p className="mb-3 text-center text-[10px] font-semibold uppercase tracking-[0.18em] text-white/35">
+              Quick connect
+            </p>
+            <div className="flex flex-wrap justify-center gap-2 sm:gap-2.5">
+              {quickLinks.map(({ href, label, Icon }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className="inline-flex items-center gap-2 rounded-full border border-white/[0.1] bg-black/25 px-3.5 py-2 text-[12px] font-medium text-white/75 transition hover:border-[#00D4FF]/35 hover:bg-white/[0.06] hover:text-white"
+                >
+                  <Icon />
+                  {label}
+                </Link>
+              ))}
             </div>
-            <div className="min-w-0 text-left">
-              <h2 className="text-sm font-semibold text-white/90">Neo Chat</h2>
-              <p className="text-[12px] text-white/45">Type & send</p>
-            </div>
-          </Link>
+          </div>
         </div>
       </div>
     </div>

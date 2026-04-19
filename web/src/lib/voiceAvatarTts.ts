@@ -168,13 +168,17 @@ export async function playMp3BlobWithLipSync(
   });
 }
 
-/** Default strip / Hello Neo — compact. Voice chat uses conversation style (more natural dialogue). */
+/**
+ * OpenAI TTS voice ids (see backend `_OPENAI_TTS_VOICES`).
+ * Voice chat uses `tts-1-hd` + `conversation` → **coral** / **ash** for warmer, more human dialogue
+ * than shimmer/echo; defaults stay classic for short UI prompts.
+ */
 function openAiTtsVoiceId(
   gender: TtsVoiceGender | undefined,
   style: "default" | "conversation",
 ): string {
   if (style === "conversation") {
-    return gender === "male" ? "echo" : "shimmer";
+    return gender === "male" ? "ash" : "coral";
   }
   return gender === "male" ? "onyx" : "nova";
 }

@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
+from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException
-from typing import Literal
+from fastapi.responses import StreamingResponse
 
 from pydantic import BaseModel, Field
 
@@ -17,7 +21,12 @@ from app.db_mysql import (
     pool_ready,
 )
 from app.routers.auth import optional_user
-from app.services.ai import chat_completion
+from app.services.ai import (
+    ChatCompletionResult,
+    _openai_api_key,
+    chat_completion,
+    stream_openai_chat_deltas,
+)
 from app.services.web_search import fetch_google_snippets, should_auto_fetch_web
 from app.store import add_chat_turn, add_memory_fact, get_memory, get_profile, get_recent_chat_history
 
@@ -163,12 +172,19 @@ class ChatResponse(BaseModel):
     memory_snippets: list[str] = []
 
 
-@router.post("", response_model=ChatResponse)
-@router.post("/", response_model=ChatResponse)
-async def post_chat(
-    body: ChatRequest,
-    user: dict | None = Depends(optional_user),
-) -> ChatResponse:
+@dataclass(frozen=True)
+class ChatRouteContext:
+    uid: str
+    last_user: str
+    source: Literal["chat", "voice", "tools"]
+    mem: list[Any]
+    web_block: str
+    system_extra: str
+    early_reply: str | None
+    openai_messages: list[dict[str, str]] | None
+
+
+async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> ChatRouteContext:
     uid = str(user["id"]) if user else body.user_id
     profile = get_profile(uid)
     mem = get_memory(uid)
@@ -181,27 +197,31 @@ async def post_chat(
     else:
         timeline_rows = get_recent_chat_history(uid, limit=24)
 
-    # Hard guarantee for date/time queries: reply from live server clock, not model memory.
     if _is_live_datetime_query(last_user):
         reply = _live_datetime_reply(now_ist)
-        if last_user:
-            add_chat_turn(uid, "user", last_user, source=body.source)
-            add_chat_turn(uid, "assistant", reply, source=body.source)
-        if user and pool_ready() and last_user:
-            await insert_chat_messages(uid, last_user, reply, source=body.source)
-        snippets = [f"{x['key']}: {x['value']}" for x in mem[-3:]]
-        return ChatResponse(reply=reply, memory_snippets=snippets)
+        return ChatRouteContext(
+            uid=uid,
+            last_user=last_user,
+            source=body.source,
+            mem=mem,
+            web_block="",
+            system_extra="",
+            early_reply=reply,
+            openai_messages=None,
+        )
 
-    # Personal recall guarantee for "what/when we talked" questions.
     if _is_recall_query(last_user):
         reply = _recall_reply_from_timeline(timeline_rows)
-        if last_user:
-            add_chat_turn(uid, "user", last_user, source=body.source)
-            add_chat_turn(uid, "assistant", reply, source=body.source)
-        if user and pool_ready() and last_user:
-            await insert_chat_messages(uid, last_user, reply, source=body.source)
-        snippets = [f"{x['key']}: {x['value']}" for x in mem[-3:]]
-        return ChatResponse(reply=reply, memory_snippets=snippets)
+        return ChatRouteContext(
+            uid=uid,
+            last_user=last_user,
+            source=body.source,
+            mem=mem,
+            web_block="",
+            system_extra="",
+            early_reply=reply,
+            openai_messages=None,
+        )
 
     web_block = ""
     want_web = bool(last_user.strip()) and (body.use_web or should_auto_fetch_web(last_user))
@@ -221,7 +241,6 @@ async def post_chat(
         past_timeline = "\n".join(lines)
 
     live_year = now_utc.year
-    # General world knowledge in the model may lag; web snippets are the "live" layer for current-year facts.
     knowledge_cutoff_hint = (
         "Your baked-in general knowledge reflects training up to roughly 2023 — treat it as background only "
         "for time-sensitive facts (prices, sports results, who is in office, etc.). "
@@ -240,7 +259,6 @@ async def post_chat(
             "(warm professional woman vs steady professional man) without being loud or domineering."
         )
 
-    # Makes chat + voice feel like talking to a person, not a helpdesk bot.
     conversation_style = (
         "Conversation feel: this is a real back-and-forth with one human. Be warm, direct, and natural—"
         "varied sentence length, plain words, no corporate script. "
@@ -294,11 +312,86 @@ async def post_chat(
     for m in body.messages:
         msgs.append({"role": m.role, "content": m.content})
 
+    return ChatRouteContext(
+        uid=uid,
+        last_user=last_user,
+        source=body.source,
+        mem=mem,
+        web_block=web_block,
+        system_extra=system_extra,
+        early_reply=None,
+        openai_messages=msgs,
+    )
+
+
+async def _persist_chat_exchange(
+    uid: str,
+    last_user: str,
+    reply: str,
+    source: str,
+    user: dict | None,
+    result: ChatCompletionResult | None,
+) -> None:
+    if "schedule" in last_user.lower() or "समय" in last_user:
+        add_memory_fact(uid, "interest", "asks about schedule")
+    if last_user:
+        add_chat_turn(uid, "user", last_user, source=source)
+        add_chat_turn(uid, "assistant", reply, source=source)
+    if user and pool_ready() and last_user:
+        await insert_chat_messages(uid, last_user, reply, source=source)
+        if result:
+            await insert_usage_transaction(
+                uid,
+                "chat",
+                metadata={"model": result.model, "endpoint": "chat/completions"},
+                prompt_tokens=result.prompt_tokens,
+                completion_tokens=result.completion_tokens,
+                total_tokens=result.total_tokens,
+            )
+
+
+def _sse(obj: dict[str, Any]) -> bytes:
+    return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n".encode("utf-8")
+
+
+def _completion_result_from_stream_usage(full_text: str, usage_h: list[dict[str, Any]]) -> ChatCompletionResult:
+    usage = usage_h[0] if usage_h else {}
+    pt = usage.get("prompt_tokens")
+    ct = usage.get("completion_tokens")
+    tt = usage.get("total_tokens")
+    return ChatCompletionResult(
+        text=full_text,
+        model="gpt-4o-mini",
+        prompt_tokens=int(pt) if isinstance(pt, int) else None,
+        completion_tokens=int(ct) if isinstance(ct, int) else None,
+        total_tokens=int(tt) if isinstance(tt, int) else None,
+    )
+
+
+@router.post("", response_model=ChatResponse)
+@router.post("/", response_model=ChatResponse)
+async def post_chat(
+    body: ChatRequest,
+    user: dict | None = Depends(optional_user),
+) -> ChatResponse:
+    ctx = await _build_chat_route_context(body, user)
+    mem = ctx.mem
+    if ctx.early_reply is not None:
+        await _persist_chat_exchange(ctx.uid, ctx.last_user, ctx.early_reply, ctx.source, user, None)
+        snippets = [f"{x['key']}: {x['value']}" for x in mem[-3:]]
+        return ChatResponse(reply=ctx.early_reply, memory_snippets=snippets)
+
+    msgs = ctx.openai_messages
+    assert msgs is not None
+    uid = ctx.uid
+    last_user = ctx.last_user
+    web_block = ctx.web_block
+    system_extra = ctx.system_extra
+
     try:
         result = await chat_completion(msgs, user_id=uid)
         reply = result.text
         if not web_block and last_user and _looks_like_no_live_access(reply):
-            # Retry once with forced web fetch so the user gets concrete live data when possible.
             forced_block = await fetch_google_snippets(last_user)
             if forced_block:
                 retry_system = (
@@ -323,23 +416,50 @@ async def post_chat(
             ),
         ) from e
 
-    if "schedule" in last_user.lower() or "समय" in last_user:
-        add_memory_fact(uid, "interest", "asks about schedule")
-
-    if last_user:
-        add_chat_turn(uid, "user", last_user, source=body.source)
-        add_chat_turn(uid, "assistant", reply, source=body.source)
-
-    if user and pool_ready() and last_user:
-        await insert_chat_messages(uid, last_user, reply, source=body.source)
-        await insert_usage_transaction(
-            uid,
-            "chat",
-            metadata={"model": result.model, "endpoint": "chat/completions"},
-            prompt_tokens=result.prompt_tokens,
-            completion_tokens=result.completion_tokens,
-            total_tokens=result.total_tokens,
-        )
-
+    await _persist_chat_exchange(uid, last_user, reply, ctx.source, user, result)
     snippets = [f"{x['key']}: {x['value']}" for x in mem[-3:]]
     return ChatResponse(reply=reply, memory_snippets=snippets)
+
+
+@router.post("/stream")
+async def post_chat_stream(
+    body: ChatRequest,
+    user: dict | None = Depends(optional_user),
+) -> StreamingResponse:
+    """SSE: `data: {"d":"delta"}` token chunks, then `data: {"done":true}`; errors use `{"e":"..."}`."""
+    ctx = await _build_chat_route_context(body, user)
+
+    async def gen() -> AsyncIterator[bytes]:
+        try:
+            if ctx.early_reply is not None:
+                yield _sse({"d": ctx.early_reply})
+                await _persist_chat_exchange(ctx.uid, ctx.last_user, ctx.early_reply, ctx.source, user, None)
+                yield _sse({"done": True})
+                return
+
+            msgs = ctx.openai_messages
+            assert msgs is not None
+            key = _openai_api_key()
+            usage_h: list[dict[str, Any]] = []
+            parts: list[str] = []
+            async for delta in stream_openai_chat_deltas(msgs, key, usage_holder=usage_h):
+                parts.append(delta)
+                yield _sse({"d": delta})
+            full = "".join(parts)
+            result = _completion_result_from_stream_usage(full, usage_h)
+            await _persist_chat_exchange(ctx.uid, ctx.last_user, full, ctx.source, user, result)
+            yield _sse({"done": True})
+        except Exception as e:
+            logger.exception("post_chat_stream failed")
+            yield _sse({"e": str(e)})
+            yield _sse({"done": True})
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-store",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { getStoredUser } from "@/lib/auth";
-import { postChat } from "@/lib/api";
+import { postChatStream } from "@/lib/api";
 import {
   createSpeechRecognition,
   isSpeechRecognitionSupported,
@@ -18,6 +18,7 @@ import {
   loadChatMessages,
   saveChatMessages,
 } from "@/lib/chatStorage";
+import { ChatMarkdown } from "@/components/neo/ChatMarkdown";
 import { readStoredVoiceSpeechLang } from "@/lib/voiceLanguages";
 import {
   buildWhatsAppWebUrl,
@@ -55,18 +56,40 @@ export function DashboardChatPanel() {
   const [voiceListening, setVoiceListening] = useState(false);
   const [voiceHint, setVoiceHint] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const recRef = useRef<SpeechRecognition | null>(null);
   const finalBuf = useRef("");
   const interimRef = useRef("");
   const dictationBaseRef = useRef("");
   const handledSearchKeyRef = useRef<string | null>(null);
+  const streamAbortRef = useRef<AbortController | null>(null);
 
   const resetConversation = useCallback(() => {
+    streamAbortRef.current?.abort();
+    streamAbortRef.current = null;
     const uid = getStoredUser()?.id ?? "anon";
     clearChatMessages(uid);
     setMsgs(initialMsgs(getStoredUser()?.display_name));
     setInput("");
+    setLoading(false);
   }, [brandName]);
+
+  /** Match Tailwind max-h-36 (9rem) / min-h ~ single line composer. */
+  const fitComposerHeight = useCallback(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    const minH = 44;
+    const maxH = 144;
+    el.style.height = "auto";
+    const sh = el.scrollHeight;
+    const h = Math.max(minH, Math.min(sh, maxH));
+    el.style.height = `${h}px`;
+    el.style.overflowY = sh > maxH ? "auto" : "hidden";
+  }, []);
+
+  useEffect(() => {
+    requestAnimationFrame(() => fitComposerHeight());
+  }, [input, fitComposerHeight]);
 
   useEffect(() => {
     if (hydratedRef.current) return;
@@ -217,38 +240,68 @@ export function DashboardChatPanel() {
       return;
     }
 
-    const next: Msg[] = [...cur, { role: "user", content: trimmed }];
+    streamAbortRef.current?.abort();
+    streamAbortRef.current = new AbortController();
+    const signal = streamAbortRef.current.signal;
+
+    const next: Msg[] = [...cur, { role: "user", content: trimmed }, { role: "assistant", content: "" }];
     setMsgs(next);
     msgsRef.current = next;
     setLoading(true);
     try {
-      const apiMsgs = next.map((m) => ({
+      const apiMsgs = next.slice(0, -1).map((m) => ({
         role: m.role as "user" | "assistant",
         content: m.content,
       }));
       const uid = getStoredUser()?.id ?? "default";
-      /* useWeb false: avoid blocking every turn on Google/RSS; backend still fetches when should_auto_fetch_web matches */
-      const { reply } = await postChat(apiMsgs, uid, { useWeb: false });
-      const withReply: Msg[] = [...next, { role: "assistant", content: reply }];
-      setMsgs(withReply);
-      msgsRef.current = withReply;
+      await postChatStream(apiMsgs, uid, { useWeb: false, signal }, (delta) => {
+        setMsgs((prev) => {
+          const out = [...prev];
+          const L = out.length - 1;
+          if (L >= 0 && out[L].role === "assistant") {
+            out[L] = { role: "assistant", content: out[L].content + delta };
+          }
+          return out;
+        });
+      });
+      setMsgs((prev) => {
+        msgsRef.current = prev;
+        return prev;
+      });
     } catch (e) {
+      if (e instanceof Error && e.name === "AbortError") {
+        setMsgs((prev) => {
+          const out = [...prev];
+          const L = out.length - 1;
+          if (L >= 0 && out[L].role === "assistant" && !out[L].content.trim()) {
+            out.pop();
+          }
+          msgsRef.current = out;
+          return out;
+        });
+        return;
+      }
       const hint =
         e instanceof Error && e.message.trim()
           ? e.message
           : typeof e === "string" && e.trim()
             ? e
             : "Network error — DevTools (F12) → Network tab, retry send.";
-      const failed: Msg[] = [
-        ...next,
-        {
-          role: "assistant",
-          content:
-            `Chat failed: ${hint}\n\n— Open /neo-api/health on this domain. Nginx must send /neo-api to Next (3000), not directly to 8010. PM2: neo-api + neo-web.`,
-        },
-      ];
-      setMsgs(failed);
-      msgsRef.current = failed;
+      setMsgs((prev) => {
+        const out = [...prev];
+        const L = out.length - 1;
+        if (L >= 0 && out[L].role === "assistant") {
+          const prevC = out[L].content.trim();
+          out[L] = {
+            role: "assistant",
+            content: prevC
+              ? `${prevC}\n\n— ${hint}`
+              : `Chat failed: ${hint}\n\n— Open /neo-api/health on this domain. Nginx must send /neo-api to Next (3000), not directly to 8010. PM2: neo-api + neo-web.`,
+          };
+        }
+        msgsRef.current = out;
+        return out;
+      });
     } finally {
       setLoading(false);
     }
@@ -296,61 +349,72 @@ export function DashboardChatPanel() {
             </div>
           </article>
 
-          {msgs.slice(1).map((m, i) => (
-            <article
-              key={i}
-              className={`flex gap-3 sm:gap-4 ${m.role === "user" ? "flex-row-reverse" : ""}`}
-            >
-              {m.role === "user" ? (
-                <ChatUserAvatar className="mt-0.5" />
-              ) : (
-                <ChatAssistantAvatar className="mt-0.5" />
-              )}
-              <div
-                className={`min-w-0 flex-1 ${m.role === "user" ? "text-right" : ""}`}
+          {msgs.slice(1).map((m, i) => {
+            const isLast = i === msgs.length - 2;
+            return (
+              <article
+                key={i}
+                className={`flex gap-3 sm:gap-4 ${m.role === "user" ? "flex-row-reverse" : ""}`}
               >
+                {m.role === "user" ? (
+                  <ChatUserAvatar className="mt-0.5" />
+                ) : (
+                  <ChatAssistantAvatar className="mt-0.5" />
+                )}
                 <div
-                  className={
-                    m.role === "user"
-                      ? "inline-block max-w-[min(100%,92%)] border-r-2 border-[#00D4FF]/30 pr-3 text-right sm:max-w-[85%]"
-                      : "border-l-2 border-white/[0.1] pl-3 sm:pl-4"
-                  }
+                  className={`min-w-0 flex-1 ${m.role === "user" ? "text-right" : ""}`}
                 >
-                  <p
-                    className={`whitespace-pre-wrap break-words text-[15px] leading-relaxed ${
-                      m.role === "user" ? "text-white/90" : "text-white/[0.9]"
-                    }`}
+                  <div
+                    className={
+                      m.role === "user"
+                        ? "inline-block max-w-[min(100%,92%)] border-r-2 border-[#00D4FF]/30 pr-3 text-right sm:max-w-[85%]"
+                        : "border-l-2 border-white/[0.1] pl-3 sm:pl-4"
+                    }
                   >
-                    {m.content}
-                  </p>
+                    {m.role === "user" ? (
+                      <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed text-white/90">
+                        {m.content}
+                      </p>
+                    ) : (
+                      <div className="text-[15px] leading-relaxed text-white/[0.9]">
+                        {m.content.trim().length > 0 ? (
+                          <div className="inline-block max-w-full text-left">
+                            <ChatMarkdown text={m.content} />
+                            {loading && isLast ? (
+                              <span
+                                className="ml-0.5 inline-block h-4 w-[3px] translate-y-0.5 animate-pulse rounded-sm bg-[#00D4FF]/90 align-middle"
+                                aria-hidden
+                              />
+                            ) : null}
+                          </div>
+                        ) : loading && isLast ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className="sr-only">{NEO_ASSISTANT_NAME} typing</span>
+                            {[0, 1, 2].map((d) => (
+                              <span
+                                key={d}
+                                className="neo-chat-dot h-2 w-2 rounded-full bg-[#00D4FF]/70"
+                                style={{ animationDelay: `${d * 0.16}s` }}
+                              />
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </article>
-          ))}
-
-          {loading ? (
-            <div className="flex items-center gap-3 pl-1 sm:pl-2">
-              <ChatAssistantAvatar />
-              <div className="flex items-center gap-1.5 border-l-2 border-[#00D4FF]/25 pl-3">
-                <span className="sr-only">{NEO_ASSISTANT_NAME} typing</span>
-                {[0, 1, 2].map((d) => (
-                  <span
-                    key={d}
-                    className="neo-chat-dot h-2 w-2 rounded-full bg-[#00D4FF]/70"
-                    style={{ animationDelay: `${d * 0.16}s` }}
-                  />
-                ))}
-              </div>
-            </div>
-          ) : null}
+              </article>
+            );
+          })}
         </div>
       </div>
 
       <div className="z-10 shrink-0 border-t border-white/[0.06] bg-[#080a0f] px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-8px_32px_rgba(0,0,0,0.35)] sm:px-5 md:px-8 md:pt-4">
         <div className="mx-auto w-full max-w-[44rem]">
-          <div className="flex w-full items-center gap-1 rounded-full border border-neutral-200/90 bg-white py-1.5 pl-3 pr-1.5 shadow-[0_2px_16px_rgba(0,0,0,0.12)] sm:gap-1.5 sm:pl-4 sm:pr-2">
+          <div className="flex w-full items-end gap-1 rounded-2xl border border-neutral-200/90 bg-white py-1.5 pl-3 pr-1.5 shadow-[0_2px_16px_rgba(0,0,0,0.12)] sm:gap-1.5 sm:pl-4 sm:pr-2">
             <textarea
-              className="max-h-36 min-h-[44px] min-w-0 flex-1 resize-none bg-transparent py-2.5 text-[15px] leading-snug text-neutral-900 outline-none placeholder:text-neutral-400 focus-visible:ring-0"
+              ref={inputRef}
+              className="min-h-[44px] min-w-0 flex-1 resize-none overflow-hidden bg-transparent py-2.5 text-[15px] leading-snug text-neutral-900 outline-none placeholder:text-neutral-400 focus-visible:ring-0"
               placeholder={
                 userShort ? `${userShort}, ask anything…` : "Ask anything"
               }

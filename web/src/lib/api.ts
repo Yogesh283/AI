@@ -55,6 +55,81 @@ export async function postChat(
   return r.json() as Promise<{ reply: string; memory_snippets?: string[] }>;
 }
 
+/**
+ * ChatGPT-style streaming: POST /api/chat/stream (SSE). Calls `onDelta` for each token chunk.
+ * Server sends `data: {"d":"..."}` lines, then `data: {"done":true}`; errors: `{"e":"..."}`.
+ */
+export async function postChatStream(
+  messages: { role: "user" | "assistant" | "system"; content: string }[],
+  userId: string,
+  opts: { useWeb?: boolean; signal?: AbortSignal },
+  onDelta: (chunk: string) => void,
+): Promise<void> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const url = `${chatUrl()}/stream`;
+  const source: ChatSource = "chat";
+  const use_web = opts.useWeb ?? false;
+  let r: Response;
+  try {
+    r = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        messages: trimChatContext(messages),
+        user_id: userId,
+        source,
+        use_web,
+      }),
+      signal: opts.signal,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(msg.trim() || "fetch failed");
+  }
+  if (!r.ok) {
+    const t = (await r.text()).trim();
+    let msg = t;
+    try {
+      const j = JSON.parse(t) as { detail?: string | string[] };
+      const d = j.detail;
+      if (typeof d === "string" && d) msg = d;
+      else if (Array.isArray(d) && d.length) msg = d.map(String).join("; ");
+    } catch {
+      /* plain */
+    }
+    throw new Error(msg || `HTTP ${r.status} ${r.statusText}`);
+  }
+  const reader = r.body?.getReader();
+  if (!reader) throw new Error("Empty response body");
+  const dec = new TextDecoder();
+  let carry = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    carry += dec.decode(value, { stream: true });
+    const blocks = carry.split("\n\n");
+    carry = blocks.pop() ?? "";
+    for (const block of blocks) {
+      for (const line of block.split("\n")) {
+        if (!line.startsWith("data: ")) continue;
+        const raw = line.slice(6).trim();
+        if (!raw || raw === "[DONE]") continue;
+        let j: { d?: string; done?: boolean; e?: string };
+        try {
+          j = JSON.parse(raw) as { d?: string; done?: boolean; e?: string };
+        } catch {
+          continue;
+        }
+        if (typeof j.e === "string" && j.e) throw new Error(j.e);
+        if (typeof j.d === "string" && j.d.length) onDelta(j.d);
+        if (j.done) return;
+      }
+    }
+  }
+}
+
 export type MemoryChatRow = {
   id: number;
   role: string;
@@ -87,4 +162,50 @@ export async function getMemory(userId = "default") {
     chat_messages: MemoryChatRow[];
     insights: string[];
   }>;
+}
+
+export type VoiceRealtimeTokenResponse = {
+  client_secret: string;
+  expires_at?: number;
+  model: string;
+  output_voice: string;
+};
+
+/** Ephemeral key for OpenAI Realtime WebRTC (server never exposes main API key). */
+export async function postVoiceRealtimeToken(body: {
+  speech_lang: string;
+  persona_id: string;
+}): Promise<VoiceRealtimeTokenResponse> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const url = `${apiOrigin().replace(/\/$/, "")}/api/voice/realtime-token`;
+  let r: Response;
+  try {
+    r = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        speech_lang: body.speech_lang,
+        persona_id: body.persona_id,
+      }),
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(msg.trim() || "fetch failed");
+  }
+  if (!r.ok) {
+    const t = (await r.text()).trim();
+    let msg = t;
+    try {
+      const j = JSON.parse(t) as { detail?: string | string[] };
+      const d = j.detail;
+      if (typeof d === "string" && d) msg = d;
+      else if (Array.isArray(d) && d.length) msg = d.map(String).join("; ");
+    } catch {
+      /* plain */
+    }
+    throw new Error(msg || `HTTP ${r.status} ${r.statusText}`);
+  }
+  return r.json() as Promise<VoiceRealtimeTokenResponse>;
 }

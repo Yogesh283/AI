@@ -135,21 +135,11 @@ export function unlockWebAudioAndSpeechFromUserGesture(): void {
   } catch {
     /* ignore */
   }
-  /* No silent WAV / oscillator “blip” — users read it as mic/toon noise; resume a short-lived context only. */
-  try {
-    const AC =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AC) return;
-    const ctx = new AC();
-    void ctx.resume().then(() => {
-      window.setTimeout(() => {
-        void ctx.close().catch(() => undefined);
-      }, 120);
-    });
-  } catch {
-    /* ignore */
-  }
+  /*
+   * Do NOT create/resume a throwaway AudioContext here. On Android (especially WebView / Capacitor),
+   * that often plays as a short “tun tun” / focus glitch when mic is toggled — users read it as UI noise.
+   * OpenAI TTS playback creates its own graph when needed; browser TTS only needs speechSynthesis above.
+   */
 }
 
 function speechRecognitionErrorMessage(code: string): string {
