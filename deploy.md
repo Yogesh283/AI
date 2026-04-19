@@ -264,6 +264,15 @@ Phone ko USB se PC se jodo, **USB debugging** on. WebView ko **`http://localhost
    - **Authorized JavaScript origins** mein wohi **HTTPS origin** add karo jahan se APK WebView page load hota hai (e.g. `https://myneoxai.com`). Local APK + `adb reverse` par `http://localhost:3000` bhi add kar sakte ho agar wahi client ID use ho.
 3. **Backend:** `.env` mein `GOOGLE_CLIENT_IDS` (comma-separated) mein **usi Web client** ka ID hona chahiye jo frontend token ke liye use ho.
 4. **Build:** Web bundle mein client ID empty na ho — prod build se pehle env verify karo.
+5. **Android OAuth (APK / Credential Manager — zaroori):** Sirf “Web client” kaafi nahi. Google Cloud → **Credentials → Create credentials → OAuth client ID → Application type: Android**:
+   - **Package name:** `com.neo.assistant` (same as `web/android/app/build.gradle` `applicationId`).
+   - **SHA-1 certificate fingerprint:** isi machine se jo **debug APK** sign ho rahi hai uska SHA-1. Command (repo root se):
+     ```powershell
+     cd D:\AI\web\android
+     .\gradlew.bat signingReport
+     ```
+     Output mein `Variant: debug` → `Config: debug` → **SHA1** line copy karke Google form mein paste karo. **Release / Play** ke liye alag signing key ho to us key ka SHA-1 bhi alag Android OAuth client ya same client mein add karo (Google allows multiple fingerprints).
+   - Save ke baad **5–15 minute** wait, phir APK dubara install / try karo.
 
 ### Chat / Voice — OpenAI `ConnectError` ya TTS 503
 
