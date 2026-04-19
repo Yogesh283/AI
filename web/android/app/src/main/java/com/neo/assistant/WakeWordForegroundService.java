@@ -28,6 +28,8 @@ import java.util.regex.Pattern;
  * Foreground “Hello Neo” wake listener: one {@link SpeechRecognizer}, short relisten delays, no per-phrase
  * destroy/recreate. Commands run only after wake phrase + tail (see {@link #consumeRecognizerResults}).
  * While {@link NeoCommandRouter} TTS plays, {@link NeoCommandRouter#isAISpeaking()} blocks feedback.
+ * Optional {@link PorcupineStreamWake} path: raw {@link android.media.AudioRecord} + Picovoice Porcupine
+ * (see {@link NeoPrefs#isWakePorcupineStreamEnabled}); command tail still uses one {@link SpeechRecognizer} pass.
  */
 public class WakeWordForegroundService extends Service {
     public static final String ACTION_START = "com.neo.assistant.action.START_WAKE";
@@ -43,6 +45,11 @@ public class WakeWordForegroundService extends Service {
     private boolean shouldListen = false;
     /** When false, pause mic when display is off (default). When true, try to keep wake for lock-screen use. */
     private boolean listenScreenOff = false;
+    private PorcupineStreamWake porcupineWake;
+    private boolean porcupineMode;
+    /** After Porcupine fires, one {@link SpeechRecognizer} pass captures the command tail. */
+    private boolean capturingAfterPorcupineWake;
+    private long lastPorcupineKeywordMs;
     private PowerManager.WakeLock wakeLock;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private BroadcastReceiver screenReceiver;
@@ -65,7 +72,7 @@ public class WakeWordForegroundService extends Service {
             if (!shouldListen) return;
             if (!mayUseMicNow()) return;
             if (NeoCommandRouter.isAISpeaking()) return;
-            startListeningSafe();
+            resumePassiveMic();
         };
 
     @Override
@@ -74,6 +81,13 @@ public class WakeWordForegroundService extends Service {
         createChannel();
         acquirePartialWakeLock();
         initRecognizer();
+        porcupineMode = NeoPrefs.isWakePorcupineStreamEnabled(this) && PorcupineStreamWake.canInit(this);
+        if (porcupineMode) {
+            porcupineWake =
+                new PorcupineStreamWake(
+                    getApplicationContext(),
+                    () -> mainHandler.post(this::onPorcupineKeywordMain));
+        }
         NeoCommandRouter.setAssistantSpeechEndedRunnable(
             () -> {
                 if (!shouldListen) return;
@@ -126,6 +140,44 @@ public class WakeWordForegroundService extends Service {
             }
         } catch (Exception ignored) {
         }
+        if (porcupineMode && porcupineWake != null && !capturingAfterPorcupineWake) {
+            porcupineWake.stopRelease();
+        }
+    }
+
+    private void resumePassiveMic() {
+        if (porcupineMode) {
+            if (capturingAfterPorcupineWake) {
+                return;
+            }
+            if (porcupineWake != null) {
+                porcupineWake.ensureStarted();
+            }
+            return;
+        }
+        startListeningSafe();
+    }
+
+    private void onPorcupineKeywordMain() {
+        if (!shouldListen || !mayUseMicNow()) {
+            return;
+        }
+        if (NeoCommandRouter.isAISpeaking()) {
+            return;
+        }
+        if (capturingAfterPorcupineWake) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (now - lastPorcupineKeywordMs < 900L) {
+            return;
+        }
+        lastPorcupineKeywordMs = now;
+        capturingAfterPorcupineWake = true;
+        if (porcupineWake != null) {
+            porcupineWake.stopRelease();
+        }
+        startListeningSafe();
     }
 
     @Override
@@ -146,7 +198,7 @@ public class WakeWordForegroundService extends Service {
         Notification notification = buildNotification();
         startForeground(NOTIFICATION_ID, notification);
         shouldListen = true;
-        startListeningSafe();
+        resumePassiveMic();
         return START_STICKY;
     }
 
@@ -156,6 +208,10 @@ public class WakeWordForegroundService extends Service {
         NeoCommandRouter.setAssistantSpeechEndedRunnable(null);
         mainHandler.removeCallbacks(resumeListeningRunnable);
         mainHandler.removeCallbacksAndMessages(null);
+        if (porcupineWake != null) {
+            porcupineWake.shutdown();
+            porcupineWake = null;
+        }
         try {
             if (screenReceiver != null) {
                 unregisterReceiver(screenReceiver);
@@ -200,6 +256,13 @@ public class WakeWordForegroundService extends Service {
             @Override
             public void onError(int error) {
                 if (!shouldListen) return;
+                if (porcupineMode && capturingAfterPorcupineWake) {
+                    capturingAfterPorcupineWake = false;
+                    if (!mayUseMicNow()) return;
+                    if (NeoCommandRouter.isAISpeaking()) return;
+                    schedulePassiveRelisten(RELISTEN_MS_ERROR);
+                    return;
+                }
                 if (!mayUseMicNow()) return;
                 if (NeoCommandRouter.isAISpeaking()) return;
                 schedulePassiveRelisten(RELISTEN_MS_ERROR);
@@ -209,8 +272,14 @@ public class WakeWordForegroundService extends Service {
             public void onResults(android.os.Bundle results) {
                 if (!shouldListen || !mayUseMicNow()) return;
                 if (NeoCommandRouter.isAISpeaking()) {
+                    if (porcupineMode) {
+                        capturingAfterPorcupineWake = false;
+                    }
                     /* Drop finals captured while assistant TTS is playing (feedback loop). */
                     return;
+                }
+                if (porcupineMode) {
+                    capturingAfterPorcupineWake = false;
                 }
                 int delayMs = consumeRecognizerResults(results);
                 if (!shouldListen || !mayUseMicNow()) return;

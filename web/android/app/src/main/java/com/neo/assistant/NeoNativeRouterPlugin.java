@@ -27,6 +27,20 @@ public class NeoNativeRouterPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void setWakePorcupineStream(PluginCall call) {
+        Boolean on = call.getBoolean("enabled", false);
+        NeoPrefs.setWakePorcupineStreamEnabled(getContext(), Boolean.TRUE.equals(on));
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void getWakePorcupineStream(PluginCall call) {
+        JSObject o = new JSObject();
+        o.put("enabled", NeoPrefs.isWakePorcupineStreamEnabled(getContext()));
+        call.resolve(o);
+    }
+
+    @PluginMethod
     public void startWakeListener(PluginCall call) {
         Boolean so = call.getBoolean("screenOffListen", false);
         NeoPrefs.setWakeListenScreenOff(getContext(), Boolean.TRUE.equals(so));
