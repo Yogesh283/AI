@@ -332,10 +332,15 @@ export default function VoicePage() {
             const next = [...h];
             const L = next.length - 1;
             if (L >= 0 && next[L].role === "assistant") {
-              if (next[L].content.trim() === line) {
+              const curT = next[L].content.trim();
+              if (curT === line) {
                 return h;
               }
-              next[L] = { role: "assistant", content: line };
+              /* Ignore a shorter “done” payload when streaming already built a longer prefix (ordering / partial events). */
+              if (line.length < curT.length && curT.startsWith(line)) {
+                return h;
+              }
+              next[L] = { role: "assistant", content: line.length >= curT.length ? line : next[L].content };
               historyRef.current = next;
               return next;
             }

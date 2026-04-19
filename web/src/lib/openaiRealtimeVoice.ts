@@ -95,6 +95,12 @@ function routeRealtimeEvent(
     if (t) cb.onAssistantTranscript?.(t);
     return;
   }
+  /* Some sessions expose the same reply as text when audio transcript lags or is partial. */
+  if (type === "response.output_text.done") {
+    const t = String(ev.text || "").trim();
+    if (t) cb.onAssistantTranscript?.(t);
+    return;
+  }
   if (type === "response.created") {
     locks.assistantDeltaSource = null;
     cb.onAssistantSpeaking?.(true);
@@ -131,6 +137,13 @@ export async function startOpenAiRealtimeVoiceSession(
   const remoteAudio = document.createElement("audio");
   remoteAudio.autoplay = true;
   remoteAudio.setAttribute("playsinline", "true");
+  remoteAudio.volume = 1;
+  remoteAudio.muted = false;
+  try {
+    document.body.appendChild(remoteAudio);
+  } catch {
+    /* ignore */
+  }
 
   pc.ontrack = (e) => {
     const [stream] = e.streams;
@@ -178,6 +191,7 @@ export async function startOpenAiRealtimeVoiceSession(
       }
     }
     pc.close();
+    remoteAudio.remove();
     remoteAudio.srcObject = null;
     callbacks.onConnection?.("closed");
     throw new Error(detail);
@@ -188,6 +202,9 @@ export async function startOpenAiRealtimeVoiceSession(
 
   dc.onopen = () => {
     callbacks.onConnection?.("open");
+    void remoteAudio.play().catch(() => {
+      /* Autoplay may still need a gesture on some WebViews; session was opened from mic tap. */
+    });
   };
 
   const cancelAssistant = () => {
@@ -214,6 +231,11 @@ export async function startOpenAiRealtimeVoiceSession(
     }
     try {
       pc.close();
+    } catch {
+      /* ignore */
+    }
+    try {
+      remoteAudio.remove();
     } catch {
       /* ignore */
     }

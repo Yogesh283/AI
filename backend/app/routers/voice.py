@@ -146,14 +146,16 @@ def _realtime_model() -> str:
 def _realtime_server_vad() -> dict[str, object]:
     """
     Reduce false “user is speaking” cuts from speaker bleed-through (phone mic hears assistant audio).
-    interrupt_response=False: assistant finishes the line; user still taps “interrupt” to cancel.
+    interrupt_response=False: assistant audio is not cancelled on VAD start; user taps “interrupt” to cancel.
+    Slightly longer silence + higher threshold so Hindi pauses / room noise do not clip replies.
     """
     return {
         "type": "server_vad",
-        "threshold": 0.55,
-        "prefix_padding_ms": 400,
-        "silence_duration_ms": 900,
+        "threshold": 0.62,
+        "prefix_padding_ms": 450,
+        "silence_duration_ms": 1200,
         "interrupt_response": False,
+        "create_response": True,
     }
 
 
@@ -206,8 +208,10 @@ async def _build_realtime_instructions(
         f"Address them naturally as «{name}» when it fits. "
         f"Persona: {voice_persona}. "
         f"{lang_line}"
-        "Voice mode rules: sound like a natural phone call — short clear sentences, no markdown or bullet lists "
-        "unless they explicitly want detail. Do not read URLs character-by-character. "
+        "Voice mode rules: sound like a natural phone call — clear sentences, no markdown or bullet lists "
+        "unless they explicitly want detail. Always finish the thought in this turn: do not stop mid-sentence or "
+        "mid-explanation; if it is long, use two or three complete sentences rather than trailing off. "
+        "Do not read URLs character-by-character. "
         "Avoid stock-bot phrases ('I'd be happy to help', 'Great question', 'As an AI'). "
         "Do not label yourself as an AI unless they ask.\n"
         "Spoken audio: use warm, human pacing — slight pauses between thoughts, varied intonation, never monotone or "
@@ -258,8 +262,11 @@ async def post_realtime_token(
         "type": "realtime",
         "model": model,
         "instructions": instructions[:32000],
+        # Explicit cap avoids any server-side default that might truncate long spoken answers.
+        "max_output_tokens": "inf",
         "audio": {
             "input": {
+                "noise_reduction": {"type": "far_field"},
                 "transcription": {"model": "whisper-1"},
                 "turn_detection": _realtime_server_vad(),
             },
@@ -273,8 +280,12 @@ async def post_realtime_token(
             "type": "realtime",
             "model": model,
             "instructions": instructions[:32000],
+            "max_output_tokens": "inf",
             "audio": {
-                "input": {"turn_detection": _realtime_server_vad()},
+                "input": {
+                    "noise_reduction": {"type": "far_field"},
+                    "turn_detection": _realtime_server_vad(),
+                },
                 "output": {"voice": out_voice},
             },
         }
