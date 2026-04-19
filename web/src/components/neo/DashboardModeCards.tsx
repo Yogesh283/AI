@@ -68,37 +68,41 @@ export function DashboardModeCards() {
   const title = greetName ? `Welcome back, ${greetName}` : "You're in";
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col justify-center px-4 pb-10 pt-6 sm:px-6 md:px-10 md:pb-12 md:pt-8">
-      <div className="mx-auto w-full max-w-2xl">
-        <div className="relative overflow-hidden rounded-[1.75rem] border border-white/[0.12] bg-gradient-to-b from-white/[0.07] via-[#0c1018]/90 to-[#080b11] p-6 shadow-[0_0_0_1px_rgba(0,212,255,0.06),0_24px_80px_rgba(0,0,0,0.45)] sm:p-8 md:p-10">
+    <div className="flex min-h-0 flex-1 flex-col justify-center px-4 pb-12 pt-8 sm:px-6 md:px-10 md:pb-16 md:pt-10">
+      <div className="mx-auto w-full max-w-3xl">
+        <div className="relative overflow-hidden rounded-[1.85rem] border border-white/[0.1] bg-gradient-to-b from-white/[0.09] via-[#0a0e16]/95 to-[#060910] p-6 shadow-[0_0_0_1px_rgba(0,212,255,0.08),0_8px_32px_rgba(0,0,0,0.35),0_32px_96px_rgba(0,0,0,0.4)] backdrop-blur-sm sm:p-8 md:p-11">
           <div
-            className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-[#00D4FF]/[0.07] blur-3xl"
+            className="pointer-events-none absolute -right-24 -top-28 h-72 w-72 rounded-full bg-[#00D4FF]/[0.09] blur-3xl"
             aria-hidden
           />
           <div
-            className="pointer-events-none absolute -bottom-16 -left-16 h-56 w-56 rounded-full bg-[#7c3aed]/[0.08] blur-3xl"
+            className="pointer-events-none absolute -bottom-20 -left-20 h-64 w-64 rounded-full bg-[#7c3aed]/[0.1] blur-3xl"
+            aria-hidden
+          />
+          <div
+            className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#00D4FF]/25 to-transparent"
             aria-hidden
           />
 
           <header className="relative text-center">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#00D4FF]/70">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#00D4FF]/75">
               {brandName} · Home
             </p>
-            <h1 className="mt-3 bg-gradient-to-r from-white via-[#e8fbff] to-white/70 bg-clip-text text-2xl font-extrabold tracking-tight text-transparent sm:text-3xl md:text-[2rem]">
+            <h1 className="mt-3.5 bg-gradient-to-r from-white via-[#e8fbff] to-white/65 bg-clip-text text-2xl font-extrabold tracking-tight text-transparent sm:text-3xl md:text-[2.125rem] md:leading-tight">
               {title}
             </h1>
-            <p className="mx-auto mt-3 max-w-md text-[14px] leading-relaxed text-white/55 sm:text-[15px]">
+            <p className="mx-auto mt-4 max-w-lg text-[14px] leading-relaxed text-white/58 sm:text-[15px]">
               Voice, chat, and memory — one assistant, all connected. Pick a mode below or use the quick links.
             </p>
-            <p className="mx-auto mt-2 max-w-lg text-[12px] leading-relaxed text-white/38">
+            <p className="mx-auto mt-2.5 max-w-md text-[12px] leading-relaxed text-white/40">
               Same account everywhere: browser or app — settings and memory stay in sync.
             </p>
           </header>
 
-          <div className="relative mt-8 grid gap-4 sm:grid-cols-2 sm:gap-5">
+          <div className="relative mt-9 grid gap-4 sm:grid-cols-2 sm:gap-6">
             <Link
               href="/voice"
-              className="group relative flex flex-col overflow-hidden rounded-2xl border border-white/[0.1] bg-gradient-to-br from-[#00D4FF]/[0.12] to-transparent p-5 transition hover:border-[#00D4FF]/40 hover:shadow-[0_0_40px_rgba(0,212,255,0.12)] sm:p-6"
+              className="group relative flex flex-col overflow-hidden rounded-2xl border border-white/[0.09] bg-gradient-to-br from-[#00D4FF]/[0.14] via-[#00D4FF]/[0.04] to-transparent p-5 transition duration-200 hover:-translate-y-0.5 hover:border-[#00D4FF]/45 hover:shadow-[0_0_48px_rgba(0,212,255,0.14),0_16px_40px_rgba(0,0,0,0.25)] active:translate-y-0 sm:p-6"
             >
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-white/[0.12] bg-black/50 shadow-inner">
@@ -116,7 +120,7 @@ export function DashboardModeCards() {
                 </span>
               </div>
               <h2 className="text-lg font-bold tracking-tight text-white">Voice chat</h2>
-              <p className="mt-1.5 flex-1 text-[13px] leading-relaxed text-white/50">
+              <p className="mt-1.5 flex-1 text-[13px] leading-relaxed text-white/52">
                 Hands-free — speak into the mic and the 3D assistant replies.
               </p>
               <span className="mt-4 flex items-center gap-1.5 text-xs font-semibold text-[#7eeafb]">
@@ -126,7 +130,7 @@ export function DashboardModeCards() {
 
             <Link
               href="/chat"
-              className="group relative flex flex-col overflow-hidden rounded-2xl border border-white/[0.1] bg-gradient-to-br from-white/[0.05] to-transparent p-5 transition hover:border-[#00D4FF]/35 hover:bg-white/[0.04] sm:p-6"
+              className="group relative flex flex-col overflow-hidden rounded-2xl border border-white/[0.09] bg-gradient-to-br from-white/[0.07] via-white/[0.02] to-transparent p-5 transition duration-200 hover:-translate-y-0.5 hover:border-[#00D4FF]/38 hover:bg-white/[0.05] hover:shadow-[0_0_40px_rgba(0,212,255,0.08),0_16px_40px_rgba(0,0,0,0.2)] active:translate-y-0 sm:p-6"
             >
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[#00D4FF]/20 bg-[#0a1018]">
@@ -137,7 +141,7 @@ export function DashboardModeCards() {
                 </span>
               </div>
               <h2 className="text-lg font-bold tracking-tight text-white">Open chat</h2>
-              <p className="mt-1.5 flex-1 text-[13px] leading-relaxed text-white/50">
+              <p className="mt-1.5 flex-1 text-[13px] leading-relaxed text-white/52">
                 Type away — best for long threads, code, and detailed answers.
               </p>
               <span className="mt-4 flex items-center gap-1.5 text-xs font-semibold text-[#00D4FF]/90">
@@ -146,16 +150,16 @@ export function DashboardModeCards() {
             </Link>
           </div>
 
-          <div className="relative mt-8 border-t border-white/[0.08] pt-6">
-            <p className="mb-3 text-center text-[10px] font-semibold uppercase tracking-[0.18em] text-white/35">
+          <div className="relative mt-9 rounded-2xl border border-white/[0.06] bg-black/20 px-4 py-5 sm:px-5">
+            <p className="mb-3.5 text-center text-[10px] font-semibold uppercase tracking-[0.2em] text-white/40">
               Quick connect
             </p>
-            <div className="flex flex-wrap justify-center gap-2 sm:gap-2.5">
+            <div className="flex flex-wrap justify-center gap-2 sm:gap-3">
               {quickLinks.map(({ href, label, Icon }) => (
                 <Link
                   key={href}
                   href={href}
-                  className="inline-flex items-center gap-2 rounded-full border border-white/[0.1] bg-black/25 px-3.5 py-2 text-[12px] font-medium text-white/75 transition hover:border-[#00D4FF]/35 hover:bg-white/[0.06] hover:text-white"
+                  className="inline-flex items-center gap-2 rounded-full border border-white/[0.1] bg-white/[0.04] px-4 py-2.5 text-[12px] font-medium text-white/80 shadow-sm transition hover:border-[#00D4FF]/40 hover:bg-[#00D4FF]/[0.08] hover:text-white hover:shadow-[0_0_20px_rgba(0,212,255,0.12)]"
                 >
                   <Icon />
                   {label}

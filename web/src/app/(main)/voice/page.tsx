@@ -160,7 +160,7 @@ export default function VoicePage() {
     try {
       const v = sessionStorage.getItem(VOICE_ENGINE_KEY);
       if (v === "live" || v === "classic") {
-        if (v === "live" && (isNativeCapacitor() || !isOpenAiRealtimeVoiceSupported())) {
+        if (v === "live" && !isOpenAiRealtimeVoiceSupported()) {
           setVoiceEngine("classic");
           return;
         }
@@ -170,7 +170,10 @@ export default function VoicePage() {
     } catch {
       /* ignore */
     }
-    setVoiceEngine(isNativeCapacitor() || !isOpenAiRealtimeVoiceSupported() ? "classic" : "live");
+    /* APK: default Classic; Web: default Live when WebRTC is available. Live is still selectable in-app on APK. */
+    setVoiceEngine(
+      isNativeCapacitor() ? "classic" : !isOpenAiRealtimeVoiceSupported() ? "classic" : "live",
+    );
   }, []);
 
   useEffect(() => {
@@ -639,6 +642,8 @@ export default function VoicePage() {
         }));
         const streamGen = ++speakGenerationRef.current;
         let replyAcc = "";
+        /** True once streaming OpenAI TTS has queued audio — avoids a second full-reply speak (double voice). */
+        let streamOpenAiQueuedAudio = false;
         let streamTts: ReturnType<typeof createVoiceChatStreamedOpenAiTtsSession> | null = null;
         try {
           const useOpenAiStreamTts = preferOpenAiTtsForVoiceUi();
@@ -650,6 +655,7 @@ export default function VoicePage() {
                 speakGenerationId: streamGen,
                 signal: sig,
                 onFirstSpeakableChunk: () => {
+                  streamOpenAiQueuedAudio = true;
                   if (speakGenerationRef.current !== streamGen) return;
                   setThinking(false);
                   speakingRef.current = true;
@@ -695,10 +701,11 @@ export default function VoicePage() {
               );
             }
             setThinking(false);
+            /* Only if streaming path never produced TTS (e.g. empty deltas) — do not repeat the full reply after chunks. */
             if (
               reply &&
               speakGenerationRef.current === streamGen &&
-              !speakingRef.current
+              !streamOpenAiQueuedAudio
             ) {
               const mood = inferVoiceReplyMood(reply);
               speakingRef.current = true;
@@ -1368,13 +1375,11 @@ export default function VoicePage() {
               type="button"
               role="tab"
               aria-selected={voiceEngine === "live"}
-              disabled={isNativeCapacitor() || !isOpenAiRealtimeVoiceSupported()}
+              disabled={!isOpenAiRealtimeVoiceSupported()}
               title={
-                isNativeCapacitor()
-                  ? "APK: use Classic (device speech)."
-                  : !isOpenAiRealtimeVoiceSupported()
-                    ? "Browser WebRTC / mic not available."
-                    : "OpenAI Realtime — continuous hands-free voice"
+                !isOpenAiRealtimeVoiceSupported()
+                  ? "WebRTC / secure context not available in this WebView — use Classic."
+                  : "OpenAI Realtime — continuous hands-free voice"
               }
               onClick={() => {
                 if (sessionOn) stopSession();
@@ -1456,7 +1461,7 @@ export default function VoicePage() {
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center">
         {voiceEngine === "live" && !isOpenAiRealtimeVoiceSupported() ? (
           <p className="mb-6 max-w-sm text-center text-[11px] leading-relaxed text-amber-400/90">
-            Live voice needs HTTPS (or localhost), WebRTC, and mic access — try Chrome or Edge on desktop.
+            Live needs a secure page (HTTPS), WebRTC, and mic. Update the WebView / device, or use Classic here.
           </p>
         ) : null}
         {(speechSupported === false && voiceEngine === "classic") || ttsSupported === false ? (

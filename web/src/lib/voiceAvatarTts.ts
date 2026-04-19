@@ -10,6 +10,7 @@ import {
   isSpeechSynthesisSupported,
   prepareSpeechText,
   speakText,
+  stopSpeaking,
   type TtsVoiceGender,
   type TtsSpeedPreset,
   type TtsTonePreset,
@@ -369,6 +370,9 @@ async function tryOpenAiTts(
     blob = await fetchOpenAiTtsBlob(text, voiceGender, fetchOpts);
   }
 
+  /* One output path: cancel browser TTS so OpenAI MP3 never overlaps a different engine/voice. */
+  stopSpeaking();
+
   /* APK / WebView without `speechSynthesis`: Web Audio analyser path is flaky — simple `<audio>` MP3 only. */
   const useSimplePlayback = isNativeCapacitor() || !isSpeechSynthesisSupported();
   if (useSimplePlayback) {
@@ -606,6 +610,7 @@ export async function speakTextWithAvatarLipSync(
   }
 
   stopRafLoop();
+  stopAvatarTtsAudio();
 
   await new Promise<void>((resolve, reject) => {
     let rafId = 0;
