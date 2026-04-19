@@ -17,6 +17,24 @@ buildscript {
 
 apply from: "variables.gradle"
 
+/*
+ * Capacitor 8 pins Java 21 in :capacitor-android and app/capacitor.build.gradle.
+ * Many Windows installs only have JDK 17 (Android Studio default) → "invalid source release: 21".
+ * Align all Android modules to 17 so assembleDebug/assembleRelease work without a separate JDK 21.
+ * When you install JDK 21+, you can remove this block and rely on Capacitor defaults.
+ */
+subprojects { subproject ->
+    subproject.afterEvaluate {
+        def android = subproject.extensions.findByName("android")
+        if (android != null) {
+            android.compileOptions {
+                sourceCompatibility JavaVersion.VERSION_17
+                targetCompatibility JavaVersion.VERSION_17
+            }
+        }
+    }
+}
+
 allprojects {
     repositories {
         google()

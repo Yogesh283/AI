@@ -3,9 +3,24 @@
  * instead of navigating the WebView to https:// (which often jumps to Chrome).
  */
 
+/**
+ * Capacitor Android injects this before JS runs; `Capacitor.getPlatform()` can still
+ * briefly report `"web"` on the first React paint — use this to pick native Android flows
+ * (e.g. Google Credential Manager) instead of GIS in the WebView.
+ */
+export function isCapacitorAndroidShell(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return Boolean((window as Window & { androidBridge?: unknown }).androidBridge);
+  } catch {
+    return false;
+  }
+}
+
 export function isNativeCapacitor(): boolean {
   if (typeof window === "undefined") return false;
   try {
+    if (isCapacitorAndroidShell()) return true;
     const C = (window as Window & { Capacitor?: Record<string, unknown> }).Capacitor;
     if (!C || typeof C !== "object") return false;
     const iso = (C as { isNativePlatform?: () => boolean }).isNativePlatform;

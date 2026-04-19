@@ -4,7 +4,7 @@ import { GoogleLogin } from "@react-oauth/google";
 import { Capacitor } from "@capacitor/core";
 import { GoogleSignIn } from "@capawesome/capacitor-google-sign-in";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { isNativeCapacitor } from "@/lib/nativeAppLinks";
+import { isCapacitorAndroidShell, isNativeCapacitor } from "@/lib/nativeAppLinks";
 
 type Intent = "signin" | "signup";
 
@@ -61,11 +61,13 @@ export function NeoGoogleSignIn({
 
   /*
    * Never use GIS (`GoogleLogin`) inside the Android shell: it opens accounts.google.com in Chrome and never returns.
-   * Prefer Capacitor's native flag; keep `isNativeCapacitor()` as fallback if a WebView edge case reports platform late.
+   * `androidBridge` is present immediately on Capacitor Android; `getPlatform()` can still say `"web"` on the first
+   * paint, which would lock the broken GIS branch until a full remount — so prefer the bridge check.
    */
   const inAppAndroidGoogle =
-    Capacitor.getPlatform() === "android" &&
-    (Capacitor.isNativePlatform() || isNativeCapacitor());
+    isCapacitorAndroidShell() ||
+    (Capacitor.getPlatform() === "android" &&
+      (Capacitor.isNativePlatform() || isNativeCapacitor()));
 
   useEffect(() => {
     if (!inAppAndroidGoogle || !cid) return;
