@@ -169,16 +169,21 @@ export async function playMp3BlobWithLipSync(
 }
 
 /**
+ * OpenAI `gpt-4o-mini-tts` + **marin** / **cedar** + pacing instructions — closest to ChatGPT advanced voice
+ * (OpenAI docs recommend marin/cedar for natural dialogue). Classic short prompts stay `tts-1` + nova/onyx.
+ */
+const CHATGPT_LIKE_TTS_INSTRUCTIONS =
+  "Speak in a warm, natural conversational tone like a premium voice assistant. Clear pacing with light expressiveness — not robotic or flat, not theatrical. Natural intonation for questions and statements. If the text mixes Hindi and English, keep both clear.";
+
+/**
  * OpenAI TTS voice ids (see backend `_OPENAI_TTS_VOICES`).
- * Voice chat uses `tts-1-hd` + `conversation` → **coral** / **ash** for warmer, more human dialogue
- * than shimmer/echo; defaults stay classic for short UI prompts.
  */
 function openAiTtsVoiceId(
   gender: TtsVoiceGender | undefined,
   style: "default" | "conversation",
 ): string {
   if (style === "conversation") {
-    return gender === "male" ? "ash" : "coral";
+    return gender === "male" ? "cedar" : "marin";
   }
   return gender === "male" ? "onyx" : "nova";
 }
@@ -186,25 +191,38 @@ function openAiTtsVoiceId(
 async function fetchOpenAiTtsBlob(
   text: string,
   voiceGender: TtsVoiceGender | undefined,
-  fetchOpts?: { model?: "tts-1" | "tts-1-hd"; voiceStyle?: "default" | "conversation" },
+  fetchOpts?: {
+    model?: "tts-1" | "tts-1-hd" | "gpt-4o-mini-tts";
+    voiceStyle?: "default" | "conversation";
+  },
 ): Promise<Blob> {
   const trimmed = (text || "").trim();
   if (!trimmed) {
     throw new Error("TTS: empty text");
   }
 
-  const model = fetchOpts?.model === "tts-1-hd" ? "tts-1-hd" : "tts-1";
   const voiceStyle = fetchOpts?.voiceStyle === "conversation" ? "conversation" : "default";
+  const model: "tts-1" | "tts-1-hd" | "gpt-4o-mini-tts" =
+    fetchOpts?.model === "gpt-4o-mini-tts"
+      ? "gpt-4o-mini-tts"
+      : fetchOpts?.model === "tts-1-hd"
+        ? "tts-1-hd"
+        : "tts-1";
+
+  const payload: Record<string, unknown> = {
+    text: trimmed,
+    voice: openAiTtsVoiceId(voiceGender, voiceStyle),
+    model,
+  };
+  if (model === "gpt-4o-mini-tts" && voiceStyle === "conversation") {
+    payload.instructions = CHATGPT_LIKE_TTS_INSTRUCTIONS;
+  }
 
   const res = await fetch(`${apiOrigin()}/api/voice/tts-audio`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
-    body: JSON.stringify({
-      text: trimmed,
-      voice: openAiTtsVoiceId(voiceGender, voiceStyle),
-      model,
-    }),
+    body: JSON.stringify(payload),
   });
 
   if (!res.ok) {
@@ -319,9 +337,27 @@ async function tryOpenAiTts(
   text: string,
   mouthShapeRef: { current: KalidokitMouthShape },
   voiceGender: TtsVoiceGender | undefined,
-  fetchOpts?: { model?: "tts-1" | "tts-1-hd"; voiceStyle?: "default" | "conversation" },
+  fetchOpts?: {
+    model?: "tts-1" | "tts-1-hd" | "gpt-4o-mini-tts";
+    voiceStyle?: "default" | "conversation";
+  },
 ): Promise<void> {
-  const blob = await fetchOpenAiTtsBlob(text, voiceGender, fetchOpts);
+  let blob: Blob;
+  try {
+    blob = await fetchOpenAiTtsBlob(text, voiceGender, fetchOpts);
+  } catch (e) {
+    if (
+      fetchOpts?.model === "gpt-4o-mini-tts" &&
+      fetchOpts?.voiceStyle === "conversation"
+    ) {
+      blob = await fetchOpenAiTtsBlob(text, voiceGender, {
+        model: "tts-1-hd",
+        voiceStyle: "conversation",
+      });
+    } else {
+      throw e instanceof Error ? e : new Error(String(e));
+    }
+  }
 
   /* APK / WebView without `speechSynthesis`: Web Audio analyser path is flaky — simple `<audio>` MP3 only. */
   const useSimplePlayback = isNativeCapacitor() || !isSpeechSynthesisSupported();
@@ -360,7 +396,7 @@ export type SpeakWithAvatarLipSyncOpts = {
   /** If true, use OpenAI MP3 + Web Audio lip sync (optional). Default: browser TTS only (same as before). */
   preferOpenAiTts?: boolean;
   /**
-   * Voice chat page only: OpenAI `tts-1-hd` + calmer dialogue voices; browser path gets slightly slower/calmer delivery.
+   * Voice chat page only: OpenAI `gpt-4o-mini-tts` + marin/cedar + style instructions (ChatGPT-like); browser path gets calmer delivery.
    */
   voiceChatOpenAiTts?: boolean;
 };
@@ -383,7 +419,7 @@ export async function speakTextWithAvatarLipSync(
         text,
         ref,
         opts.voiceGender,
-        voiceChat ? { model: "tts-1-hd", voiceStyle: "conversation" } : undefined,
+        voiceChat ? { model: "gpt-4o-mini-tts", voiceStyle: "conversation" } : undefined,
       );
       return;
     } catch (e) {

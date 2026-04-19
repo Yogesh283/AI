@@ -1,9 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useLayoutEffect, useState } from "react";
 import { useSiteBrand } from "@/components/SiteBrandProvider";
 import { NeoBackground } from "@/components/neo/NeoBackground";
 import { NeoLogoMark } from "@/components/neo/NeoLogoHead";
+import { getStoredToken } from "@/lib/auth";
 
 /**
  * ChatGPT-like public pages: top bar + centered column, NeoXAI theme.
@@ -16,6 +19,18 @@ export function NeoPublicShell({
   maxWidth?: "max-w-lg" | "max-w-2xl" | "max-w-3xl" | "max-w-4xl";
 }) {
   const { brandName } = useSiteBrand();
+  const pathname = usePathname();
+  const [authed, setAuthed] = useState(false);
+
+  useLayoutEffect(() => {
+    const sync = () => setAuthed(Boolean(getStoredToken()));
+    sync();
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "neo-token" || e.key === "neo-user") sync();
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [pathname]);
 
   return (
     <div className="relative z-[1] flex min-h-screen flex-col">
@@ -28,18 +43,29 @@ export function NeoPublicShell({
           </span>
         </Link>
         <nav className="flex shrink-0 items-center gap-2 text-xs sm:gap-3 sm:text-sm">
-          <Link
-            href="/login"
-            className="whitespace-nowrap font-medium text-white/55 transition hover:text-white/90"
-          >
-            Log in
-          </Link>
-          <Link
-            href="/register"
-            className="whitespace-nowrap rounded-lg border border-white/[0.12] bg-white/[0.06] px-2.5 py-1.5 font-medium text-white/90 transition hover:bg-white/[0.1] sm:px-3.5"
-          >
-            Sign up
-          </Link>
+          {authed ? (
+            <Link
+              href="/dashboard"
+              className="whitespace-nowrap rounded-lg border border-white/[0.12] bg-white/[0.06] px-2.5 py-1.5 font-medium text-white/90 transition hover:bg-white/[0.1] sm:px-3.5"
+            >
+              Dashboard
+            </Link>
+          ) : (
+            <>
+              <Link
+                href="/login"
+                className="whitespace-nowrap font-medium text-white/55 transition hover:text-white/90"
+              >
+                Log in
+              </Link>
+              <Link
+                href="/register"
+                className="whitespace-nowrap rounded-lg border border-white/[0.12] bg-white/[0.06] px-2.5 py-1.5 font-medium text-white/90 transition hover:bg-white/[0.1] sm:px-3.5"
+              >
+                Sign up
+              </Link>
+            </>
+          )}
         </nav>
       </header>
       <div

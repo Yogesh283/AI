@@ -74,8 +74,13 @@ async def tts_stub(payload: TtsBody) -> dict:
 
 class TtsAudioBody(BaseModel):
     text: str = ""
-    voice: str = Field(default="nova", description="OpenAI TTS voice (e.g. nova, alloy, shimmer)")
-    model: str = Field(default="tts-1", description="tts-1 | tts-1-hd")
+    voice: str = Field(default="nova", description="OpenAI TTS voice (e.g. marin, cedar, coral)")
+    model: str = Field(default="tts-1", description="tts-1 | tts-1-hd | gpt-4o-mini-tts")
+    instructions: str | None = Field(
+        default=None,
+        max_length=4096,
+        description="Optional; only used with gpt-4o-mini-tts (style / pacing hints).",
+    )
 
 
 @router.post("/tts-audio")
@@ -93,6 +98,7 @@ async def tts_audio(payload: TtsAudioBody) -> Response:
         payload.text,
         voice=payload.voice,
         model=payload.model,
+        instructions=payload.instructions,
     )
     if tts_err == "network":
         raise HTTPException(
@@ -126,10 +132,11 @@ class RealtimeTokenBody(BaseModel):
 
 
 def _realtime_output_voice(persona_id: str) -> str:
+    """Match OpenAI Realtime / ChatGPT-style defaults: marin (warm), cedar (steady male)."""
     pid = (persona_id or "sara").strip().lower()
     if pid == "arjun":
-        return "ash"
-    return "coral"
+        return "cedar"
+    return "marin"
 
 
 def _realtime_model() -> str:

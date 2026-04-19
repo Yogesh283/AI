@@ -55,7 +55,7 @@ const VOICE_HISTORY_PREFIX = "neo-voice-history-";
 const VOICE_ENGINE_KEY = "neo-voice-engine";
 type VoiceEngine = "live" | "classic";
 
-/** Voice chat page only: slow, warm delivery; OpenAI path uses HD + coral/ash; browser TTS uses `pickVoice` (en-IN / Hindi). */
+/** Voice chat page only: slow, warm delivery; OpenAI path uses gpt-4o-mini-tts + marin/cedar (ChatGPT-like); browser TTS uses `pickVoice` (en-IN / Hindi). */
 const VOICE_CHAT_TTS_SPEED: TtsSpeedPreset = "slow";
 const VOICE_CHAT_TTS_TONE: TtsTonePreset = "warm";
 /** OpenAI HD + conversation voices; browser TTS gets calmer pacing (see `voiceAvatarTts` / `voiceChatCalmDelivery`). */

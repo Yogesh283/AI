@@ -368,13 +368,16 @@ _OPENAI_TTS_VOICES = frozenset(
         "alloy",
         "ash",
         "ballad",
+        "cedar",
         "coral",
         "echo",
         "fable",
+        "marin",
         "onyx",
         "nova",
         "sage",
         "shimmer",
+        "verse",
     }
 )
 
@@ -384,6 +387,7 @@ async def synthesize_openai_tts(
     *,
     voice: str = "alloy",
     model: str = "tts-1",
+    instructions: str | None = None,
 ) -> tuple[bytes, str]:
     """
     OpenAI TTS → (mp3_bytes, err_tag).
@@ -403,8 +407,22 @@ async def synthesize_openai_tts(
         v = "alloy"
 
     m = (model or "tts-1").strip()
-    if m not in ("tts-1", "tts-1-hd"):
+    if m not in ("tts-1", "tts-1-hd", "gpt-4o-mini-tts"):
         m = "tts-1"
+
+    _hd_only_voices = frozenset(
+        {"alloy", "ash", "coral", "echo", "fable", "onyx", "nova", "sage", "shimmer"},
+    )
+    if m in ("tts-1", "tts-1-hd") and v not in _hd_only_voices:
+        v = {"marin": "coral", "cedar": "onyx", "verse": "sage", "ballad": "nova"}.get(v, "alloy")
+
+    inst = (instructions or "").strip()
+    if m in ("tts-1", "tts-1-hd"):
+        inst = ""
+
+    speech_json: dict[str, Any] = {"model": m, "input": clean, "voice": v}
+    if inst:
+        speech_json["instructions"] = inst[:4096]
 
     async with _openai_async_client() as client:
         try:
@@ -415,11 +433,7 @@ async def synthesize_openai_tts(
                     "Authorization": f"Bearer {key}",
                     "Content-Type": "application/json",
                 },
-                json={
-                    "model": m,
-                    "input": clean,
-                    "voice": v,
-                },
+                json=speech_json,
             )
             r.raise_for_status()
         except httpx.RequestError as e:
