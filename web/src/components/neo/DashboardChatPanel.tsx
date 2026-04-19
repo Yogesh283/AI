@@ -16,6 +16,7 @@ import { ChatAssistantAvatar, ChatUserAvatar } from "@/components/neo/ChatThread
 import {
   clearChatMessages,
   loadChatMessages,
+  NEO_CHAT_MESSAGES_CHANGED_EVENT,
   saveChatMessages,
 } from "@/lib/chatStorage";
 import { ChatMarkdown } from "@/components/neo/ChatMarkdown";
@@ -118,6 +119,21 @@ export function DashboardChatPanel() {
     const onFocus = () => setProfileTick((n) => n + 1);
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
+  }, []);
+
+  /** Voice page appends user lines to the same persisted thread — pull them in without refresh. */
+  useEffect(() => {
+    const onVoiceSynced = (e: Event) => {
+      const ce = e as CustomEvent<{ userId?: string }>;
+      const uid = getStoredUser()?.id ?? "anon";
+      if (ce.detail?.userId && ce.detail.userId !== uid) return;
+      const loaded = loadChatMessages(uid);
+      if (loaded && loaded.length > 0) {
+        setMsgs(loaded);
+      }
+    };
+    window.addEventListener(NEO_CHAT_MESSAGES_CHANGED_EVENT, onVoiceSynced as EventListener);
+    return () => window.removeEventListener(NEO_CHAT_MESSAGES_CHANGED_EVENT, onVoiceSynced as EventListener);
   }, []);
 
   useEffect(() => {

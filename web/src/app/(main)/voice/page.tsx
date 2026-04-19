@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { MainTopNav } from "@/components/neo/MainTopNav";
 import { fetchMe, getStoredToken, getStoredUser, patchVoicePersona, saveSession } from "@/lib/auth";
+import {
+  appendUserMessageToChatStorage,
+  transcriptsRoughlySame,
+} from "@/lib/chatStorage";
 import { postVoiceRealtimeToken } from "@/lib/api";
 import {
   DEFAULT_VOICE_SPEECH_LANG,
@@ -35,6 +39,10 @@ import {
   isOpenAiRealtimeVoiceSupported,
   startOpenAiRealtimeVoiceSession,
 } from "@/lib/openaiRealtimeVoice";
+import {
+  startLiveGoogleTranscriptSidecar,
+  type LiveGoogleSidecarHandle,
+} from "@/lib/voiceLiveGoogleSidecar";
 
 const VOICE_HISTORY_PREFIX = "neo-voice-history-";
 
@@ -98,6 +106,10 @@ export default function VoicePage() {
   const liveCancelRef = useRef<(() => void) | null>(null);
   /** True between Realtime `response.created` and `response.done` — drives transcript append vs new bubble. */
   const liveAssistStreamOpenRef = useRef(false);
+  /** True while OpenAI `input_audio_transcription.delta` is building the current user line. */
+  const liveUserTranscriptOpenRef = useRef(false);
+  /** Browser Google Web Speech beside Live — fills user text when Realtime transcription is missing/late. */
+  const liveGoogleSidecarRef = useRef<LiveGoogleSidecarHandle | null>(null);
 
   useEffect(() => {
     historyRef.current = history;
@@ -242,6 +254,13 @@ export default function VoicePage() {
 
   const stopSession = useCallback(() => {
     liveAssistStreamOpenRef.current = false;
+    liveUserTranscriptOpenRef.current = false;
+    try {
+      liveGoogleSidecarRef.current?.stop();
+    } catch {
+      /* ignore */
+    }
+    liveGoogleSidecarRef.current = null;
     try {
       liveCloseRef.current?.();
     } catch {
@@ -274,6 +293,7 @@ export default function VoicePage() {
     speakingRef.current = false;
     setSpeaking(false);
     liveAssistStreamOpenRef.current = false;
+    liveUserTranscriptOpenRef.current = false;
     try {
       unlockWebAudioAndSpeechFromUserGesture();
       const pid = normalizeVoicePersonaId(personaId ?? readStoredVoicePersonaId());
@@ -287,23 +307,89 @@ export default function VoicePage() {
           if (s === "open") {
             setLiveConnecting(false);
             setListening(true);
+            try {
+              liveGoogleSidecarRef.current?.stop();
+            } catch {
+              /* ignore */
+            }
+            liveGoogleSidecarRef.current =
+              startLiveGoogleTranscriptSidecar({
+                langBcp47: lang,
+                isSessionActive: () => sessionOnRef.current,
+                isAssistantSpeaking: () => speakingRef.current,
+                onGapFillUserText: (gapText) => {
+                  const uid = getStoredUser()?.id ?? "anon";
+                  const line = gapText.replace(/\s+/g, " ").trim();
+                  if (line.length < 2) return;
+                  setHistory((h) => {
+                    const last = h[h.length - 1];
+                    if (last?.role === "user" && last.content.trim() === line) {
+                      return h;
+                    }
+                    if (last?.role === "user" && transcriptsRoughlySame(last.content, line)) {
+                      return h;
+                    }
+                    const next = [...h, { role: "user" as const, content: line }];
+                    historyRef.current = next;
+                    return next;
+                  });
+                  appendUserMessageToChatStorage(uid, line);
+                },
+              }) ?? null;
           }
           if (s === "closed") {
             setLiveConnecting(false);
             setListening(false);
+            try {
+              liveGoogleSidecarRef.current?.stop();
+            } catch {
+              /* ignore */
+            }
+            liveGoogleSidecarRef.current = null;
           }
+        },
+        onUserTranscriptDelta: (delta) => {
+          if (!delta) return;
+          liveGoogleSidecarRef.current?.markLiveUserTranscript();
+          setHistory((h) => {
+            const next = [...h];
+            const L = next.length - 1;
+            const appendHere =
+              L >= 0 && next[L].role === "user" && liveUserTranscriptOpenRef.current;
+            if (appendHere) {
+              next[L] = { role: "user", content: next[L].content + delta };
+            } else {
+              next.push({ role: "user", content: delta });
+              liveUserTranscriptOpenRef.current = true;
+            }
+            historyRef.current = next;
+            return next;
+          });
         },
         onUserTranscript: (t) => {
           const line = t.trim();
           if (!line) return;
+          liveUserTranscriptOpenRef.current = false;
+          liveGoogleSidecarRef.current?.markLiveUserTranscript();
+          appendUserMessageToChatStorage(getStoredUser()?.id ?? "anon", line);
           setHistory((h) => {
+            const next = [...h];
+            const L = next.length - 1;
+            if (L >= 0 && next[L].role === "user") {
+              if (next[L].content.trim() === line) {
+                return h;
+              }
+              next[L] = { role: "user", content: line };
+              historyRef.current = next;
+              return next;
+            }
             const last = h[h.length - 1];
             if (last?.role === "user" && last.content.trim() === line) {
               return h;
             }
-            const next = [...h, { role: "user" as const, content: line }];
-            historyRef.current = next;
-            return next;
+            const merged: Turn[] = [...next, { role: "user", content: line }];
+            historyRef.current = merged;
+            return merged;
           });
         },
         onAssistantTranscriptDelta: (delta) => {
@@ -352,6 +438,7 @@ export default function VoicePage() {
         onAssistantSpeaking: (on) => {
           speakingRef.current = on;
           setSpeaking(on);
+          liveGoogleSidecarRef.current?.resetPending();
           /* New response: keep false until the first delta creates/opens the row — avoids appending into the prior reply. */
           liveAssistStreamOpenRef.current = false;
         },
@@ -407,6 +494,12 @@ export default function VoicePage() {
   useEffect(() => {
     return () => {
       sessionOnRef.current = false;
+      try {
+        liveGoogleSidecarRef.current?.stop();
+      } catch {
+        /* ignore */
+      }
+      liveGoogleSidecarRef.current = null;
       try {
         liveCloseRef.current?.();
       } catch {

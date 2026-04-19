@@ -143,6 +143,15 @@ def _realtime_model() -> str:
     return (os.getenv("OPENAI_REALTIME_MODEL") or "gpt-4o-mini-realtime-preview").strip()
 
 
+def _realtime_input_transcription(speech_lang: str) -> dict[str, object]:
+    """Whisper hint from UI speech locale (e.g. hi-IN → hi) so user lines show up reliably in Live."""
+    lang = (speech_lang or "en-IN").strip().replace("_", "-")
+    primary = lang.split("-", 1)[0].lower() if lang else "en"
+    if len(primary) < 2:
+        primary = "en"
+    return {"model": "whisper-1", "language": primary}
+
+
 def _realtime_server_vad() -> dict[str, object]:
     """
     Reduce false “user is speaking” cuts from speaker bleed-through (phone mic hears assistant audio).
@@ -267,7 +276,7 @@ async def post_realtime_token(
         "audio": {
             "input": {
                 "noise_reduction": {"type": "far_field"},
-                "transcription": {"model": "whisper-1"},
+                "transcription": _realtime_input_transcription(body.speech_lang),
                 "turn_detection": _realtime_server_vad(),
             },
             "output": {"voice": out_voice},

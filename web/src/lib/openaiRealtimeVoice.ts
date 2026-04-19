@@ -20,7 +20,9 @@ export function isOpenAiRealtimeVoiceSupported(): boolean {
 
 export type OpenAiRealtimeVoiceCallbacks = {
   onConnection?: (state: "connecting" | "open" | "closed") => void;
-  /** User line from input transcription (when enabled server-side). */
+  /** Streaming user text from OpenAI input-audio ASR (same source as {@link onUserTranscript}). */
+  onUserTranscriptDelta?: (delta: string) => void;
+  /** Final user line when input-audio transcription completes (authoritative). */
   onUserTranscript?: (text: string) => void;
   /** Assistant transcript streamed token-by-token while audio plays. */
   onAssistantTranscriptDelta?: (delta: string) => void;
@@ -57,9 +59,28 @@ function routeRealtimeEvent(
     cb.onError?.(msg);
     return;
   }
+  if (type === "conversation.item.input_audio_transcription.delta") {
+    const d =
+      typeof ev.delta === "string"
+        ? ev.delta
+        : typeof (ev as { text?: unknown }).text === "string"
+          ? String((ev as { text: string }).text)
+          : "";
+    if (d) cb.onUserTranscriptDelta?.(d);
+    return;
+  }
   if (type === "conversation.item.input_audio_transcription.completed") {
     const t = String(ev.transcript || "").trim();
     if (t) cb.onUserTranscript?.(t);
+    return;
+  }
+  if (type === "conversation.item.input_audio_transcription.failed") {
+    const err = ev.error;
+    const msg =
+      err && typeof err === "object"
+        ? String((err as Record<string, unknown>).message || "Input transcription failed")
+        : "Input transcription failed";
+    cb.onError?.(msg);
     return;
   }
   /* Some sessions emit both GA + legacy delta streams for the same speech — first channel wins per response. */
