@@ -322,6 +322,7 @@ export default function VoicePage() {
           if (s === "open") {
             liveSendClientEventRef.current = live.sendClientEvent;
             liveEnsureMicRef.current = live.ensureLocalMicLive;
+            /* One uplink arm after bridge open — avoid repeated native calls (APK “tun” / focus churn). */
             live.ensureLocalMicLive();
             setLiveConnecting(false);
             setListening(true);
@@ -403,16 +404,16 @@ export default function VoicePage() {
             }
             setLiveWebFetching(false);
             /*
-             * LOCK: only `response.cancel` when server reports an in-flight response (`liveResponseBusyRef`).
-             * Blind cancel caused APK yellow: "Cancellation failed: no active response found".
+             * LOCK: `response.cancel` only when a response is actually in flight — `liveResponseBusyRef`
+             * from Realtime events, OR assistant audio still playing (`speakingRef`) if event order lags.
+             * Cancelling when nothing is active → APK "Cancellation failed"; cancelling every turn → mic/OS churn.
              */
-            if (liveResponseBusyRef.current) {
+            if (liveResponseBusyRef.current || speakingRef.current) {
               liveCancelRef.current?.();
               await new Promise<void>((r) => {
                 setTimeout(r, 200);
               });
             }
-            liveEnsureMicRef.current?.();
             if (!sessionOnRef.current || myTurn !== voiceLiveWebTurnRef.current) return;
             if (block) {
               send({
@@ -430,8 +431,8 @@ export default function VoicePage() {
               });
             }
             send({ type: "response.create" });
+            /* Single re-arm after new response starts — no per-turn spam (reduces APK mic focus noise). */
             liveEnsureMicRef.current?.();
-            queueMicrotask(() => liveEnsureMicRef.current?.());
           };
           liveWebPipelineRef.current = liveWebPipelineRef.current
             .then(runPipeline)
@@ -487,9 +488,6 @@ export default function VoicePage() {
           setSpeaking(on);
           /* New response: keep false until the first delta creates/opens the row — avoids appending into the prior reply. */
           liveAssistStreamOpenRef.current = false;
-          if (!on) {
-            liveEnsureMicRef.current?.();
-          }
         },
         onAssistantResponseActive: (active) => {
           liveResponseBusyRef.current = active;
