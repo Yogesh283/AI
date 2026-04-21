@@ -144,10 +144,11 @@ async def chat_completion(
     messages: list[dict[str, str]],
     *,
     user_id: str | None = None,
+    openai_request_overrides: dict[str, Any] | None = None,
 ) -> ChatCompletionResult:
     key = _openai_api_key()
     if key:
-        return await _openai_chat(messages, key)
+        return await _openai_chat(messages, key, openai_request_overrides=openai_request_overrides)
 
     last = messages[-1]["content"] if messages else ""
     return ChatCompletionResult(
@@ -160,7 +161,23 @@ async def chat_completion(
     )
 
 
-async def _openai_chat(messages: list[dict[str, str]], api_key: str) -> ChatCompletionResult:
+async def _openai_chat(
+    messages: list[dict[str, str]],
+    api_key: str,
+    *,
+    openai_request_overrides: dict[str, Any] | None = None,
+) -> ChatCompletionResult:
+    payload: dict[str, Any] = {
+        "model": "gpt-4o-mini",
+        "messages": messages,
+        # Slightly higher for more natural, human-like phrasing (still grounded).
+        "temperature": 0.76,
+    }
+    if openai_request_overrides:
+        for k, v in openai_request_overrides.items():
+            if k in ("model", "messages"):
+                continue
+            payload[k] = v
     async with _openai_async_client() as client:
         try:
             r = await _post_openai_with_retries(
@@ -170,12 +187,7 @@ async def _openai_chat(messages: list[dict[str, str]], api_key: str) -> ChatComp
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
                 },
-                json={
-                    "model": "gpt-4o-mini",
-                    "messages": messages,
-                    # Slightly higher for more natural, human-like phrasing (still grounded).
-                    "temperature": 0.76,
-                },
+                json=payload,
             )
             r.raise_for_status()
         except httpx.HTTPStatusError as e:

@@ -177,6 +177,94 @@ pm2 logs neo-api --lines 30
 
 ---
 
+## G2) Chat: `ConnectError` / “All connection attempts failed” — **Nginx (permanent fix)**
+
+Yeh error aksar **OpenAI key missing** se kam aur **galat reverse-proxy** se zyada hota hai.
+
+**Architecture (yaad rakho):**
+
+| Layer | Port | Kaam |
+|--------|------|------|
+| **Browser / APK** | HTTPS 443 | Sirf **domain** — kabhi seedha `8010` expose mat karo. |
+| **Nginx** | 443 → **3000** | Saari site + **`/neo-api`** → **Next.js (`neo-web`)**. |
+| **Next.js** | 3000 | `app/neo-api/...` se andar se FastAPI ko proxy (`127.0.0.1:8010`). |
+| **FastAPI** | **8010** sirf `127.0.0.1` | `neo-api` — yahi par `OPENAI_API_KEY` use hoti hai. |
+
+**Galat:** Nginx mein `location /neo-api` → `http://127.0.0.1:8010` (browser ko seedha backend / galat TLS / ConnectError).
+
+**Sahi:** **`/` aur `/neo-api` dono** → `http://127.0.0.1:3000` (Next).
+
+Nginx `server { ... }` ke andar (apni `server_name` + SSL paths adjust karo):
+
+```nginx
+location /neo-api {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 86400s;
+    proxy_buffering off;
+}
+
+location / {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+Phir:
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+**Verify (domain se):**
+
+```bash
+curl -sS -o /dev/null -w "%{http_code}\n" https://myneoxai.com/neo-api/health
+```
+
+`200` ya **401** (JWT required) theek hai — matlab Next tak request pahunch rahi hai. **`000` / connection refused** = abhi bhi galat upstream.
+
+---
+
+## G3) OpenAI API — **server par permanently** (`neo-api`)
+
+Chat + voice ke liye **FastAPI** ko valid key chahiye; yeh file **server** par rehti hai, build mein nahi.
+
+```bash
+nano /home/myneoxai/apps/neoxai/backend/.env
+```
+
+Ek strong line (example):
+
+```bash
+OPENAI_API_KEY=sk-...your-real-secret-key...
+```
+
+Save ke baad:
+
+```bash
+pm2 restart neo-api --update-env
+```
+
+Check:
+
+```bash
+curl -sS http://127.0.0.1:8010/health
+pm2 logs neo-api --lines 25
+```
+
+Agar **G2 (Nginx → 3000)** + **G3 (`OPENAI_API_KEY`)** + **`pm2 restart neo-api neo-web`** teeno theek hon, to wohi “Chat failed: ConnectError…” routing wala message dubara nahi aana chahiye.
+
+---
+
 *Local dev se automatic deploy nahi hota — `git push` + server par **B** (ya **E**) chalana zaroori hai.*
 
 

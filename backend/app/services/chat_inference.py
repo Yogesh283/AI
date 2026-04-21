@@ -165,7 +165,11 @@ async def stream_local_chat_deltas(
             raise RuntimeError(f"[local chat network] {type(e).__name__}: {e}") from e
 
 
-async def local_chat_completion(messages: list[dict[str, str]]) -> ChatCompletionResult:
+async def local_chat_completion(
+    messages: list[dict[str, str]],
+    *,
+    openai_request_overrides: dict[str, Any] | None = None,
+) -> ChatCompletionResult:
     """Non-streaming completion against the local OpenAI-compatible endpoint."""
     url = local_chat_url()
     model = local_chat_model_id()
@@ -174,18 +178,25 @@ async def local_chat_completion(messages: list[dict[str, str]]) -> ChatCompletio
     if key:
         headers["Authorization"] = f"Bearer {key}"
 
+    payload: dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "temperature": 0.76,
+        "stream": False,
+    }
+    if openai_request_overrides:
+        for k, v in openai_request_overrides.items():
+            if k in ("model", "messages", "stream"):
+                continue
+            payload[k] = v
+
     async with _local_async_client() as client:
         try:
             r = await _post_local_with_retries(
                 client,
                 url,
                 headers=headers,
-                json={
-                    "model": model,
-                    "messages": messages,
-                    "temperature": 0.76,
-                    "stream": False,
-                },
+                json=payload,
             )
             r.raise_for_status()
         except httpx.HTTPStatusError as e:
@@ -230,10 +241,15 @@ async def unified_chat_completion(
     messages: list[dict[str, str]],
     *,
     user_id: str | None = None,
+    openai_request_overrides: dict[str, Any] | None = None,
 ) -> ChatCompletionResult:
     if chat_inference_backend() == "local":
-        return await local_chat_completion(messages)
-    return await chat_completion(messages, user_id=user_id)
+        return await local_chat_completion(messages, openai_request_overrides=openai_request_overrides)
+    return await chat_completion(
+        messages,
+        user_id=user_id,
+        openai_request_overrides=openai_request_overrides,
+    )
 
 
 async def unified_stream_chat_deltas(

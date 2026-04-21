@@ -83,7 +83,10 @@ async def _fetch_google_cse_snippets(query: str, *, limit: int) -> str:
             r.raise_for_status()
             data = r.json()
     except Exception as e:
-        logger.warning("Google CSE failed: %s", e)
+        if isinstance(e, httpx.HTTPStatusError):
+            logger.warning("Google CSE failed: HTTP %s (check API key / quota / referrer restrictions)", e.response.status_code)
+        else:
+            logger.warning("Google CSE failed: %s", type(e).__name__)
         return ""
 
     items = data.get("items") or []

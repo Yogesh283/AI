@@ -29,6 +29,7 @@ from app.services.chat_inference import (
     unified_chat_completion,
     unified_stream_chat_deltas,
 )
+from app.services.live_google_query_refine import maybe_refine_google_query
 from app.services.sports_feed import build_live_web_context_block
 from app.store import add_chat_turn, add_memory_fact, get_memory, get_profile, get_recent_chat_history
 
@@ -150,6 +151,21 @@ def _append_system_suffix(msgs: list[dict[str, str]], suffix: str) -> list[dict[
         else:
             out.append(dict(m))
     return out
+
+
+def _friendly_chat_stream_failure_message(exc: BaseException) -> str:
+    """Shown in-chat when SSE cannot finish — no raw stack traces or vendor noise."""
+    low = str(exc).lower()
+    if any(x in low for x in ("connect", "connection", "timeout", "timed out", "unreachable", "refused", "reset")):
+        return (
+            "That request didn’t finish (network or service was busy). "
+            "Please tap **Send** again — your message is fine. "
+            "If it keeps happening, check Wi‑Fi/VPN or wait a minute."
+        )
+    return (
+        "Something went wrong while drafting that reply. "
+        "Please try **Send** once more. If it repeats, refresh the page or check **Profile**."
+    )
 
 
 def _compact_line(text: str, max_len: int = 180) -> str:
@@ -316,7 +332,12 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
     # return above before this. use_web remains supported for clients but is no longer required.
     want_web = bool(last_user.strip())
     if want_web:
-        web_block = await build_live_web_context_block(last_user, now_ist=now_ist)
+        try:
+            query_for_google = await maybe_refine_google_query(last_user, user_id=uid)
+            web_block = await build_live_web_context_block(query_for_google, now_ist=now_ist)
+        except Exception as e:
+            logger.warning("live Google context skipped for this turn: %s", e)
+            web_block = ""
 
     past_timeline = ""
     if timeline_rows:
@@ -539,9 +560,14 @@ async def post_chat(
             result = retry
             reply = retry.text
         elif not web_block and last_user and _reply_claims_no_live_data(reply):
-            forced_block = await build_live_web_context_block(
-                last_user, now_ist=datetime.now(timezone.utc).astimezone(IST)
-            )
+            try:
+                rq = await maybe_refine_google_query(last_user, user_id=uid)
+                forced_block = await build_live_web_context_block(
+                    rq, now_ist=datetime.now(timezone.utc).astimezone(IST)
+                )
+            except Exception as fe:
+                logger.warning("post_chat forced Google fetch failed: %s", fe)
+                forced_block = ""
             if forced_block:
                 retry_system = (
                     f"{system_extra}\n\n--- Live web results (forced retry for current facts).\n"
@@ -578,12 +604,17 @@ async def post_live_context(
     user: dict | None = Depends(optional_user),
 ) -> dict[str, str]:
     """Return Google web+news snippet block for a user line (voice Realtime sidecar)."""
-    _ = user
     q = (body.query or "").strip()
     if not q:
         return {"block": ""}
+    uid = str(user["id"]) if user else "default"
     now_ist = datetime.now(timezone.utc).astimezone(IST)
-    block = await build_live_web_context_block(q, now_ist=now_ist)
+    try:
+        rq = await maybe_refine_google_query(q, user_id=uid)
+        block = await build_live_web_context_block(rq, now_ist=now_ist)
+    except Exception as e:
+        logger.warning("post_live_context Google fetch failed: %s", e)
+        block = ""
     return {"block": block or ""}
 
 
@@ -637,9 +668,14 @@ async def post_chat_stream(
                         )
                         retry_msgs = _append_system_suffix(msgs, suffix)
                     else:
-                        forced_block = await build_live_web_context_block(
-                            ctx.last_user, now_ist=datetime.now(timezone.utc).astimezone(IST)
-                        )
+                        try:
+                            rq = await maybe_refine_google_query(ctx.last_user, user_id=ctx.uid)
+                            forced_block = await build_live_web_context_block(
+                                rq, now_ist=datetime.now(timezone.utc).astimezone(IST)
+                            )
+                        except Exception as fe:
+                            logger.warning("stream retry Google fetch failed: %s", fe)
+                            forced_block = ""
                         if forced_block:
                             retry_msgs = _append_system_suffix(
                                 msgs,
@@ -666,7 +702,9 @@ async def post_chat_stream(
             yield _sse({"done": True})
         except Exception as e:
             logger.exception("post_chat_stream failed")
-            yield _sse({"e": str(e)})
+            # Send assistant text instead of `{"e":...}` so the web client does not throw and the user
+            # still sees a calm message (especially after live-fetch turns).
+            yield _sse({"d": _friendly_chat_stream_failure_message(e)})
             yield _sse({"done": True})
 
     return StreamingResponse(
