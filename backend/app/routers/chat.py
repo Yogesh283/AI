@@ -152,6 +152,14 @@ _STANDINGS_TABLE_FORMAT_FIX = (
     "say the rest were not in the retrieved lines.\n"
 )
 
+_FULL_RANKING_LIST_FIX = (
+    "\n\n--- MANDATORY RANKING FIX\n"
+    "Your numbered IPL team list matched generic training patterns (often wrong vs real standings). "
+    "Regenerate in the user's language: NO complete 1–10 or 1–8 numbered lists of all franchises. "
+    "Use short sentences quoting ONLY ranks/teams/points that literally appear in LIVE DATA snippets. "
+    "Say clearly if snippets lack a full official table—invent nothing from memory.\n"
+)
+
 
 def _user_asks_standings_or_table(text: str) -> bool:
     """User wants ranks / points table / tabular style (EN + HI)."""
@@ -196,6 +204,91 @@ def _needs_standings_table_retry(last_user: str, reply: str, web_block: str) -> 
     if not _user_asks_standings_or_table(last_user):
         return False
     return _reply_uses_markdown_pipe_table(reply)
+
+
+_NUMBERED_RANK_LINE_IPL = re.compile(
+    r"^\d{1,2}\s*[.)．·]\s*\S",
+    re.UNICODE,
+)
+
+
+def _is_numbered_rank_line_ipl(ln: str) -> bool:
+    """Broad match: '1.', '1)', full-width dot, slight spacing variants (mobile keyboards)."""
+    s = (ln or "").strip()
+    if len(s) < 3:
+        return False
+    if _NUMBERED_RANK_LINE_IPL.match(s):
+        return True
+    # Fallback: digit(s) then dot/paren anywhere in first 5 chars (some clients break lines oddly)
+    return bool(re.match(r"^\d{1,2}\s*[.)．]", s))
+
+
+def _reply_looks_like_full_numbered_ipl_ranking(reply: str) -> bool:
+    """Detects fabricated '1. MI … 10. DC' style ladders (Hindi or English)."""
+    lines = [ln.strip() for ln in (reply or "").splitlines() if ln.strip()]
+    numbered = [ln for ln in lines if _is_numbered_rank_line_ipl(ln)]
+    if len(numbered) < 5:
+        return False
+    blob = "\n".join(numbered).lower()
+    hi_blob = "\n".join(numbered)
+    markers_en = (
+        "mumbai",
+        "chennai",
+        "bangalore",
+        "kolkata",
+        "punjab",
+        "rajasthan",
+        "hyderabad",
+        "gujarat",
+        "lucknow",
+        "delhi",
+        " mi",
+        "(mi)",
+        "(csk)",
+        "kkr",
+        "rcb",
+        "srh",
+        "pbks",
+        " gt",
+        "lsg",
+        " rr",
+        " dc",
+    )
+    markers_hi = ("मुंबई", "चेन्नई", "बैंगलोर", "कोलकाता", "पंजाब", "राजस्थान", "हैदराबाद", "गुजरात", "लखनऊ", "दिल्ली")
+    hits = sum(1 for m in markers_en if m in blob)
+    hits += sum(1 for m in markers_hi if m in hi_blob)
+    # Memorized wrong ladder often uses phrases like "रैंकिंग इस प्रकार"
+    intro = ("रैंकिंग इस प्रकार", "ranking", "टीम रैंकिंग", "points table", "अंक तालिका")
+    intro_hit = any(x in (reply or "") for x in intro)
+    if intro_hit and len(numbered) >= 5 and hits >= 4:
+        return True
+    return hits >= 4 or len(numbered) >= 7
+
+
+def _user_might_want_ipl_ranking(text: str) -> bool:
+    if _user_asks_standings_or_table(text):
+        return True
+    s = (text or "").strip().lower()
+    hi = text or ""
+    return (
+        "ipl" in s
+        or "आईपीएल" in hi
+        or "points table" in s
+        or "points-table" in s
+        or "रैंकिंग" in hi
+        or "रैंक" in hi
+        or ("टीम" in hi and ("रैंक" in hi or "rank" in s))
+    )
+
+
+def _needs_full_ranking_list_retry(last_user: str, reply: str, web_block: str) -> bool:
+    if not (web_block or "").strip() or not (reply or "").strip():
+        return False
+    if not is_sports_live_query(last_user):
+        return False
+    if not _user_might_want_ipl_ranking(last_user):
+        return False
+    return _reply_looks_like_full_numbered_ipl_ranking(reply)
 
 
 def _append_system_suffix(msgs: list[dict[str, str]], suffix: str) -> list[dict[str, str]]:
@@ -436,11 +529,21 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
     )
     sports_standings_rule = ""
     if is_sports_live_query(last_user):
+        lu = (last_user or "").lower()
+        hi = last_user or ""
         sports_standings_rule = (
             "Sports / IPL / league standings: NEVER use a GitHub markdown pipe table (no | rows), even if the user "
-            "asks for a 'table' or 'टेबल'. Pipe tables caused wrong invented scores. Use bullets or short sentences; "
-            "each line must follow the LIVE DATA snippet lines—same teams and numbers as written there. "
+            "asks for a 'table' or 'टेबल'. Pipe tables caused wrong invented scores. "
+            "Also NEVER print a complete numbered list from 1 through 10 (or 1. 2. … 10.) of all IPL teams in rank "
+            "order unless every rank+team pair appears explicitly in the LIVE DATA snippets—those lists were wrong "
+            "when filled from memory. Use short prose; only ranks/teams supported by snippet wording. "
         )
+        if "ipl" in lu or "आईपीएल" in hi:
+            sports_standings_rule += (
+                " IPL-only warning: generic training often puts Mumbai Indians first or uses a stale ladder—that is "
+                "frequently **wrong** for the real current season. Ignore that default; copy **only** order/points "
+                "that appear in the snippets. If snippets lack a full table, say so—never invent positions 1–10. "
+            )
     table_format_policy = (
         f"{sports_standings_rule}"
         "For non-sports topics only: when the user asks for a table and snippets already contain the same numbers "
@@ -681,6 +784,15 @@ async def post_chat(
             )
             result = retry
             reply = retry.text
+        if web_block and last_user and _needs_full_ranking_list_retry(last_user, reply, web_block):
+            retry_msgs = _append_system_suffix(msgs, _FULL_RANKING_LIST_FIX)
+            retry = await unified_chat_completion(
+                retry_msgs,
+                user_id=uid,
+                openai_request_overrides={"temperature": CHAT_TEMP_WITH_LIVE_WEB},
+            )
+            result = retry
+            reply = retry.text
     except HTTPException:
         raise
     except Exception as e:
@@ -808,6 +920,18 @@ async def post_chat_stream(
                         full = full3
                         usage_h.clear()
                         usage_h.extend(usage_h3)
+                if (
+                    ctx.web_block
+                    and ctx.last_user.strip()
+                    and _needs_full_ranking_list_retry(ctx.last_user, full, ctx.web_block)
+                ):
+                    fix_msgs = _append_system_suffix(msgs, _FULL_RANKING_LIST_FIX)
+                    usage_h4: list[dict[str, Any]] = []
+                    full4 = await _collect_stream(fix_msgs, usage_h4, force_live_temp=True)
+                    if len(full4.strip()) >= 40:
+                        full = full4
+                        usage_h.clear()
+                        usage_h.extend(usage_h4)
                 for i in range(0, len(full), 120):
                     yield _sse({"d": full[i : i + 120]})
             else:

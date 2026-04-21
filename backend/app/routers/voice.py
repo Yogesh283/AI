@@ -255,6 +255,8 @@ async def _build_realtime_instructions(
         "Truth rule: only treat as 'certain' what the live web data message actually contains; never sound sure about "
         "scores, ranks, or prices that are not written there. Wrong confident data is unacceptable—prefer saying "
         "those exact figures were not in the retrieved lines. "
+        "Never read aloud a full 1-to-10 IPL team ranking list unless that exact order appears in the live message—"
+        "numbered ladders were often wrong when invented from memory. "
         "Sports or points: speak only numbers that actually appear inside the live web data message—never invent "
         "a full standings table from memory. If a number is not verbatim in that message, omit it. "
         "Never describe standings as a markdown pipe table aloud—summarize in short spoken sentences from snippets. "
