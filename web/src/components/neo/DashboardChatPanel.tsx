@@ -64,7 +64,7 @@ export function DashboardChatPanel() {
   const dictationBaseRef = useRef("");
   const handledSearchKeyRef = useRef<string | null>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
-  /** When server pings live fetch, buffer streamed tokens until min 3s “Searching…” window ends. */
+  /** When server pings live fetch, buffer streamed tokens until min ~3.5s “Searching…” window ends. */
   const liveSearchActiveRef = useRef(false);
   const liveSearchBufRef = useRef("");
   const liveSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -305,7 +305,7 @@ export function DashboardChatPanel() {
         liveSearchActiveRef.current = false;
         setLiveSearchUi(false);
         flushLiveSearchBuffer();
-      }, 3000);
+      }, 3500);
     };
 
     try {
@@ -485,7 +485,7 @@ export function DashboardChatPanel() {
                       <div className="text-[15px] leading-relaxed text-white/[0.9]">
                         {loading && isLast && liveSearchUi ? (
                           <p className="text-[#7dd3fc]/95">
-                            Searching live data…
+                            Searching Google for live data…
                             <span className="ml-0.5 inline-block h-4 w-[3px] translate-y-0.5 animate-pulse rounded-sm bg-[#00D4FF]/90 align-middle" aria-hidden />
                           </p>
                         ) : m.content.trim().length > 0 ? (

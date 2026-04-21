@@ -73,6 +73,16 @@ function IconMic({ className }: { className?: string }) {
   );
 }
 
+/** End Live session — vector (avoids missing-font “tofu” on some APK WebViews). */
+function IconLiveEnd({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="12" cy="12" r="9.25" stroke="currentColor" strokeWidth="1.75" />
+      <rect x="8.25" y="8.25" width="7.5" height="7.5" rx="1.5" fill="currentColor" />
+    </svg>
+  );
+}
+
 /** CSS-only bars — avoids Framer Motion + 22 animated nodes re-rendering every frame (flicker). */
 /** Animated mic bars removed — they read as “sound” / toy UI; status stays in the top bar text only. */
 function VoiceSessionWaveform(_props: {
@@ -106,11 +116,12 @@ export default function VoicePage() {
   const thinkingRef = useRef(false);
   const speakingRef = useRef(false);
   const historyRef = useRef<Turn[]>([]);
-  const transcriptRef = useRef<HTMLDivElement>(null);
   /** Monotonic id so stale `speaking` state doesn’t fight after interrupt. */
   const speakGenerationRef = useRef(0);
   const [liveConnecting, setLiveConnecting] = useState(false);
   const [liveWebFetching, setLiveWebFetching] = useState(false);
+  /** Bumps when Live session starts so the main control remounts once and plays the session-in animation. */
+  const [micSessionKey, setMicSessionKey] = useState(0);
   const liveCloseRef = useRef<(() => void) | null>(null);
   const liveCancelRef = useRef<(() => void) | null>(null);
   const liveSendClientEventRef = useRef<((o: Record<string, unknown>) => void) | null>(null);
@@ -141,12 +152,6 @@ export default function VoicePage() {
   useEffect(() => {
     speakingRef.current = speaking;
   }, [speaking]);
-
-  useEffect(() => {
-    const el = transcriptRef.current;
-    if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [history]);
 
   useLayoutEffect(() => {
     const pid = normalizeVoicePersonaId(readStoredVoicePersonaId());
@@ -388,13 +393,16 @@ export default function VoicePage() {
             setLiveWebFetching(true);
             const t0 = Date.now();
             let block = "";
+            let liveFetchFailed = false;
             try {
               const j = await postLiveWebContext(line);
               block = (j.block || "").trim();
             } catch {
+              liveFetchFailed = true;
               /* offline / API error — still continue after min delay */
             }
-            const waitMs = Math.max(0, 3000 - (Date.now() - t0));
+            /* Min ~3.5s beat so Google CSE + News can finish before the assistant speaks (user expectation ~3–4s). */
+            const waitMs = Math.max(0, 3500 - (Date.now() - t0));
             await new Promise<void>((r) => {
               setTimeout(r, waitMs);
             });
@@ -427,6 +435,18 @@ export default function VoicePage() {
                       text: `Live web data (Google; use for current facts; do not invent beyond this):\n${block.slice(0, 12000)}`,
                     },
                   ],
+                },
+              });
+            } else {
+              const hint = liveFetchFailed
+                ? "Live Google lookup failed (network or server). Answer briefly with clear uncertainty. Do not tell the user to visit other sites, official portals, or search engines for the same question—NeoXAI handles lookup here."
+                : "Live Google lookup returned no usable snippets for this question. Summarize what you can from training without inventing specifics. Do not tell the user to browse elsewhere or search the web themselves for this same info—keep the answer here.";
+              send({
+                type: "conversation.item.create",
+                item: {
+                  type: "message",
+                  role: "system",
+                  content: [{ type: "input_text", text: hint }],
                 },
               });
             }
@@ -550,6 +570,7 @@ export default function VoicePage() {
     setErr(null);
     sessionOnRef.current = true;
     setSessionOn(true);
+    setMicSessionKey((k) => k + 1);
     void startLiveVoice();
   }, [stopBargeInRecognition, stopSession, stopRecognitionOnly, stopVoiceOutput, startLiveVoice]);
 
@@ -570,19 +591,6 @@ export default function VoicePage() {
       stopVoiceOutput();
     };
   }, [stopBargeInRecognition, stopRecognitionOnly, stopVoiceOutput]);
-
-  const profileName = getStoredUser()?.display_name?.trim() || "You";
-
-  const clearHistory = useCallback(() => {
-    const uid = getStoredUser()?.id ?? "anon";
-    historyRef.current = [];
-    setHistory([]);
-    try {
-      localStorage.removeItem(`${VOICE_HISTORY_PREFIX}${uid}`);
-    } catch {
-      /* ignore */
-    }
-  }, []);
 
   const applyPersona = useCallback(
     async (id: "arjun" | "sara") => {
@@ -624,7 +632,6 @@ export default function VoicePage() {
   );
 
   const activePersonaId = normalizeVoicePersonaId(personaId);
-  const assistantLabel = getVoicePersona(activePersonaId).name;
 
   const headerTitle = useMemo(() => {
     if (!sessionOn) return "Voice chat";
@@ -674,95 +681,66 @@ export default function VoicePage() {
       />
 
       <div className="mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col px-4 py-6 md:max-w-xl">
-        {history.length > 0 ? (
-          <div className="mb-5 w-full shrink-0">
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-white/40">
-                Saved conversation
-              </p>
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center">
+          {!isOpenAiRealtimeVoiceSupported() ? (
+            <p className="mb-6 max-w-sm text-center text-[11px] leading-relaxed text-amber-400/90">
+              Live needs HTTPS and WebRTC. Update Android System WebView / Chrome on this device.
+            </p>
+          ) : null}
+          <div className="relative flex flex-col items-center">
+            <VoiceSessionWaveform
+              sessionOn={sessionOn}
+              speaking={speaking}
+              listening={listening}
+              thinking={thinking}
+            />
+            {sessionOn && speaking ? (
               <button
                 type="button"
-                onClick={clearHistory}
-                className="text-[10px] font-semibold text-[#00D4FF]/80 transition hover:text-[#00D4FF]"
+                onClick={tapToSpeak}
+                className="mb-3 mt-1 rounded-2xl border border-[#00D4FF]/35 bg-[#00D4FF]/10 px-5 py-2.5 text-sm font-semibold text-[#a5f3fc] transition hover:bg-[#00D4FF]/18"
               >
-                Clear
+                Tap to interrupt
               </button>
-            </div>
-            <div
-              ref={transcriptRef}
-              className="max-h-[min(42vh,240px)] space-y-4 overflow-y-auto overscroll-y-contain pr-1"
-            >
-              {history.map((turn, i) => (
-                <div
-                  key={i}
-                  className={
-                    turn.role === "user"
-                      ? "border-l-2 border-[#00D4FF]/35 pl-3"
-                      : "border-l-2 border-white/[0.12] pl-3"
-                  }
-                >
-                  <span className="text-[9px] font-bold uppercase tracking-wide text-white/35">
-                    {turn.role === "user" ? profileName : assistantLabel}
-                  </span>
-                  <p className="mt-1 text-[13px] leading-relaxed text-white/88 break-words">
-                    {turn.content}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : null}
-
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center">
-        {!isOpenAiRealtimeVoiceSupported() ? (
-          <p className="mb-6 max-w-sm text-center text-[11px] leading-relaxed text-amber-400/90">
-            Live needs HTTPS and WebRTC. Update Android System WebView / Chrome on this device.
-          </p>
-        ) : null}
-        <div className="relative flex flex-col items-center">
-          <VoiceSessionWaveform
-            sessionOn={sessionOn}
-            speaking={speaking}
-            listening={listening}
-            thinking={thinking}
-          />
-          {sessionOn && speaking ? (
+            ) : null}
+            {/* Soft glow while listening (not while assistant speaks — stable during reply). */}
+            {sessionOn && listening && !speaking && !liveConnecting && !liveWebFetching ? (
+              <div
+                className="pointer-events-none absolute -inset-10 rounded-full bg-emerald-400/18 blur-2xl"
+                aria-hidden
+              />
+            ) : null}
             <button
+              key={sessionOn ? `live-${micSessionKey}` : "idle-mic"}
               type="button"
-              onClick={tapToSpeak}
-              className="mb-3 mt-1 rounded-2xl border border-[#00D4FF]/35 bg-[#00D4FF]/10 px-5 py-2.5 text-sm font-semibold text-[#a5f3fc] transition hover:bg-[#00D4FF]/18"
+              onClick={toggleMic}
+              className={`relative z-[1] mt-4 flex h-[88px] w-[88px] shrink-0 items-center justify-center rounded-full text-white transition-transform duration-200 active:scale-[0.97] ${
+                sessionOn
+                  ? speaking
+                    ? "bg-gradient-to-br from-emerald-500 to-teal-800 shadow-[0_0_36px_rgba(16,185,129,0.28)] ring-[4px] ring-emerald-400/45"
+                    : `bg-gradient-to-br from-emerald-400 to-teal-700 ring-[4px] ring-emerald-300/40 neo-voice-mic-session-start ${
+                        listening && !liveConnecting && !liveWebFetching ? "neo-voice-mic-listen-pulse" : ""
+                      }`
+                  : "bg-gradient-to-br from-[#00D4FF] to-[#6366f1] shadow-[0_0_48px_rgba(0,212,255,0.28)] ring-[4px] ring-[#00D4FF]/40"
+              }`}
+              aria-pressed={sessionOn}
+              aria-label={sessionOn ? "End voice session" : "Start voice session"}
             >
-              Tap to interrupt
+              {sessionOn ? (
+                <IconLiveEnd className="text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]" />
+              ) : (
+                <span className="text-[#050912]">
+                  <IconMic />
+                </span>
+              )}
             </button>
-          ) : null}
-          <button
-            type="button"
-            onClick={toggleMic}
-            className={`relative mt-4 flex h-[88px] w-[88px] shrink-0 items-center justify-center rounded-full text-white shadow-[0_0_48px_rgba(0,212,255,0.32)] transition active:scale-[0.97] ${
-              sessionOn
-                ? "bg-gradient-to-br from-emerald-400 to-teal-700 ring-[4px] ring-emerald-300/35"
-                : "bg-gradient-to-br from-[#00D4FF] to-[#6366f1] ring-[4px] ring-[#00D4FF]/40"
-            }`}
-            aria-pressed={sessionOn}
-            aria-label={sessionOn ? "End voice session" : "Start voice session"}
-          >
-            {sessionOn ? (
-              <span className="text-2xl" aria-hidden>
-                &#x23FB;
-              </span>
-            ) : (
-              <span className="text-[#050912]">
-                <IconMic />
-              </span>
-            )}
-          </button>
-        </div>
+          </div>
 
-        {err ? (
-          <p className="mt-6 max-w-md text-center text-xs leading-relaxed text-amber-400/95" role="alert">
-            {err}
-          </p>
-        ) : null}
+          {err && !sessionOn ? (
+            <p className="mt-6 max-w-md text-center text-xs leading-relaxed text-amber-400/95" role="alert">
+              {err}
+            </p>
+          ) : null}
         </div>
       </div>
     </div>

@@ -190,12 +190,23 @@ def should_auto_fetch_web(user_text: str) -> bool:
         "match ",
         "candle",
         "chart",
+        "cbse",
+        "icse",
+        "board result",
+        "board results",
+        "exam result",
+        "topper",
+        "cutoff",
+        "merit",
+        "रिजल्ट",
+        "परिणाम",
+        "बोर्ड",
     )
     return any(k in s for k in keys)
 
 
 def augment_search_query(q: str) -> str:
-    """Bias query toward fresh results for market/news-style questions."""
+    """Bias query toward fresh results for market/news/exam-board-style questions."""
     raw = q.strip()
     if not raw:
         return ""
@@ -231,9 +242,37 @@ def augment_search_query(q: str) -> str:
             "candle",
         )
     )
+    exam_boardish = any(
+        x in low
+        for x in (
+            "cbse",
+            "icse",
+            "board exam",
+            "board result",
+            "board results",
+            "class 10",
+            "class 12",
+            "10th ",
+            "12th ",
+            "merit list",
+            "merit",
+            "topper",
+            "cutoff",
+            "cut off",
+            "jee",
+            "neet",
+            "upsc",
+            "exam result",
+            "exam results",
+            "result ",
+            "results",
+        )
+    )
     now = datetime.now(timezone.utc)
     if marketish:
         return f"{raw} latest news {now.year}"
+    if exam_boardish:
+        return f"{raw} {now.year} latest news"
     if "today" in low or "aaj" in low or "abhi" in low:
         return f"{raw} {now.year}"
     return raw

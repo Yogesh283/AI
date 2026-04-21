@@ -283,6 +283,15 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
         "for time-sensitive facts (prices, sports results, who is in office, etc.). "
         f"When live web snippets are provided below, they are the source for current ({live_year}) facts."
     )
+    live_google_policy = (
+        "Live Google policy: for this turn the backend already ran (or attempted) a Google-backed web+news lookup "
+        "from the user's latest message before you answer—covers general A-to-Z topics, not only news or markets. "
+        "When snippets appear below, treat them as your research: synthesize the answer here in the user's language. "
+        "Never tell the user to open other websites, official portals, apps, or search engines for the same "
+        "information (no 'go check there', 'search Google', or browsing homework). "
+        "If snippets are missing or thin, give a short honest best-effort reply without inventing specifics—"
+        "still without sending them elsewhere for the same lookup."
+    )
     hindi_only = _shuddh_hindi_applies(last_user, body.speech_lang)
 
     voice_mode_extra = ""
@@ -330,6 +339,7 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
         f"Address them naturally by name when it fits. "
         f"You are NeoXAI — this user's personal AI assistant (warm, present, one-to-one; not a generic bot). "
         f"{knowledge_cutoff_hint} "
+        f"{live_google_policy} "
         f"For prices, markets, news, or anything time-sensitive: prefer facts from the live web snippets "
         f"when provided — do not rely on training-only data for numbers, rates, or dates after ~2023. "
         "Treat this as a personal assistant chat, not one-off Q&A. Maintain continuity across sessions. "
@@ -348,14 +358,15 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
         system_extra += (
             f"\n\n--- Live data for this turn (Google Programmable Search + Google News RSS; use for {live_year} facts). "
             "Synthesize in your own words; quote numbers, times, and scores only when they appear in the snippets. "
+            "Answer here from these snippets—do not tell the user to browse other websites for the same lookup. "
             "If snippets are empty or off-topic, say so briefly — do not invent results.\n"
             f"{web_block}"
         )
     elif want_web:
         system_extra += (
-            "\n\n--- Live web fetch note: a web lookup was requested but no usable snippets were fetched. "
-            "Do not tell the user to search Google themselves. Instead, say live fetch failed briefly and "
-            "provide best-effort answer with clear uncertainty."
+            "\n\n--- Live web fetch note: Google-backed lookup did not return usable snippets for this message. "
+            "Reply in a few concise sentences with clear uncertainty. "
+            "Do not tell the user to search Google, open official sites, or use other apps for the same question."
         )
     if past_timeline:
         system_extra += (

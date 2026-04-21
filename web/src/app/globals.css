@@ -246,3 +246,47 @@ body {
   animation-duration: 2.3s;
   opacity: 0.55;
 }
+
+/* Live voice page — mic control: one-time “live” pop, then calm ring while listening; stable while assistant speaks */
+@keyframes neo-voice-mic-session-in {
+  0% {
+    transform: scale(0.88);
+    filter: brightness(1.15);
+  }
+  70% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+
+@keyframes neo-voice-mic-listen-ring {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 0 rgba(16, 185, 129, 0.4),
+      0 0 36px rgba(16, 185, 129, 0.22);
+  }
+  50% {
+    box-shadow:
+      0 0 0 12px rgba(16, 185, 129, 0),
+      0 0 44px rgba(16, 185, 129, 0.16);
+  }
+}
+
+.neo-voice-mic-session-start {
+  animation: neo-voice-mic-session-in 0.72s cubic-bezier(0.34, 1.45, 0.64, 1) both;
+}
+
+.neo-voice-mic-listen-pulse {
+  animation: neo-voice-mic-listen-ring 2.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .neo-voice-mic-session-start,
+  .neo-voice-mic-listen-pulse {
+    animation: none;
+  }
+}
