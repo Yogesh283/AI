@@ -143,6 +143,16 @@ def _realtime_model() -> str:
     return (os.getenv("OPENAI_REALTIME_MODEL") or "gpt-4o-mini-realtime-preview").strip()
 
 
+def _realtime_max_output_tokens() -> int:
+    """Spoken long answers need a high cap so the model does not truncate mid-explanation."""
+    raw = (os.getenv("OPENAI_REALTIME_MAX_OUTPUT_TOKENS") or "8192").strip()
+    try:
+        v = int(raw)
+    except ValueError:
+        return 8192
+    return max(2048, min(v, 16384))
+
+
 def _realtime_input_transcription(speech_lang: str) -> dict[str, object]:
     """Whisper hint from UI speech locale (e.g. hi-IN → hi) so user lines show up reliably in Live."""
     lang = (speech_lang or "en-IN").strip().replace("_", "-")
@@ -210,8 +220,8 @@ async def _build_realtime_instructions(
         lang_line = (
             f"User speech locale: {lang_hint}. CRITICAL: They are using Hindi. "
             "Respond ONLY in Shuddh Hindi (Devanagari script). Do not use English words, Latin letters, or Hinglish. "
-            "Sound like a natural Hindi speaker on a phone call — short, clear, flowing sentences. "
-            "Explain technical ideas in simple Hindi.\n"
+            "Sound like a natural Hindi speaker on a phone call — clear, flowing sentences; long answers are fine "
+            "when needed. Explain technical ideas in simple Hindi.\n"
         )
     else:
         lang_line = (
@@ -224,13 +234,17 @@ async def _build_realtime_instructions(
         f"{lang_line}"
         "Voice mode rules: sound like a natural phone call — clear sentences, no markdown or bullet lists "
         "unless they explicitly want detail. Wait until the user has actually finished their question (slow speech "
-        "and long pauses are normal); do not jump in mid-sentence. Always finish the thought in this turn: do not stop "
-        "mid-sentence or mid-explanation; if it is long, use two or three complete sentences rather than trailing off. "
+        "and long pauses are normal); do not jump in mid-sentence.\n"
+        "COMPLETION (critical): In each assistant turn, deliver the **whole** answer in one continuous response until "
+        "the topic is fully covered. Never stop mid-word, mid-sentence, mid-list, or mid-step. Do not self-shorten "
+        "with 'and so on' or 'etc.' to skip parts they asked for. Long explanations (many sentences) are required when "
+        "the question needs detail. The only normal reasons to end are: you truly finished, or the user explicitly "
+        "interrupts (they say stop / बस / रुको / enough / cancel, or they use the app interrupt control).\n"
         "Do not read URLs character-by-character. "
         "Avoid stock-bot phrases ('I'd be happy to help', 'Great question', 'As an AI'). "
         "Do not label yourself as an AI unless they ask.\n"
-        "Spoken audio: warm, human intonation—answer efficiently once you have the facts (not sluggish), with short "
-        "breaths between ideas, never monotone like a screen reader.\n"
+        "Spoken audio: warm, human intonation—steady pacing with natural breaths between ideas; not sluggish, never "
+        "monotone like a screen reader.\n"
         "Live answers: NeoXAI runs automatic Google (Programmable Search + Google News) lookup each turn. "
         "You may receive a system message starting with «Live web data (Google». When that message has real snippets, "
         "treat it as the factual source: summarize what it says in the user's language (for Hindi-only users, use "
@@ -238,13 +252,15 @@ async def _build_realtime_instructions(
         "Never read long link IDs, encoded URLs, or raw snippet boilerplate aloud—paraphrase the fact in natural speech. "
         "Never tell them to open another site, search Google, or check social media for the same information—you "
         "already pulled live results here. For any A-to-Z topic, merge training with snippets when present. "
+        "Truth rule: only treat as 'certain' what the live web data message actually contains; never sound sure about "
+        "scores, ranks, or prices that are not written there. Wrong confident data is unacceptable—prefer saying "
+        "those exact figures were not in the retrieved lines. "
         "Sports or points: speak only numbers that actually appear inside the live web data message—never invent "
         "a full standings table from memory. If a number is not verbatim in that message, omit it. "
         "Never describe standings as a markdown pipe table aloud—summarize in short spoken sentences from snippets. "
-        "Finish each reply completely in one go: do not stop mid-list or mid-explanation; if the answer is long, "
-        "speak the top items in full sentences first, then continue with the rest until the question is covered. "
-        "If snippets are missing, say no live lines were found, avoid inventing numbers, and still do not send "
-        "them to external sites or apps for the same answer.\n"
+        "If snippets are missing, wait for the system note that says lookup failed or returned nothing—then answer "
+        "briefly with honest uncertainty; avoid inventing numbers; still do not send them to external sites or apps "
+        "for the same answer.\n"
         f"Current year context: {live_year}. "
         f"Live time anchor: India (IST) now is {now_ist.strftime('%Y-%m-%d %H:%M:%S %Z')}.\n"
         f"Known preferences / memory hints: {mem[-5:] if mem else 'none yet'}.\n"
@@ -287,12 +303,12 @@ async def post_realtime_token(
     )
     model = _realtime_model()
     out_voice = _realtime_output_voice(pid)
+    max_out = _realtime_max_output_tokens()
     session_payload: dict = {
         "type": "realtime",
         "model": model,
         "instructions": instructions[:32000],
-        # Use numeric max (4096) so long spoken lists complete; some stacks mishandle string "inf".
-        "max_output_tokens": 4096,
+        "max_output_tokens": max_out,
         "audio": {
             "input": {
                 "noise_reduction": {"type": "far_field"},
@@ -309,7 +325,7 @@ async def post_realtime_token(
             "type": "realtime",
             "model": model,
             "instructions": instructions[:32000],
-            "max_output_tokens": 4096,
+            "max_output_tokens": max_out,
             "audio": {
                 "input": {
                     "noise_reduction": {"type": "far_field"},

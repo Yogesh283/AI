@@ -96,6 +96,15 @@ function VoiceSessionWaveform(_props: {
 
 type Turn = { role: "user" | "assistant"; content: string };
 
+/** Explicit stop / cancel — do not start a new assistant reply for this line. */
+function isVoiceUserStopIntent(text: string): boolean {
+  const raw = (text || "").trim();
+  if (raw.length > 120) return false;
+  const low = raw.toLowerCase();
+  if (/\b(stop|enough|quiet|cancel|no more|shut up|skip)\b/.test(low)) return true;
+  return /^(रुको|बस|चुप|बंद|रोक|रोको|बस करो|रोक दो|बस हो)/.test(raw);
+}
+
 export default function VoicePage() {
   const [listening, setListening] = useState(false);
   const [sessionOn, setSessionOn] = useState(false);
@@ -131,6 +140,8 @@ export default function VoicePage() {
   const liveEnsureMicRef = useRef<(() => void) | null>(null);
   /** Monotonic id so stale live-web async work never calls `response.create` after a newer utterance. */
   const voiceLiveWebTurnRef = useRef(0);
+  /** Drop duplicate finalized transcripts (Realtime + sidecar) within a short window. */
+  const lastVoicePipelineUserLineRef = useRef<{ line: string; at: number }>({ line: "", at: 0 });
   /** Serialize post-transcript work so two response.create calls never overlap. */
   const liveWebPipelineRef = useRef(Promise.resolve());
   /** From Realtime `response.created` → `done` / `completed` / `cancelled` / `error` — gates `response.cancel`. */
@@ -393,6 +404,26 @@ export default function VoicePage() {
         onUserTranscript: (t) => {
           const line = t.trim();
           if (!line) return;
+          if (isVoiceUserStopIntent(line)) {
+            liveCancelRef.current?.();
+            speakingRef.current = false;
+            setSpeaking(false);
+            setUserSpeaking(false);
+            liveResponseBusyRef.current = false;
+            liveAssistStreamOpenRef.current = false;
+            liveEnsureMicRef.current?.();
+            liveUserTranscriptOpenRef.current = false;
+            return;
+          }
+          const nowMs = Date.now();
+          if (
+            line === lastVoicePipelineUserLineRef.current.line &&
+            nowMs - lastVoicePipelineUserLineRef.current.at < 3200
+          ) {
+            liveUserTranscriptOpenRef.current = false;
+            return;
+          }
+          lastVoicePipelineUserLineRef.current = { line, at: nowMs };
           liveUserTranscriptOpenRef.current = false;
           appendUserMessageToChatStorage(getStoredUser()?.id ?? "anon", line);
           setHistory((h) => {
@@ -428,12 +459,19 @@ export default function VoicePage() {
             try {
               const j = await postLiveWebContext(line);
               block = (j.block || "").trim();
+              if (!block && sessionOnRef.current && myTurn === voiceLiveWebTurnRef.current) {
+                await new Promise<void>((r) => setTimeout(r, 900));
+                if (sessionOnRef.current && myTurn === voiceLiveWebTurnRef.current) {
+                  const j2 = await postLiveWebContext(line);
+                  block = (j2.block || "").trim();
+                }
+              }
             } catch {
               liveFetchFailed = true;
               /* offline / API error — still continue after min delay */
             }
-            /* Cap extra wait so slow networks still start the reply sooner once fetch returns. */
-            const waitMs = Math.max(0, 2200 - (Date.now() - t0));
+            /* Give CSE + News time to finish before the model answers (live facts). */
+            const waitMs = Math.max(0, 4500 - (Date.now() - t0));
             await new Promise<void>((r) => {
               setTimeout(r, waitMs);
             });
@@ -443,15 +481,23 @@ export default function VoicePage() {
             }
             setLiveWebFetching(false);
             /*
-             * LOCK: `response.cancel` only when a response is actually in flight — `liveResponseBusyRef`
-             * from Realtime events, OR assistant audio still playing (`speakingRef`) if event order lags.
-             * Cancelling when nothing is active → APK "Cancellation failed"; cancelling every turn → mic/OS churn.
+             * Do not cancel mid-playback: that was cutting answers off mid-word. Wait for the prior response to
+             * fully finish; only cancel if generation is still stuck busy after the wait (safety).
              */
-            if (liveResponseBusyRef.current || speakingRef.current) {
+            const maxIdleMs = 180_000;
+            const idle0 = Date.now();
+            while (
+              sessionOnRef.current &&
+              myTurn === voiceLiveWebTurnRef.current &&
+              (liveResponseBusyRef.current || speakingRef.current)
+            ) {
+              if (Date.now() - idle0 > maxIdleMs) break;
+              await new Promise<void>((r) => setTimeout(r, 100));
+            }
+            if (!sessionOnRef.current || myTurn !== voiceLiveWebTurnRef.current) return;
+            if (liveResponseBusyRef.current) {
               liveCancelRef.current?.();
-              await new Promise<void>((r) => {
-                setTimeout(r, 200);
-              });
+              await new Promise<void>((r) => setTimeout(r, 220));
             }
             if (!sessionOnRef.current || myTurn !== voiceLiveWebTurnRef.current) return;
             if (block) {
@@ -481,7 +527,13 @@ export default function VoicePage() {
                 },
               });
             }
-            send({ type: "response.create" });
+            send({
+              type: "response.create",
+              response: {
+                modalities: ["audio", "text"],
+                max_output_tokens: 8192,
+              },
+            });
             /* Single re-arm after new response starts — no per-turn spam (reduces APK mic focus noise). */
             liveEnsureMicRef.current?.();
           };

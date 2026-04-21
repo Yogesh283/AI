@@ -420,8 +420,10 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
         "When snippets appear below, treat them as your research: synthesize the answer here in the user's language. "
         "Never tell the user to open other websites, official portals, apps, or search engines for the same "
         "information (no 'go check there', 'search Google', or browsing homework). "
-        "If snippets are missing or thin, give a short honest best-effort reply without inventing specifics—"
-        "still without sending them elsewhere for the same lookup. "
+        "If snippets are missing or thin, give a short honest reply: say live search did not return verified lines "
+        "for the exact figures they asked for—do **not** fill gaps from training memory (no plausible-looking fake "
+        "scores, tables, prices, or ranks). Wrong confident data is worse than 'not confirmed from search'. "
+        "Still do not send them elsewhere for the same lookup. "
         "Accuracy over completeness: never invent numbers, rates, or ranks to look helpful—only state what snippets support."
     )
     live_presentation_policy = (
@@ -524,7 +526,10 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
     elif want_web:
         system_extra += (
             "\n\n--- Live web fetch note: Google-backed lookup did not return usable snippets for this message. "
-            "Reply in a few concise sentences with clear uncertainty. "
+            "For anything that needs **exact** current facts (sports scores/points, live prices, election counts, "
+            "breaking who-won): do not invent numbers or a full table from memory—say clearly that live lines were "
+            "not retrieved so those specifics are not confirmed here. General background without fake figures is OK. "
+            "Reply in a few concise sentences. "
             "Do not tell the user to search Google, open official sites, or use other apps for the same question."
         )
     if past_timeline:
