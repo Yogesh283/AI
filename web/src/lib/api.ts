@@ -62,14 +62,40 @@ export async function postChat(
   return r.json() as Promise<{ reply: string; memory_snippets?: string[] }>;
 }
 
+/** Google live snippet block for voice Realtime injection (same backend pipeline as chat). */
+export async function postLiveWebContext(query: string): Promise<{ block: string }> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const url = `${chatUrl()}/live-context`;
+  const r = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ query: query.trim().slice(0, 500) }),
+  });
+  if (!r.ok) {
+    const t = (await r.text()).trim();
+    throw new Error(t || `HTTP ${r.status}`);
+  }
+  return r.json() as Promise<{ block: string }>;
+}
+
 /**
  * Streaming chat: POST /api/chat/stream (SSE). Calls `onDelta` for each token chunk.
- * Server sends `data: {"d":"..."}` lines, then `data: {"done":true}`; errors: `{"e":"..."}`.
+ * Server may send `data: {"s":true}` first (live Google fetch starting); then `{"d":"..."}` lines,
+ * then `data: {"done":true}`; errors: `{"e":"..."}`.
  */
 export async function postChatStream(
   messages: { role: "user" | "assistant" | "system"; content: string }[],
   userId: string,
-  opts: { useWeb?: boolean; signal?: AbortSignal; source?: ChatSource; speechLang?: string },
+  opts: {
+    useWeb?: boolean;
+    signal?: AbortSignal;
+    source?: ChatSource;
+    speechLang?: string;
+    /** Fires once when server signals live web lookup (show “Searching…” UI). */
+    onLiveFetchStart?: () => void;
+  },
   onDelta: (chunk: string) => void,
 ): Promise<void> {
   const token = getStoredToken();
@@ -114,6 +140,7 @@ export async function postChatStream(
   if (!reader) throw new Error("Empty response body");
   const dec = new TextDecoder();
   let carry = "";
+  let liveFetchPinged = false;
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -125,13 +152,17 @@ export async function postChatStream(
         if (!line.startsWith("data: ")) continue;
         const raw = line.slice(6).trim();
         if (!raw || raw === "[DONE]") continue;
-        let j: { d?: string; done?: boolean; e?: string };
+        let j: { d?: string; done?: boolean; e?: string; s?: boolean };
         try {
-          j = JSON.parse(raw) as { d?: string; done?: boolean; e?: string };
+          j = JSON.parse(raw) as { d?: string; done?: boolean; e?: string; s?: boolean };
         } catch {
           continue;
         }
         if (typeof j.e === "string" && j.e) throw new Error(j.e);
+        if (j.s === true && !liveFetchPinged) {
+          liveFetchPinged = true;
+          opts.onLiveFetchStart?.();
+        }
         if (typeof j.d === "string" && j.d.length) onDelta(j.d);
         if (j.done) return;
       }

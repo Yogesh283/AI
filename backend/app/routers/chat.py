@@ -29,7 +29,7 @@ from app.services.chat_inference import (
     unified_chat_completion,
     unified_stream_chat_deltas,
 )
-from app.services.web_search import fetch_google_snippets, should_auto_fetch_web
+from app.services.sports_feed import build_live_web_context_block
 from app.store import add_chat_turn, add_memory_fact, get_memory, get_profile, get_recent_chat_history
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -201,6 +201,12 @@ class ChatResponse(BaseModel):
     memory_snippets: list[str] = []
 
 
+class LiveContextBody(BaseModel):
+    """One-shot Google live snippets for voice Realtime injection (same pipeline as chat)."""
+
+    query: str = Field(default="", max_length=500)
+
+
 @dataclass(frozen=True)
 class ChatRouteContext:
     uid: str
@@ -253,9 +259,11 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
         )
 
     web_block = ""
-    want_web = bool(last_user.strip()) and (body.use_web or should_auto_fetch_web(last_user))
+    # Always pull Google snippets for normal turns (when user said something); recall/datetime
+    # return above before this. use_web remains supported for clients but is no longer required.
+    want_web = bool(last_user.strip())
     if want_web:
-        web_block = await fetch_google_snippets(last_user)
+        web_block = await build_live_web_context_block(last_user, now_ist=now_ist)
 
     past_timeline = ""
     if timeline_rows:
@@ -338,9 +346,9 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
     )
     if web_block:
         system_extra += (
-            f"\n\n--- Live web results (Google; current-year / latest — use for {live_year} facts when relevant). "
-            "Answer in your own words; be specific with dates/numbers from snippets when relevant. "
-            "If snippets are empty or off-topic, say so briefly.\n"
+            f"\n\n--- Live data for this turn (Google Programmable Search + Google News RSS; use for {live_year} facts). "
+            "Synthesize in your own words; quote numbers, times, and scores only when they appear in the snippets. "
+            "If snippets are empty or off-topic, say so briefly — do not invent results.\n"
             f"{web_block}"
         )
     elif want_web:
@@ -448,7 +456,7 @@ async def post_chat(
         result = await unified_chat_completion(msgs, user_id=uid)
         reply = result.text
         if not web_block and last_user and _looks_like_no_live_access(reply):
-            forced_block = await fetch_google_snippets(last_user)
+            forced_block = await build_live_web_context_block(last_user, now_ist=datetime.now(timezone.utc).astimezone(IST))
             if forced_block:
                 retry_system = (
                     f"{system_extra}\n\n--- Live web results (forced retry for current facts).\n"
@@ -479,16 +487,38 @@ async def post_chat(
     return ChatResponse(reply=reply, memory_snippets=snippets)
 
 
+@router.post("/live-context")
+async def post_live_context(
+    body: LiveContextBody,
+    user: dict | None = Depends(optional_user),
+) -> dict[str, str]:
+    """Return Google web+news snippet block for a user line (voice Realtime sidecar)."""
+    _ = user
+    q = (body.query or "").strip()
+    if not q:
+        return {"block": ""}
+    now_ist = datetime.now(timezone.utc).astimezone(IST)
+    block = await build_live_web_context_block(q, now_ist=now_ist)
+    return {"block": block or ""}
+
+
 @router.post("/stream")
 async def post_chat_stream(
     body: ChatRequest,
     user: dict | None = Depends(optional_user),
 ) -> StreamingResponse:
-    """SSE: `data: {"d":"delta"}` token chunks, then `data: {"done":true}`; errors use `{"e":"..."}`."""
-    ctx = await _build_chat_route_context(body, user)
+    """SSE: optional `{"s":true}` first (live fetch starting), then `{"d":"delta"}` chunks, then `{"done":true}`."""
+
+    last_user_for_ping = next((m.content for m in reversed(body.messages) if m.role == "user"), "")
+    emit_searching_ping = bool((last_user_for_ping or "").strip()) and (
+        not _is_live_datetime_query(last_user_for_ping) and not _is_recall_query(last_user_for_ping)
+    )
 
     async def gen() -> AsyncIterator[bytes]:
         try:
+            if emit_searching_ping:
+                yield _sse({"s": True})
+            ctx = await _build_chat_route_context(body, user)
             if ctx.early_reply is not None:
                 yield _sse({"d": ctx.early_reply})
                 await _persist_chat_exchange(ctx.uid, ctx.last_user, ctx.early_reply, ctx.source, user, None)

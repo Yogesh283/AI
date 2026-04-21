@@ -1,7 +1,8 @@
-"""Optional Google Custom Search JSON API for grounded answers."""
+"""Live context from Google only: Programmable Search (JSON) + Google News RSS."""
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from datetime import datetime, timezone
@@ -60,20 +61,13 @@ async def _fetch_google_news_rss_snippets(query: str, *, limit: int = 5) -> str:
     return "\n".join(lines)
 
 
-async def fetch_google_snippets(query: str, *, limit: int = 5) -> str:
-    """
-    Returns compact text for LLM context, or empty string if disabled / error.
-    Requires GOOGLE_CSE_API_KEY + GOOGLE_CSE_CX in .env (Custom Search Engine).
-    """
+async def _fetch_google_cse_snippets(query: str, *, limit: int) -> str:
+    """Programmable Search web results only (empty if not configured or error)."""
     key = (settings.google_cse_api_key or "").strip()
     cx = (settings.google_cse_cx or "").strip()
     q = augment_search_query((query or "").strip()[:240])
-    if not q:
+    if not q or not key or not cx:
         return ""
-    if not key or not cx:
-        # No paid CSE config? still provide live Google-backed data via Google News RSS.
-        return await _fetch_google_news_rss_snippets(query, limit=limit)
-
     params = {
         "key": key,
         "cx": cx,
@@ -87,18 +81,15 @@ async def fetch_google_snippets(query: str, *, limit: int = 5) -> str:
             data = r.json()
     except Exception as e:
         logger.warning("Google CSE failed: %s", e)
-        # Fallback path keeps live web answers available even if CSE quota/key has issues.
-        return await _fetch_google_news_rss_snippets(query, limit=limit)
+        return ""
 
     items = data.get("items") or []
-    if not items:
-        rss = await _fetch_google_news_rss_snippets(query, limit=limit)
-        if rss:
-            return rss
-        return "(No web results for this query.)"
-
+    if not isinstance(items, list) or not items:
+        return ""
     lines: list[str] = []
     for i, it in enumerate(items[:limit], 1):
+        if not isinstance(it, dict):
+            continue
         title = str(it.get("title") or "").strip()
         snippet = str(it.get("snippet") or "").strip()
         link = str(it.get("link") or "").strip()
@@ -106,8 +97,46 @@ async def fetch_google_snippets(query: str, *, limit: int = 5) -> str:
     return "\n".join(lines)
 
 
+async def fetch_google_snippets(query: str, *, limit: int = 8) -> str:
+    """
+    Live Google-only bundle for the model: **Custom Search (web)** when `GOOGLE_CSE_*` is set,
+    plus **Google News RSS** in parallel so sports/news/market-style questions get broader coverage.
+    If CSE is not configured, returns News RSS only (still Google).
+    """
+    raw = (query or "").strip()[:240]
+    if not augment_search_query(raw):
+        return ""
+
+    key = (settings.google_cse_api_key or "").strip()
+    cx = (settings.google_cse_cx or "").strip()
+    rss_limit = min(8, max(5, limit))
+
+    async def rss_part() -> str:
+        return await _fetch_google_news_rss_snippets(query, limit=rss_limit)
+
+    if not key or not cx:
+        rss = await rss_part()
+        if rss.strip():
+            return "## News (Google News RSS)\n" + rss.strip()
+        return ""
+
+    cse_limit = min(max(limit, 1), 10)
+    cse, rss = await asyncio.gather(
+        _fetch_google_cse_snippets(query, limit=cse_limit),
+        rss_part(),  # coroutine
+    )
+    parts: list[str] = []
+    if cse.strip():
+        parts.append("## Web (Google Programmable Search)\n" + cse.strip())
+    if rss.strip():
+        parts.append("## News (Google News RSS)\n" + rss.strip())
+    if parts:
+        return "\n\n".join(parts)
+    return "(No live Google results for this query.)"
+
+
 def should_auto_fetch_web(user_text: str) -> bool:
-    """Time-sensitive / market / news queries → pull live Google snippets when CSE is configured."""
+    """Time-sensitive / market / news / sports queries → pull live Google bundle (CSE + News RSS when applicable)."""
     s = user_text.lower()
     keys = (
         "today",
@@ -148,6 +177,19 @@ def should_auto_fetch_web(user_text: str) -> bool:
         "समय",
         "टाइम",
         "कितने बजे",
+        "score",
+        "scores",
+        "fixture",
+        "football",
+        "soccer",
+        "cricket",
+        "ipl",
+        "nba",
+        "tennis",
+        "hockey",
+        "match ",
+        "candle",
+        "chart",
     )
     return any(k in s for k in keys)
 
@@ -179,6 +221,14 @@ def augment_search_query(q: str) -> str:
             "date",
             "time",
             "current time",
+            "score",
+            "cricket",
+            "football",
+            "soccer",
+            "match",
+            "ipl",
+            "fixture",
+            "candle",
         )
     )
     now = datetime.now(timezone.utc)

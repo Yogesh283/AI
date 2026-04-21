@@ -7,7 +7,7 @@ import {
   appendUserMessageToChatStorage,
   transcriptsRoughlySame,
 } from "@/lib/chatStorage";
-import { postVoiceRealtimeToken } from "@/lib/api";
+import { postLiveWebContext, postVoiceRealtimeToken } from "@/lib/api";
 import {
   DEFAULT_VOICE_SPEECH_LANG,
   normalizeVoiceSpeechLang,
@@ -102,8 +102,12 @@ export default function VoicePage() {
   /** Monotonic id so stale `speaking` state doesn’t fight after interrupt. */
   const speakGenerationRef = useRef(0);
   const [liveConnecting, setLiveConnecting] = useState(false);
+  const [liveWebFetching, setLiveWebFetching] = useState(false);
   const liveCloseRef = useRef<(() => void) | null>(null);
   const liveCancelRef = useRef<(() => void) | null>(null);
+  const liveSendClientEventRef = useRef<((o: Record<string, unknown>) => void) | null>(null);
+  /** Monotonic id so stale live-web async work never calls `response.create` after a newer utterance. */
+  const voiceLiveWebTurnRef = useRef(0);
   /** True between Realtime `response.created` and `response.done` — drives transcript append vs new bubble. */
   const liveAssistStreamOpenRef = useRef(false);
   /** True while OpenAI `input_audio_transcription.delta` is building the current user line. */
@@ -268,6 +272,9 @@ export default function VoicePage() {
     }
     liveCloseRef.current = null;
     liveCancelRef.current = null;
+    liveSendClientEventRef.current = null;
+    voiceLiveWebTurnRef.current += 1;
+    setLiveWebFetching(false);
     setLiveConnecting(false);
     sessionOnRef.current = false;
     setSessionOn(false);
@@ -305,6 +312,7 @@ export default function VoicePage() {
         onConnection: (s) => {
           if (!sessionOnRef.current) return;
           if (s === "open") {
+            liveSendClientEventRef.current = live.sendClientEvent;
             setLiveConnecting(false);
             setListening(true);
             try {
@@ -338,8 +346,10 @@ export default function VoicePage() {
               }) ?? null;
           }
           if (s === "closed") {
+            liveSendClientEventRef.current = null;
             setLiveConnecting(false);
             setListening(false);
+            setLiveWebFetching(false);
             try {
               liveGoogleSidecarRef.current?.stop();
             } catch {
@@ -350,7 +360,7 @@ export default function VoicePage() {
         },
         onUserTranscriptDelta: (delta) => {
           if (!delta) return;
-          liveGoogleSidecarRef.current?.markLiveUserTranscript();
+          /* Do not mark Google grace here — every OpenAI delta would block Google gap-fill forever. */
           setHistory((h) => {
             const next = [...h];
             const L = next.length - 1;
@@ -369,6 +379,7 @@ export default function VoicePage() {
         onUserTranscript: (t) => {
           const line = t.trim();
           if (!line) return;
+          liveCancelRef.current?.();
           liveUserTranscriptOpenRef.current = false;
           liveGoogleSidecarRef.current?.markLiveUserTranscript();
           appendUserMessageToChatStorage(getStoredUser()?.id ?? "anon", line);
@@ -391,6 +402,46 @@ export default function VoicePage() {
             historyRef.current = merged;
             return merged;
           });
+
+          const myTurn = ++voiceLiveWebTurnRef.current;
+          void (async () => {
+            const send = liveSendClientEventRef.current;
+            if (!send) return;
+            setLiveWebFetching(true);
+            const t0 = Date.now();
+            let block = "";
+            try {
+              const j = await postLiveWebContext(line);
+              block = (j.block || "").trim();
+            } catch {
+              /* offline / API error — still continue after min delay */
+            }
+            const waitMs = Math.max(0, 3000 - (Date.now() - t0));
+            await new Promise<void>((r) => {
+              setTimeout(r, waitMs);
+            });
+            if (!sessionOnRef.current || myTurn !== voiceLiveWebTurnRef.current) {
+              setLiveWebFetching(false);
+              return;
+            }
+            setLiveWebFetching(false);
+            if (block) {
+              send({
+                type: "conversation.item.create",
+                item: {
+                  type: "message",
+                  role: "system",
+                  content: [
+                    {
+                      type: "input_text",
+                      text: `Live web data (Google; use for current facts; do not invent beyond this):\n${block.slice(0, 12000)}`,
+                    },
+                  ],
+                },
+              });
+            }
+            send({ type: "response.create" });
+          })();
         },
         onAssistantTranscriptDelta: (delta) => {
           if (!delta) return;
@@ -448,9 +499,11 @@ export default function VoicePage() {
       });
       liveCloseRef.current = live.close;
       liveCancelRef.current = live.cancelAssistant;
+      liveSendClientEventRef.current = live.sendClientEvent;
     } catch (e) {
       liveCloseRef.current = null;
       liveCancelRef.current = null;
+      liveSendClientEventRef.current = null;
       setLiveConnecting(false);
       setListening(false);
       sessionOnRef.current = false;
@@ -507,6 +560,7 @@ export default function VoicePage() {
       }
       liveCloseRef.current = null;
       liveCancelRef.current = null;
+      liveSendClientEventRef.current = null;
       stopRecognitionOnly();
       stopBargeInRecognition();
       stopVoiceOutput();
@@ -571,8 +625,9 @@ export default function VoicePage() {
   const headerTitle = useMemo(() => {
     if (!sessionOn) return "Voice chat";
     if (liveConnecting) return "Live — connecting…";
+    if (liveWebFetching) return "Live — searching web data…";
     return speaking ? "Live — assistant is speaking" : "Live — speak anytime";
-  }, [sessionOn, liveConnecting, speaking]);
+  }, [sessionOn, liveConnecting, liveWebFetching, speaking]);
 
   return (
     <div className="relative z-[1] flex min-h-0 flex-1 flex-col bg-[#080a0f] md:min-h-0">

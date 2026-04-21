@@ -64,6 +64,11 @@ export function DashboardChatPanel() {
   const dictationBaseRef = useRef("");
   const handledSearchKeyRef = useRef<string | null>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
+  /** When server pings live fetch, buffer streamed tokens until min 3s “Searching…” window ends. */
+  const liveSearchActiveRef = useRef(false);
+  const liveSearchBufRef = useRef("");
+  const liveSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [liveSearchUi, setLiveSearchUi] = useState(false);
 
   const resetConversation = useCallback(() => {
     streamAbortRef.current?.abort();
@@ -73,6 +78,13 @@ export function DashboardChatPanel() {
     setMsgs(initialMsgs(getStoredUser()?.display_name));
     setInput("");
     setLoading(false);
+    liveSearchActiveRef.current = false;
+    liveSearchBufRef.current = "";
+    if (liveSearchTimerRef.current) {
+      clearTimeout(liveSearchTimerRef.current);
+      liveSearchTimerRef.current = null;
+    }
+    setLiveSearchUi(false);
   }, [brandName]);
 
   /** Match Tailwind max-h-36 (9rem) / min-h ~ single line composer. */
@@ -264,28 +276,85 @@ export function DashboardChatPanel() {
     setMsgs(next);
     msgsRef.current = next;
     setLoading(true);
+    liveSearchActiveRef.current = false;
+    liveSearchBufRef.current = "";
+    if (liveSearchTimerRef.current) {
+      clearTimeout(liveSearchTimerRef.current);
+      liveSearchTimerRef.current = null;
+    }
+    setLiveSearchUi(false);
+
+    const flushLiveSearchBuffer = () => {
+      const b = liveSearchBufRef.current;
+      liveSearchBufRef.current = "";
+      if (!b) return;
+      setMsgs((prev) => {
+        const out = [...prev];
+        const L = out.length - 1;
+        if (L >= 0 && out[L].role === "assistant") {
+          out[L] = { role: "assistant", content: out[L].content + b };
+        }
+        return out;
+      });
+    };
+
+    const scheduleLiveSearchReveal = () => {
+      if (liveSearchTimerRef.current) return;
+      liveSearchTimerRef.current = setTimeout(() => {
+        liveSearchTimerRef.current = null;
+        liveSearchActiveRef.current = false;
+        setLiveSearchUi(false);
+        flushLiveSearchBuffer();
+      }, 3000);
+    };
+
     try {
       const apiMsgs = next.slice(0, -1).map((m) => ({
         role: m.role as "user" | "assistant",
         content: m.content,
       }));
       const uid = getStoredUser()?.id ?? "default";
-      await postChatStream(apiMsgs, uid, { useWeb: false, signal }, (delta) => {
-        setMsgs((prev) => {
-          const out = [...prev];
-          const L = out.length - 1;
-          if (L >= 0 && out[L].role === "assistant") {
-            out[L] = { role: "assistant", content: out[L].content + delta };
+      await postChatStream(
+        apiMsgs,
+        uid,
+        {
+          useWeb: false,
+          signal,
+          onLiveFetchStart: () => {
+            liveSearchActiveRef.current = true;
+            liveSearchBufRef.current = "";
+            setLiveSearchUi(true);
+            scheduleLiveSearchReveal();
+          },
+        },
+        (delta) => {
+          if (liveSearchActiveRef.current) {
+            liveSearchBufRef.current += delta;
+            return;
           }
-          return out;
-        });
-      });
+          setMsgs((prev) => {
+            const out = [...prev];
+            const L = out.length - 1;
+            if (L >= 0 && out[L].role === "assistant") {
+              out[L] = { role: "assistant", content: out[L].content + delta };
+            }
+            return out;
+          });
+        },
+      );
       setMsgs((prev) => {
         msgsRef.current = prev;
         return prev;
       });
     } catch (e) {
       if (e instanceof Error && e.name === "AbortError") {
+        if (liveSearchTimerRef.current) {
+          clearTimeout(liveSearchTimerRef.current);
+          liveSearchTimerRef.current = null;
+        }
+        liveSearchActiveRef.current = false;
+        liveSearchBufRef.current = "";
+        setLiveSearchUi(false);
         setMsgs((prev) => {
           const out = [...prev];
           const L = out.length - 1;
@@ -319,6 +388,27 @@ export function DashboardChatPanel() {
         return out;
       });
     } finally {
+      if (liveSearchTimerRef.current) {
+        clearTimeout(liveSearchTimerRef.current);
+        liveSearchTimerRef.current = null;
+      }
+      if (liveSearchActiveRef.current) {
+        liveSearchActiveRef.current = false;
+        setLiveSearchUi(false);
+        const b = liveSearchBufRef.current;
+        liveSearchBufRef.current = "";
+        if (b) {
+          setMsgs((prev) => {
+            const out = [...prev];
+            const L = out.length - 1;
+            if (L >= 0 && out[L].role === "assistant") {
+              out[L] = { role: "assistant", content: out[L].content + b };
+            }
+            msgsRef.current = out;
+            return out;
+          });
+        }
+      }
       setLoading(false);
     }
   }, []);
@@ -393,7 +483,12 @@ export function DashboardChatPanel() {
                       </p>
                     ) : (
                       <div className="text-[15px] leading-relaxed text-white/[0.9]">
-                        {m.content.trim().length > 0 ? (
+                        {loading && isLast && liveSearchUi ? (
+                          <p className="text-[#7dd3fc]/95">
+                            Searching live data…
+                            <span className="ml-0.5 inline-block h-4 w-[3px] translate-y-0.5 animate-pulse rounded-sm bg-[#00D4FF]/90 align-middle" aria-hidden />
+                          </p>
+                        ) : m.content.trim().length > 0 ? (
                           <div className="inline-block max-w-full text-left">
                             <ChatMarkdown text={m.content} />
                             {loading && isLast ? (

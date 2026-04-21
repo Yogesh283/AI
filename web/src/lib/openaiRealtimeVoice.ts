@@ -139,6 +139,8 @@ export type OpenAiRealtimeVoiceSession = {
   peerConnection: RTCPeerConnection;
   /** Stop current model audio (barge-in / tap interrupt). */
   cancelAssistant: () => void;
+  /** Send a Realtime client event over the data channel (e.g. conversation.item.create). */
+  sendClientEvent: (payload: Record<string, unknown>) => void;
 };
 
 /**
@@ -237,6 +239,15 @@ export async function startOpenAiRealtimeVoiceSession(
     }
   };
 
+  const sendClientEvent = (payload: Record<string, unknown>) => {
+    if (dc.readyState !== "open") return;
+    try {
+      dc.send(JSON.stringify(payload));
+    } catch {
+      /* ignore */
+    }
+  };
+
   const close = () => {
     try {
       dc.close();
@@ -270,5 +281,5 @@ export async function startOpenAiRealtimeVoiceSession(
     }
   };
 
-  return { close, peerConnection: pc, cancelAssistant };
+  return { close, peerConnection: pc, cancelAssistant, sendClientEvent };
 }
