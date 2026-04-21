@@ -147,7 +147,8 @@ async def _fetch_google_news_rss_snippets(query: str, *, limit: int = 5) -> str:
         return ""
     params = {"q": q, "hl": "en-IN", "gl": "IN", "ceid": "IN:en"}
     try:
-        async with httpx.AsyncClient(timeout=18.0, follow_redirects=True) as client:
+        # Keep RSS fast so chat does not feel blocked on web lookup.
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
             r = await client.get(GOOGLE_NEWS_RSS_URL, params=params)
             r.raise_for_status()
             entries = _parse_google_news_rss(r.text, limit)
@@ -181,11 +182,12 @@ async def _fetch_google_cse_snippets(query: str, *, limit: int) -> tuple[str, bo
         "q": q,
         "num": min(max(limit, 1), 10),
     }
-    backoff_seconds = (2.0, 5.0)
+    backoff_seconds = (0.8, 1.6)
 
     for attempt in range(3):
         try:
-            async with httpx.AsyncClient(timeout=22.0) as client:
+            # Short timeout keeps end-user latency responsive on overloaded links.
+            async with httpx.AsyncClient(timeout=10.0) as client:
                 r = await client.get(GOOGLE_CSE_URL, params=params)
 
             if r.status_code in (429, 503):

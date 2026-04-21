@@ -91,17 +91,35 @@ def _openai_api_key() -> str:
 
 
 def _openai_max_retries() -> int:
-    raw = (os.getenv("OPENAI_HTTP_MAX_RETRIES") or "3").strip()
+    # Keep retries low by default for faster user-facing latency; can be overridden in env.
+    raw = (os.getenv("OPENAI_HTTP_MAX_RETRIES") or "2").strip()
     try:
         n = int(raw)
         return max(1, min(n, 6))
     except ValueError:
-        return 3
+        return 2
 
 
 def _openai_httpx_timeout() -> httpx.Timeout:
-    """Generous connect timeout — slow VPS / DNS / TLS to api.openai.com."""
-    return httpx.Timeout(120.0, connect=45.0)
+    """
+    Tuned for interactive chat speed.
+    Use env overrides when network is slow:
+      - OPENAI_HTTP_TIMEOUT_SECONDS (default 45)
+      - OPENAI_HTTP_CONNECT_TIMEOUT_SECONDS (default 12)
+    """
+    raw_total = (os.getenv("OPENAI_HTTP_TIMEOUT_SECONDS") or "45").strip()
+    raw_connect = (os.getenv("OPENAI_HTTP_CONNECT_TIMEOUT_SECONDS") or "12").strip()
+    try:
+        total = float(raw_total)
+    except ValueError:
+        total = 45.0
+    try:
+        connect = float(raw_connect)
+    except ValueError:
+        connect = 12.0
+    total = max(15.0, min(total, 180.0))
+    connect = max(3.0, min(connect, total))
+    return httpx.Timeout(total, connect=connect)
 
 
 def _openai_async_client() -> httpx.AsyncClient:

@@ -890,11 +890,13 @@ async def post_chat_stream(
     )
 
     async def gen() -> AsyncIterator[bytes]:
+        emitted_any = False
         try:
             if emit_searching_ping:
                 yield _sse({"s": True})
             ctx = await _build_chat_route_context(body, user)
             if ctx.early_reply is not None:
+                emitted_any = True
                 yield _sse({"d": ctx.early_reply})
                 await _persist_chat_exchange(ctx.uid, ctx.last_user, ctx.early_reply, ctx.source, user, None)
                 yield _sse({"done": True})
@@ -984,6 +986,7 @@ async def post_chat_stream(
                     msgs, usage_holder=usage_h, temperature=stream_temp
                 ):
                     parts.append(delta)
+                    emitted_any = True
                     yield _sse({"d": delta})
                 full = "".join(parts)
             result = _completion_result_from_stream_usage(full, usage_h, model_id=model_id)
@@ -992,6 +995,17 @@ async def post_chat_stream(
             yield _sse({"done": True})
         except Exception as e:
             logger.exception("post_chat_stream failed")
+            # If stream fails before any assistant text, auto-fallback to non-stream chat so user
+            # does not need to tap Send again for transient network/provider issues.
+            if not emitted_any:
+                try:
+                    fb = await post_chat(body, user)
+                    if (fb.reply or "").strip():
+                        yield _sse({"d": fb.reply})
+                        yield _sse({"done": True})
+                        return
+                except Exception:
+                    logger.exception("post_chat_stream fallback post_chat failed")
             # Send assistant text instead of `{"e":...}` so the web client does not throw and the user
             # still sees a calm message (especially after live-fetch turns).
             yield _sse({"d": _friendly_chat_stream_failure_message(e)})
