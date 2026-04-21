@@ -89,6 +89,13 @@ const components: Components = {
       </table>
     </div>
   ),
+  thead: ({ children, ...rest }) => (
+    <thead className="bg-white/[0.04]" {...rest}>
+      {children}
+    </thead>
+  ),
+  tbody: ({ children, ...rest }) => <tbody {...rest}>{children}</tbody>,
+  tr: ({ children, ...rest }) => <tr className="border-b border-white/[0.06]" {...rest}>{children}</tr>,
   th: ({ children, ...rest }) => (
     <th className="border border-white/15 bg-white/[0.06] px-2 py-1.5 font-semibold text-white/90" {...rest}>
       {children}

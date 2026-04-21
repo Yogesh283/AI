@@ -120,6 +120,9 @@ export default function VoicePage() {
   const speakGenerationRef = useRef(0);
   const [liveConnecting, setLiveConnecting] = useState(false);
   const [liveWebFetching, setLiveWebFetching] = useState(false);
+  /** Server VAD / transcript hint: user is talking (not assistant playback). */
+  const [userSpeaking, setUserSpeaking] = useState(false);
+  const userSpeechDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Bumps when Live session starts so the main control remounts once and plays the session-in animation. */
   const [micSessionKey, setMicSessionKey] = useState(0);
   const liveCloseRef = useRef<(() => void) | null>(null);
@@ -289,6 +292,11 @@ export default function VoicePage() {
     liveResponseBusyRef.current = false;
     setLiveWebFetching(false);
     setLiveConnecting(false);
+    if (userSpeechDebounceRef.current) {
+      clearTimeout(userSpeechDebounceRef.current);
+      userSpeechDebounceRef.current = null;
+    }
+    setUserSpeaking(false);
     sessionOnRef.current = false;
     setSessionOn(false);
     stopVoiceOutput();
@@ -339,10 +347,33 @@ export default function VoicePage() {
             setLiveConnecting(false);
             setListening(false);
             setLiveWebFetching(false);
+            if (userSpeechDebounceRef.current) {
+              clearTimeout(userSpeechDebounceRef.current);
+              userSpeechDebounceRef.current = null;
+            }
+            setUserSpeaking(false);
           }
+        },
+        onUserSpeechActive: (active) => {
+          if (userSpeechDebounceRef.current) {
+            clearTimeout(userSpeechDebounceRef.current);
+            userSpeechDebounceRef.current = null;
+          }
+          if (active && speakingRef.current) return;
+          setUserSpeaking(active);
         },
         onUserTranscriptDelta: (delta) => {
           if (!delta) return;
+          if (sessionOnRef.current && !speakingRef.current) {
+            setUserSpeaking(true);
+            if (userSpeechDebounceRef.current) {
+              clearTimeout(userSpeechDebounceRef.current);
+            }
+            userSpeechDebounceRef.current = setTimeout(() => {
+              userSpeechDebounceRef.current = null;
+              setUserSpeaking(false);
+            }, 420);
+          }
           /* Do not mark Google grace here — every OpenAI delta would block Google gap-fill forever. */
           setHistory((h) => {
             const next = [...h];
@@ -504,6 +535,13 @@ export default function VoicePage() {
           });
         },
         onAssistantSpeaking: (on) => {
+          if (on) {
+            if (userSpeechDebounceRef.current) {
+              clearTimeout(userSpeechDebounceRef.current);
+              userSpeechDebounceRef.current = null;
+            }
+            setUserSpeaking(false);
+          }
           speakingRef.current = on;
           setSpeaking(on);
           /* New response: keep false until the first delta creates/opens the row — avoids appending into the prior reply. */
@@ -547,6 +585,7 @@ export default function VoicePage() {
       liveCancelRef.current?.();
       speakingRef.current = false;
       setSpeaking(false);
+      setUserSpeaking(false);
       liveAssistStreamOpenRef.current = false;
       liveResponseBusyRef.current = false;
       liveEnsureMicRef.current?.();
@@ -636,9 +675,25 @@ export default function VoicePage() {
   const headerTitle = useMemo(() => {
     if (!sessionOn) return "Voice chat";
     if (liveConnecting) return "Live — connecting…";
-    if (liveWebFetching) return "Live — searching web data…";
+    if (liveWebFetching) return "Live — looking up facts…";
     return speaking ? "Live — assistant is speaking" : "Live — speak anytime";
   }, [sessionOn, liveConnecting, liveWebFetching, speaking]);
+
+  const micButtonClass = useMemo(() => {
+    if (!sessionOn) {
+      return "bg-gradient-to-br from-[#22d3ee] via-[#6366f1] to-[#a855f7] shadow-[0_0_56px_rgba(34,211,238,0.35),0_0_72px_rgba(168,85,247,0.18)] ring-[3px] ring-cyan-300/50 hover:brightness-110";
+    }
+    if (speaking) {
+      return "bg-gradient-to-br from-violet-600 via-teal-700 to-emerald-900 shadow-[0_0_40px_rgba(139,92,246,0.35)] ring-[4px] ring-violet-400/50";
+    }
+    if (liveConnecting || liveWebFetching) {
+      return "bg-gradient-to-br from-slate-700 via-indigo-800 to-slate-900 shadow-[0_0_32px_rgba(99,102,241,0.25)] ring-[3px] ring-indigo-400/35";
+    }
+    if (userSpeaking && listening) {
+      return "bg-gradient-to-br from-cyan-400 via-fuchsia-500 to-indigo-700 shadow-[0_0_44px_rgba(236,72,153,0.4)] ring-[4px] ring-fuchsia-300/55 neo-voice-mic-user-talk";
+    }
+    return "bg-gradient-to-br from-emerald-500 to-teal-800 shadow-[0_0_36px_rgba(16,185,129,0.22)] ring-[3px] ring-emerald-300/45 neo-voice-mic-session-start neo-voice-mic-idle-live";
+  }, [sessionOn, speaking, liveConnecting, liveWebFetching, userSpeaking, listening]);
 
   return (
     <div className="relative z-[1] flex min-h-0 flex-1 flex-col bg-[#080a0f] md:min-h-0">
@@ -703,10 +758,21 @@ export default function VoicePage() {
                 Tap to interrupt
               </button>
             ) : null}
-            {/* Soft glow while listening (not while assistant speaks — stable during reply). */}
-            {sessionOn && listening && !speaking && !liveConnecting && !liveWebFetching ? (
+            {sessionOn && userSpeaking && !speaking && !liveConnecting && !liveWebFetching ? (
               <div
-                className="pointer-events-none absolute -inset-10 rounded-full bg-emerald-400/18 blur-2xl"
+                className="pointer-events-none absolute -inset-14 rounded-full bg-gradient-to-tr from-fuchsia-500/30 via-cyan-400/25 to-violet-500/25 blur-2xl motion-safe:animate-pulse"
+                aria-hidden
+              />
+            ) : null}
+            {sessionOn && speaking ? (
+              <div
+                className="pointer-events-none absolute -inset-10 rounded-full bg-violet-500/15 blur-2xl"
+                aria-hidden
+              />
+            ) : null}
+            {sessionOn && listening && !userSpeaking && !speaking && !liveConnecting && !liveWebFetching ? (
+              <div
+                className="pointer-events-none absolute -inset-10 rounded-full bg-emerald-500/12 blur-2xl"
                 aria-hidden
               />
             ) : null}
@@ -714,22 +780,14 @@ export default function VoicePage() {
               key={sessionOn ? `live-${micSessionKey}` : "idle-mic"}
               type="button"
               onClick={toggleMic}
-              className={`relative z-[1] mt-4 flex h-[88px] w-[88px] shrink-0 items-center justify-center rounded-full text-white transition-transform duration-200 active:scale-[0.97] ${
-                sessionOn
-                  ? speaking
-                    ? "bg-gradient-to-br from-emerald-500 to-teal-800 shadow-[0_0_36px_rgba(16,185,129,0.28)] ring-[4px] ring-emerald-400/45"
-                    : `bg-gradient-to-br from-emerald-400 to-teal-700 ring-[4px] ring-emerald-300/40 neo-voice-mic-session-start ${
-                        listening && !liveConnecting && !liveWebFetching ? "neo-voice-mic-listen-pulse" : ""
-                      }`
-                  : "bg-gradient-to-br from-[#00D4FF] to-[#6366f1] shadow-[0_0_48px_rgba(0,212,255,0.28)] ring-[4px] ring-[#00D4FF]/40"
-              }`}
+              className={`relative z-[1] mt-4 flex h-[88px] w-[88px] shrink-0 items-center justify-center rounded-full text-white transition-transform duration-200 active:scale-[0.97] ${micButtonClass}`}
               aria-pressed={sessionOn}
               aria-label={sessionOn ? "End voice session" : "Start voice session"}
             >
               {sessionOn ? (
                 <IconLiveEnd className="text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]" />
               ) : (
-                <span className="text-[#050912]">
+                <span className="text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.45)]">
                   <IconMic />
                 </span>
               )}

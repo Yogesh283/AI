@@ -7,7 +7,7 @@ Live facts themselves come only from Google in {@link app.services.web_search.fe
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 def is_sports_live_query(text: str) -> bool:
@@ -45,6 +45,11 @@ def is_sports_live_query(text: str) -> bool:
         "super bowl",
         "league",
         "tournament",
+        "standings",
+        "ranking",
+        "rankings",
+        "points table",
+        "points-table",
         "vs ",
         " v ",
         "team ",
@@ -55,8 +60,26 @@ def is_sports_live_query(text: str) -> bool:
         "फुटबॉल",
         "स्कोर",
         "आईपीएल",
+        "रैंक",
+        "रैंकिंग",
+        "पॉइंट्स",
+        "अंक तालिका",
     )
     return any(k in s for k in keys)
+
+
+def google_fetch_query(user_text: str) -> str:
+    """
+    Build the actual Google CSE/RSS query string. English tokens first so a length cap
+    still retrieves IPL/sports tables when the user writes in Hindi script.
+    """
+    t = (user_text or "").strip()
+    if not t:
+        return t
+    y = datetime.now(timezone.utc).year
+    if is_sports_live_query(t):
+        return f"IPL cricket points table standings team rankings {y} latest news {t[:200]}"
+    return t
 
 
 async def build_live_web_context_block(last_user: str, *, now_ist: datetime) -> str:
@@ -67,7 +90,11 @@ async def build_live_web_context_block(last_user: str, *, now_ist: datetime) -> 
     _ = now_ist  # reserved for future locale-specific tuning
     from app.services.web_search import fetch_google_snippets
 
-    g = await fetch_google_snippets(last_user)
+    primary = google_fetch_query(last_user)
+    g = await fetch_google_snippets(primary)
+    if not g.strip() and is_sports_live_query(last_user):
+        y = datetime.now(timezone.utc).year
+        g = await fetch_google_snippets(f"IPL {y} points table standings teams ranked latest news")
     if not g.strip():
         return ""
     return "### Live data (Google — web search + news)\n" + g.strip()

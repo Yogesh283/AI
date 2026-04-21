@@ -33,6 +33,8 @@ export type OpenAiRealtimeVoiceCallbacks = {
   onAssistantTranscript?: (text: string) => void;
   /** Model started / finished an audio response (best-effort). */
   onAssistantSpeaking?: (speaking: boolean) => void;
+  /** Server VAD: user is speaking into the mic (not assistant playback). */
+  onUserSpeechActive?: (active: boolean) => void;
   /**
    * True between `response.created` and `response.done` / `response.completed` (server-side in-flight response).
    * Used to avoid `response.cancel` when nothing is active (APK: "Cancellation failed: no active response found").
@@ -66,6 +68,14 @@ function routeRealtimeEvent(
         ? String((err as Record<string, unknown>).message || "Realtime error")
         : "Realtime error";
     cb.onError?.(msg);
+    return;
+  }
+  if (type === "input_audio_buffer.speech_started") {
+    cb.onUserSpeechActive?.(true);
+    return;
+  }
+  if (type === "input_audio_buffer.speech_stopped") {
+    cb.onUserSpeechActive?.(false);
     return;
   }
   if (type === "conversation.item.input_audio_transcription.delta") {
@@ -134,6 +144,7 @@ function routeRealtimeEvent(
   if (type === "response.created") {
     locks.assistantDeltaSource = null;
     cb.onAssistantResponseActive?.(true);
+    cb.onUserSpeechActive?.(false);
     cb.onAssistantSpeaking?.(true);
     return;
   }

@@ -14,6 +14,9 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Google Programmable Search allows long `q`; keep below API limits but avoid truncating bilingual queries.
+MAX_GOOGLE_QUERY_CHARS = 450
+
 GOOGLE_CSE_URL = "https://www.googleapis.com/customsearch/v1"
 GOOGLE_NEWS_RSS_URL = "https://news.google.com/rss/search"
 
@@ -41,7 +44,7 @@ def _parse_google_news_rss(xml_text: str, limit: int) -> list[tuple[str, str, st
 
 
 async def _fetch_google_news_rss_snippets(query: str, *, limit: int = 5) -> str:
-    q = augment_search_query((query or "").strip()[:240])
+    q = augment_search_query((query or "").strip()[:MAX_GOOGLE_QUERY_CHARS])
     if not q:
         return ""
     params = {"q": q, "hl": "en-IN", "gl": "IN", "ceid": "IN:en"}
@@ -65,7 +68,7 @@ async def _fetch_google_cse_snippets(query: str, *, limit: int) -> str:
     """Programmable Search web results only (empty if not configured or error)."""
     key = (settings.google_cse_api_key or "").strip()
     cx = (settings.google_cse_cx or "").strip()
-    q = augment_search_query((query or "").strip()[:240])
+    q = augment_search_query((query or "").strip()[:MAX_GOOGLE_QUERY_CHARS])
     if not q or not key or not cx:
         return ""
     params = {
@@ -103,7 +106,7 @@ async def fetch_google_snippets(query: str, *, limit: int = 8) -> str:
     plus **Google News RSS** in parallel so sports/news/market-style questions get broader coverage.
     If CSE is not configured, returns News RSS only (still Google).
     """
-    raw = (query or "").strip()[:240]
+    raw = (query or "").strip()[:MAX_GOOGLE_QUERY_CHARS]
     if not augment_search_query(raw):
         return ""
 
@@ -240,6 +243,10 @@ def augment_search_query(q: str) -> str:
             "ipl",
             "fixture",
             "candle",
+            "standings",
+            "ranking",
+            "rankings",
+            "points table",
         )
     )
     exam_boardish = any(

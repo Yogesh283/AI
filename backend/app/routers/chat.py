@@ -99,6 +99,59 @@ def _looks_like_no_live_access(reply: str) -> bool:
     return any(h in s for h in hints)
 
 
+def _reply_claims_no_live_data(reply: str) -> bool:
+    """True when the model deflects instead of using live/Google-backed facts (Hindi + English)."""
+    if not (reply or "").strip():
+        return False
+    if _looks_like_no_live_access(reply):
+        return True
+    low = reply.lower()
+    needles = (
+        "i don't have the latest",
+        "i do not have the latest",
+        "don't have specific information",
+        "do not have specific information",
+        "no specific information",
+        "no access to live",
+        "don't have access to live",
+        "unable to provide real-time",
+        "cannot provide real-time",
+        "no real-time",
+        "without live data",
+        "no points table",
+        "don't have the points",
+        "i have no data on",
+        "couldn't find specific",
+        "could not find specific",
+        "i don't have access to",
+    )
+    if any(n in low for n in needles):
+        return True
+    r = reply
+    if "मेरे पास" in r and "नहीं" in r and any(
+        x in r for x in ("डेटा", "जानकारी", "तालिका", "रैंक", "आईपीएल", "ipl")
+    ):
+        return True
+    for frag in ("जानकारी नहीं", "डेटा नहीं", "नहीं मिली है", "नहीं मिली"):
+        if frag in r:
+            return True
+    if "अंक तालिका" in r and "नहीं" in r:
+        return True
+    return False
+
+
+def _append_system_suffix(msgs: list[dict[str, str]], suffix: str) -> list[dict[str, str]]:
+    if not msgs or not suffix.strip():
+        return msgs
+    out: list[dict[str, str]] = []
+    for i, m in enumerate(msgs):
+        if i == 0 and m.get("role") == "system":
+            out.append({"role": "system", "content": (m.get("content") or "") + suffix})
+        else:
+            out.append(dict(m))
+    return out
+
+
 def _compact_line(text: str, max_len: int = 180) -> str:
     t = re.sub(r"\s+", " ", (text or "")).strip()
     if len(t) <= max_len:
@@ -292,6 +345,11 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
         "If snippets are missing or thin, give a short honest best-effort reply without inventing specifics—"
         "still without sending them elsewhere for the same lookup."
     )
+    table_format_policy = (
+        "When the user asks for a table, columns/rows, 'in tabular form', or Hindi like 'टेबल में' / 'सारणी में', "
+        "respond with a GitHub-flavored markdown pipe table: header row, a |---|---| separator row, then body rows. "
+        "Keep cells brief; use numbers exactly as in live snippets when applicable."
+    )
     hindi_only = _shuddh_hindi_applies(last_user, body.speech_lang)
 
     voice_mode_extra = ""
@@ -340,6 +398,7 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
         f"You are NeoXAI — this user's personal AI assistant (warm, present, one-to-one; not a generic bot). "
         f"{knowledge_cutoff_hint} "
         f"{live_google_policy} "
+        f"{table_format_policy} "
         f"For prices, markets, news, or anything time-sensitive: prefer facts from the live web snippets "
         f"when provided — do not rely on training-only data for numbers, rates, or dates after ~2023. "
         "Treat this as a personal assistant chat, not one-off Q&A. Maintain continuity across sessions. "
@@ -466,14 +525,29 @@ async def post_chat(
     try:
         result = await unified_chat_completion(msgs, user_id=uid)
         reply = result.text
-        if not web_block and last_user and _looks_like_no_live_access(reply):
-            forced_block = await build_live_web_context_block(last_user, now_ist=datetime.now(timezone.utc).astimezone(IST))
+        if web_block and last_user and _reply_claims_no_live_data(reply):
+            retry_system = (
+                f"{system_extra}\n\n--- MANDATORY CORRECTION\n"
+                "Your last answer wrongly implied you lack live data. The LIVE DATA section above already contains "
+                "Google snippets. Answer again using ONLY those lines for ranks, points, teams, and dates—do not say "
+                "you have no points table while that section is non-empty.\n"
+            )
+            retry_msgs = [{"role": "system", "content": retry_system}]
+            for m in body.messages:
+                retry_msgs.append({"role": m.role, "content": m.content})
+            retry = await unified_chat_completion(retry_msgs, user_id=uid)
+            result = retry
+            reply = retry.text
+        elif not web_block and last_user and _reply_claims_no_live_data(reply):
+            forced_block = await build_live_web_context_block(
+                last_user, now_ist=datetime.now(timezone.utc).astimezone(IST)
+            )
             if forced_block:
                 retry_system = (
                     f"{system_extra}\n\n--- Live web results (forced retry for current facts).\n"
                     f"{forced_block}"
                 )
-                retry_msgs: list[dict[str, str]] = [{"role": "system", "content": retry_system}]
+                retry_msgs = [{"role": "system", "content": retry_system}]
                 for m in body.messages:
                     retry_msgs.append({"role": m.role, "content": m.content})
                 retry = await unified_chat_completion(retry_msgs, user_id=uid)
@@ -541,10 +615,51 @@ async def post_chat_stream(
             usage_h: list[dict[str, Any]] = []
             parts: list[str] = []
             model_id = effective_stream_model_id()
-            async for delta in unified_stream_chat_deltas(msgs, usage_holder=usage_h):
-                parts.append(delta)
-                yield _sse({"d": delta})
-            full = "".join(parts)
+
+            async def _collect_stream(
+                mlist: list[dict[str, str]], uh: list[dict[str, Any]]
+            ) -> str:
+                acc: list[str] = []
+                async for delta in unified_stream_chat_deltas(mlist, usage_holder=uh):
+                    acc.append(delta)
+                return "".join(acc)
+
+            if emit_searching_ping:
+                full = await _collect_stream(msgs, usage_h)
+                retry_msgs: list[dict[str, str]] | None = None
+                if ctx.last_user.strip() and _reply_claims_no_live_data(full):
+                    if ctx.web_block:
+                        suffix = (
+                            "\n\n--- MANDATORY CORRECTION\n"
+                            "Your draft wrongly implied you lack live data. The LIVE DATA section above already "
+                            "contains Google snippets. Answer using ONLY those lines for ranks, points, and teams—"
+                            "do not claim you have no table while that section is non-empty.\n"
+                        )
+                        retry_msgs = _append_system_suffix(msgs, suffix)
+                    else:
+                        forced_block = await build_live_web_context_block(
+                            ctx.last_user, now_ist=datetime.now(timezone.utc).astimezone(IST)
+                        )
+                        if forced_block:
+                            retry_msgs = _append_system_suffix(
+                                msgs,
+                                "\n\n--- Live web results (retrieved on retry — use for this answer)\n"
+                                f"{forced_block}\n",
+                            )
+                if retry_msgs is not None:
+                    usage_h2: list[dict[str, Any]] = []
+                    full2 = await _collect_stream(retry_msgs, usage_h2)
+                    if len(full2.strip()) >= max(24, int(len(full.strip()) * 0.35)):
+                        full = full2
+                        usage_h.clear()
+                        usage_h.extend(usage_h2)
+                for i in range(0, len(full), 120):
+                    yield _sse({"d": full[i : i + 120]})
+            else:
+                async for delta in unified_stream_chat_deltas(msgs, usage_holder=usage_h):
+                    parts.append(delta)
+                    yield _sse({"d": delta})
+                full = "".join(parts)
             result = _completion_result_from_stream_usage(full, usage_h, model_id=model_id)
             await _persist_chat_exchange(ctx.uid, ctx.last_user, full, ctx.source, user, result)
             maybe_append_training_log(ctx.uid, ctx.source, msgs, full)
