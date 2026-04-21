@@ -426,6 +426,41 @@ class LiveContextBody(BaseModel):
     query: str = Field(default="", max_length=500)
 
 
+def _is_movie_release_query(text: str) -> bool:
+    """Films / OTT / 'what released' / upcoming — must use live snippets, not invented titles or dates."""
+    raw = (text or "").strip()
+    if not raw:
+        return False
+    low = raw.lower()
+    hi = raw
+    en_movie = any(
+        t in low
+        for t in ("movie", "movies", "film", "films", "bollywood", "hollywood", "cinema", "ott")
+    )
+    hi_movie = any(t in hi for t in ("फिल्म", "फिल्में", "मूवी", "सिनेमा"))
+    # Common typos: reless, relase
+    release_en = any(
+        t in low
+        for t in (
+            "release",
+            "releasing",
+            "premiere",
+            "upcoming",
+            "trailer",
+            "theatre",
+            "theater",
+            "reless",
+            "relase",
+        )
+    )
+    release_hi = any(t in hi for t in ("रिलीज", "रिलीज़", "आ रही", "आएगी", "आएंगी"))
+    time_kal = "कल" in hi and (hi_movie or "फिल्म" in hi)
+    time_en = any(t in low for t in ("yesterday", "today", "this week"))
+    if (en_movie or hi_movie) and (release_en or release_hi or time_kal or time_en):
+        return True
+    return False
+
+
 @dataclass(frozen=True)
 class ChatRouteContext:
     uid: str
@@ -544,8 +579,18 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
                 "frequently **wrong** for the real current season. Ignore that default; copy **only** order/points "
                 "that appear in the snippets. If snippets lack a full table, say so—never invent positions 1–10. "
             )
+    movie_live_rule = ""
+    if _is_movie_release_query(last_user):
+        movie_live_rule = (
+            "Movies / OTT / box office: never invent film titles, sequels, or 'yesterday (कल) / today' release claims "
+            "unless those exact films and dates appear in the LIVE DATA snippet lines. Training often lists wrong or "
+            "old blockbusters (e.g. fake sequels, films already released years ago as 'upcoming'). "
+            "Align words like 'today' and 'कल' with the IST time anchor in this system message—not memory. "
+            "If snippets do not name specific releases for the day they asked about, say search results did not "
+            "confirm a list—do not fill with guessed titles. "
+        )
     table_format_policy = (
-        f"{sports_standings_rule}"
+        f"{sports_standings_rule}{movie_live_rule}"
         "For non-sports topics only: when the user asks for a table and snippets already contain the same numbers "
         "next to the same labels, you may use a small markdown pipe table; otherwise use prose. "
         "If snippets are narrative-only or missing columns, do **not** invent a full grid — answer in clear prose "

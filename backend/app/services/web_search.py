@@ -21,6 +21,103 @@ MAX_GOOGLE_QUERY_CHARS = 450
 GOOGLE_CSE_URL = "https://www.googleapis.com/customsearch/v1"
 GOOGLE_NEWS_RSS_URL = "https://news.google.com/rss/search"
 
+# Broad industry / sector vocabulary → live Google bias (EN + HI). Avoid very short tokens (false positives).
+INDUSTRY_LIVE_QUERY_TERMS_EN: tuple[str, ...] = (
+    "industry",
+    "industries",
+    "sector",
+    "sectors",
+    "vertical",
+    "macro",
+    "gdp",
+    "inflation",
+    "pharma",
+    "pharmaceutical",
+    "biotech",
+    "medtech",
+    "healthcare sector",
+    "automotive",
+    "automobile",
+    "manufacturing",
+    "industrial production",
+    "semiconductor",
+    "chip industry",
+    "agriculture",
+    "agritech",
+    "fmcg",
+    "consumer goods",
+    "retail sector",
+    "e-commerce",
+    "ecommerce",
+    "energy sector",
+    "renewable",
+    "oil and gas",
+    "power sector",
+    "telecom",
+    "telecommunication",
+    "5g",
+    "broadband",
+    "saas",
+    "enterprise software",
+    "banking sector",
+    "nbfc",
+    "fintech",
+    "insurance sector",
+    "aviation",
+    "airline",
+    "logistics",
+    "shipping",
+    "supply chain",
+    "infrastructure",
+    "construction sector",
+    "real estate",
+    "cement industry",
+    "steel industry",
+    "mining sector",
+    "chemical industry",
+    "textile industry",
+    "defence sector",
+    "defense sector",
+    "aerospace",
+    "tourism sector",
+    "hospitality industry",
+    "hotel industry",
+    "gems and jewellery",
+    "gems and jewelry",
+    "startup ecosystem",
+    "unicorn",
+    "pse",
+    "public sector undertaking",
+    "msme",
+    "sme sector",
+    "edtech",
+    "proptech",
+    "cleantech",
+    "ev industry",
+    "electric vehicle",
+    "oil price",
+    "commodity market",
+)
+INDUSTRY_LIVE_QUERY_TERMS_HI: tuple[str, ...] = (
+    "उद्योग",
+    "उद्योगों",
+    "क्षेत्र",
+    "सेक्टर",
+    "विनिर्माण",
+    "फार्मा",
+    "दवा",
+    "ऑटोमोबाइल",
+    "टेलीकॉम",
+    "बैंकिंग",
+    "बीमा",
+    "रियल एस्टेट",
+    "इंफ्रास्ट्रक्चर",
+    "निर्यात",
+    "आयात",
+    "एमएसएमई",
+    "स्टार्टअप",
+)
+
 
 def _strip_xml_tags(text: str) -> str:
     t = re.sub(r"<[^>]+>", " ", text or "")
@@ -191,8 +288,8 @@ async def fetch_google_snippets(query: str, *, limit: int = 8) -> str:
 
 
 def should_auto_fetch_web(user_text: str) -> bool:
-    """Time-sensitive / market / news / sports queries → pull live Google bundle (CSE + News RSS when applicable)."""
-    s = user_text.lower()
+    """Time-sensitive / market / news / sports / cross-industry sector queries → live Google bundle."""
+    s = (user_text or "").lower()
     keys = (
         "today",
         "aaj",
@@ -256,7 +353,17 @@ def should_auto_fetch_web(user_text: str) -> bool:
         "रिजल्ट",
         "परिणाम",
         "बोर्ड",
-    )
+        "movie",
+        "movies",
+        "film",
+        "release",
+        "bollywood",
+        "hollywood",
+        "premiere",
+        "फिल्म",
+        "रिलीज",
+        "मूवी",
+    ) + INDUSTRY_LIVE_QUERY_TERMS_EN + INDUSTRY_LIVE_QUERY_TERMS_HI
     return any(k in s for k in keys)
 
 
@@ -266,40 +373,44 @@ def augment_search_query(q: str) -> str:
     if not raw:
         return ""
     low = raw.lower()
-    marketish = any(
-        x in low
-        for x in (
-            "stock",
-            "market",
-            "share",
-            "nifty",
-            "sensex",
-            "crypto",
-            "gold",
-            "ipo",
-            "price",
-            "rate",
-            "today",
-            "aaj",
-            "live",
-            "latest",
-            "news",
-            "date",
-            "time",
-            "current time",
-            "score",
-            "cricket",
-            "football",
-            "soccer",
-            "match",
-            "ipl",
-            "fixture",
-            "candle",
-            "standings",
-            "ranking",
-            "rankings",
-            "points table",
+    marketish = (
+        any(
+            x in low
+            for x in (
+                "stock",
+                "market",
+                "share",
+                "nifty",
+                "sensex",
+                "crypto",
+                "gold",
+                "ipo",
+                "price",
+                "rate",
+                "today",
+                "aaj",
+                "live",
+                "latest",
+                "news",
+                "date",
+                "time",
+                "current time",
+                "score",
+                "cricket",
+                "football",
+                "soccer",
+                "match",
+                "ipl",
+                "fixture",
+                "candle",
+                "standings",
+                "ranking",
+                "rankings",
+                "points table",
+            )
         )
+        or any(x in low for x in INDUSTRY_LIVE_QUERY_TERMS_EN)
+        or any(x in raw for x in INDUSTRY_LIVE_QUERY_TERMS_HI)
     )
     exam_boardish = any(
         x in low
@@ -327,11 +438,23 @@ def augment_search_query(q: str) -> str:
             "results",
         )
     )
+    movie_tokens_en = ("movie", "movies", "film", "films", "bollywood", "hollywood", "cinema")
+    movie_tokens_hi = ("फिल्म", "फिल्में", "मूवी", "सिनेमा")
+    releaseish_en = ("release", "releasing", "premiere", "upcoming", "trailer", "theatre", "theater", "ott")
+    releaseish_hi = ("रिलीज", "रिलीज़", "कल", "आज", "आ रही", "आएगी", "आएंगी")
+    movieish = (
+        any(t in low for t in movie_tokens_en) or any(t in raw for t in movie_tokens_hi)
+    ) and (
+        any(r in low for r in releaseish_en) or any(r in raw for r in releaseish_hi)
+    )
+
     now = datetime.now(timezone.utc)
     if marketish:
         return f"{raw} latest news {now.year}"
     if exam_boardish:
         return f"{raw} {now.year} latest news"
+    if movieish:
+        return f"{raw} India theatre OTT release date {now.year} latest news bollywood"
     if "today" in low or "aaj" in low or "abhi" in low:
         return f"{raw} {now.year}"
     return raw
