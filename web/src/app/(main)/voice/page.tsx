@@ -39,13 +39,18 @@ import {
 
 const VOICE_HISTORY_PREFIX = "neo-voice-history-";
 
-/** OpenAI Realtime race: harmless if we recover; yellow banner confuses APK users. */
+/**
+ * OpenAI Realtime noise: harmless or self-inflicted; do not flash yellow on APK.
+ * LOCKED MIC/VOICE PIPELINE — see `.cursor/rules/voice-live-apk-mic-lock.mdc` before editing.
+ */
 function shouldSuppressLiveVoiceRealtimeError(msg: string): boolean {
   const s = (msg || "").toLowerCase();
   return (
     s.includes("active response in progress") ||
     s.includes("conversation already has an active response") ||
-    (s.includes("wait until the response is finished") && s.includes("creating a new one"))
+    (s.includes("wait until the response is finished") && s.includes("creating a new one")) ||
+    s.includes("cancellation failed") ||
+    s.includes("no active response found")
   );
 }
 
@@ -114,6 +119,8 @@ export default function VoicePage() {
   const voiceLiveWebTurnRef = useRef(0);
   /** Serialize post-transcript work so two response.create calls never overlap. */
   const liveWebPipelineRef = useRef(Promise.resolve());
+  /** From Realtime `response.created` → `done` / `completed` / `cancelled` / `error` — gates `response.cancel`. */
+  const liveResponseBusyRef = useRef(false);
   /** True between Realtime `response.created` and `response.done` — drives transcript append vs new bubble. */
   const liveAssistStreamOpenRef = useRef(false);
   /** True while OpenAI `input_audio_transcription.delta` is building the current user line. */
@@ -274,6 +281,7 @@ export default function VoicePage() {
     liveEnsureMicRef.current = null;
     voiceLiveWebTurnRef.current += 1;
     liveWebPipelineRef.current = Promise.resolve();
+    liveResponseBusyRef.current = false;
     setLiveWebFetching(false);
     setLiveConnecting(false);
     sessionOnRef.current = false;
@@ -395,15 +403,15 @@ export default function VoicePage() {
             }
             setLiveWebFetching(false);
             /*
-             * Always clear any in-flight Realtime response before response.create.
-             * speakingRef can be false while the server still holds an active response (text/audio lag),
-             * which caused "active response in progress" on APK — conditional cancel was too narrow.
-             * One cancel per user turn + short delay is far fewer events than the old Web Speech sidecar.
+             * LOCK: only `response.cancel` when server reports an in-flight response (`liveResponseBusyRef`).
+             * Blind cancel caused APK yellow: "Cancellation failed: no active response found".
              */
-            liveCancelRef.current?.();
-            await new Promise<void>((r) => {
-              setTimeout(r, 200);
-            });
+            if (liveResponseBusyRef.current) {
+              liveCancelRef.current?.();
+              await new Promise<void>((r) => {
+                setTimeout(r, 200);
+              });
+            }
             liveEnsureMicRef.current?.();
             if (!sessionOnRef.current || myTurn !== voiceLiveWebTurnRef.current) return;
             if (block) {
@@ -483,8 +491,14 @@ export default function VoicePage() {
             liveEnsureMicRef.current?.();
           }
         },
+        onAssistantResponseActive: (active) => {
+          liveResponseBusyRef.current = active;
+        },
         onError: (msg) => {
           if (shouldSuppressLiveVoiceRealtimeError(msg)) {
+            if ((msg || "").toLowerCase().includes("cancellation failed")) {
+              liveResponseBusyRef.current = false;
+            }
             return;
           }
           setErr(msg);
@@ -516,6 +530,7 @@ export default function VoicePage() {
       speakingRef.current = false;
       setSpeaking(false);
       liveAssistStreamOpenRef.current = false;
+      liveResponseBusyRef.current = false;
       liveEnsureMicRef.current?.();
     }
   }, []);

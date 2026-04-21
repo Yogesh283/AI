@@ -1,6 +1,9 @@
 /**
  * OpenAI Realtime API over WebRTC — continuous hands-free speech session.
  * @see https://platform.openai.com/docs/guides/realtime-webrtc
+ *
+ * **Product lock (APK mic / Live voice):** do not change `routeRealtimeEvent`, `cancelAssistant`,
+ * or callback wiring without reading `.cursor/rules/voice-live-apk-mic-lock.mdc` and `voice/page.tsx`.
  */
 
 const REALTIME_CALLS_URL = "https://api.openai.com/v1/realtime/calls";
@@ -30,6 +33,11 @@ export type OpenAiRealtimeVoiceCallbacks = {
   onAssistantTranscript?: (text: string) => void;
   /** Model started / finished an audio response (best-effort). */
   onAssistantSpeaking?: (speaking: boolean) => void;
+  /**
+   * True between `response.created` and `response.done` / `response.completed` (server-side in-flight response).
+   * Used to avoid `response.cancel` when nothing is active (APK: "Cancellation failed: no active response found").
+   */
+  onAssistantResponseActive?: (active: boolean) => void;
   onError?: (message: string) => void;
 };
 
@@ -51,6 +59,7 @@ function routeRealtimeEvent(
 ): void {
   const type = String(ev.type || "");
   if (type === "error") {
+    cb.onAssistantResponseActive?.(false);
     const err = ev.error;
     const msg =
       err && typeof err === "object"
@@ -124,11 +133,13 @@ function routeRealtimeEvent(
   }
   if (type === "response.created") {
     locks.assistantDeltaSource = null;
+    cb.onAssistantResponseActive?.(true);
     cb.onAssistantSpeaking?.(true);
     return;
   }
-  if (type === "response.done" || type === "response.completed") {
+  if (type === "response.done" || type === "response.completed" || type === "response.cancelled") {
     locks.assistantDeltaSource = null;
+    cb.onAssistantResponseActive?.(false);
     cb.onAssistantSpeaking?.(false);
     return;
   }
