@@ -30,7 +30,7 @@ from app.services.chat_inference import (
     unified_stream_chat_deltas,
 )
 from app.services.live_google_query_refine import maybe_refine_google_query
-from app.services.sports_feed import build_live_web_context_block
+from app.services.sports_feed import build_live_web_context_block, is_sports_live_query
 from app.store import add_chat_turn, add_memory_fact, get_memory, get_profile, get_recent_chat_history
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -141,6 +141,61 @@ def _reply_claims_no_live_data(reply: str) -> bool:
     if "अंक तालिका" in r and "नहीं" in r:
         return True
     return False
+
+
+_STANDINGS_TABLE_FORMAT_FIX = (
+    "\n\n--- MANDATORY FORMAT FIX\n"
+    "Your last answer used a markdown pipe table (| … |) for league or IPL standings. That format led to wrong rows "
+    "that do not match the LIVE DATA snippets. Regenerate the answer: NO pipe tables and no '|' grids. "
+    "Use short bullets or sentences only; each fact must clearly restate wording from the LIVE DATA lines above "
+    "(team names, points, matches) without inventing numbers. If snippets only cover some teams, list only those and "
+    "say the rest were not in the retrieved lines.\n"
+)
+
+
+def _user_asks_standings_or_table(text: str) -> bool:
+    """User wants ranks / points table / tabular style (EN + HI)."""
+    s = (text or "").strip().lower()
+    hi = text or ""
+    if not s:
+        return False
+    keys_en = (
+        "points table",
+        "point table",
+        "standings",
+        "ranking",
+        "which rank",
+        "which team",
+        "tabular",
+        "in a table",
+    )
+    keys_hi = ("टेबल", "तालिका", "सारणी", "रैंक", "अंक तालिका", "रैंकिंग")
+    if any(k in s for k in keys_en):
+        return True
+    if any(k in hi for k in keys_hi):
+        return True
+    if "table" in s and any(x in s for x in ("rank", "team", "ipl", "point")):
+        return True
+    return False
+
+
+def _reply_uses_markdown_pipe_table(reply: str) -> bool:
+    """GFM-style pipe tables — common source of fabricated standings grids."""
+    lines = (reply or "").splitlines()
+    pipe_rows = [ln for ln in lines if ln.count("|") >= 2 and not ln.strip().startswith("```")]
+    if len(pipe_rows) >= 2:
+        return True
+    return any(ln.strip().startswith("|") and ln.count("|") >= 4 for ln in lines)
+
+
+def _needs_standings_table_retry(last_user: str, reply: str, web_block: str) -> bool:
+    if not (web_block or "").strip() or not (reply or "").strip():
+        return False
+    if not is_sports_live_query(last_user):
+        return False
+    if not _user_asks_standings_or_table(last_user):
+        return False
+    return _reply_uses_markdown_pipe_table(reply)
 
 
 def _append_system_suffix(msgs: list[dict[str, str]], suffix: str) -> list[dict[str, str]]:
@@ -377,10 +432,17 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
         "Before you send: every number or rank you state must be traceable to a specific phrase in the snippet lines; "
         "if you cannot trace it, omit it."
     )
+    sports_standings_rule = ""
+    if is_sports_live_query(last_user):
+        sports_standings_rule = (
+            "Sports / IPL / league standings: NEVER use a GitHub markdown pipe table (no | rows), even if the user "
+            "asks for a 'table' or 'टेबल'. Pipe tables caused wrong invented scores. Use bullets or short sentences; "
+            "each line must follow the LIVE DATA snippet lines—same teams and numbers as written there. "
+        )
     table_format_policy = (
-        "When the user asks for a table, columns/rows, 'in tabular form', or Hindi like 'टेबल में' / 'सारणी में', "
-        "use a GitHub-flavored markdown pipe table **only if** the live snippets in this turn already contain those "
-        "same numbers next to the same labels (teams, dates, etc.). "
+        f"{sports_standings_rule}"
+        "For non-sports topics only: when the user asks for a table and snippets already contain the same numbers "
+        "next to the same labels, you may use a small markdown pipe table; otherwise use prose. "
         "If snippets are narrative-only or missing columns, do **not** invent a full grid — answer in clear prose "
         "with only facts from snippets and say the full table is not in the retrieved lines."
     )
@@ -452,9 +514,9 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
         system_extra += (
             f"\n\n--- Live data for this turn (Google Programmable Search + Google News RSS; use for {live_year} facts). "
             "Synthesize in your own words; quote numbers, times, and scores only when they appear in the snippets. "
-            "STANDINGS / IPL / LEAGUE TABLES: do not output a full points table unless the snippet lines already list "
-            "each team with matching match/win/loss/point numbers. If snippets only give partial info or headlines, "
-            "summarize that honestly in Hindi or English — never fabricate rows for a future season from training memory. "
+            "STANDINGS / IPL / LEAGUE: never use markdown pipe tables (|). Do not output a full ladder unless snippets "
+            "literally list those teams with those numbers. Prefer bullets mirroring snippet lines. If snippets only "
+            "give partial info or headlines, summarize honestly — never fabricate rows from training memory. "
             "Answer here from these snippets—do not tell the user to browse other websites for the same lookup. "
             "If snippets are empty or off-topic, say so briefly — do not invent results.\n"
             f"{web_block}"
@@ -605,6 +667,15 @@ async def post_chat(
                 )
                 result = retry
                 reply = retry.text
+        if web_block and last_user and _needs_standings_table_retry(last_user, reply, web_block):
+            retry_msgs = _append_system_suffix(msgs, _STANDINGS_TABLE_FORMAT_FIX)
+            retry = await unified_chat_completion(
+                retry_msgs,
+                user_id=uid,
+                openai_request_overrides={"temperature": CHAT_TEMP_WITH_LIVE_WEB},
+            )
+            result = retry
+            reply = retry.text
     except HTTPException:
         raise
     except Exception as e:
@@ -720,6 +791,18 @@ async def post_chat_stream(
                         full = full2
                         usage_h.clear()
                         usage_h.extend(usage_h2)
+                if (
+                    ctx.web_block
+                    and ctx.last_user.strip()
+                    and _needs_standings_table_retry(ctx.last_user, full, ctx.web_block)
+                ):
+                    fix_msgs = _append_system_suffix(msgs, _STANDINGS_TABLE_FORMAT_FIX)
+                    usage_h3: list[dict[str, Any]] = []
+                    full3 = await _collect_stream(fix_msgs, usage_h3, force_live_temp=True)
+                    if len(full3.strip()) >= 40:
+                        full = full3
+                        usage_h.clear()
+                        usage_h.extend(usage_h3)
                 for i in range(0, len(full), 120):
                     yield _sse({"d": full[i : i + 120]})
             else:

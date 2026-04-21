@@ -7,6 +7,7 @@ Live facts themselves come only from Google in {@link app.services.web_search.fe
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 
 
@@ -77,6 +78,9 @@ def google_fetch_query(user_text: str) -> str:
     if not t:
         return t
     y = datetime.now(timezone.utc).year
+    m = re.search(r"\b(20\d{2})\b", t)
+    if m:
+        y = int(m.group(1))
     if is_sports_live_query(t):
         return f"IPL cricket points table standings team rankings {y} latest news {t[:200]}"
     return t
@@ -90,10 +94,16 @@ async def build_live_web_context_block(last_user: str, *, now_ist: datetime) -> 
     from app.services.web_search import fetch_google_snippets
 
     primary = google_fetch_query(last_user)
-    g = await fetch_google_snippets(primary)
+    lim = 10 if is_sports_live_query(last_user) else 8
+    g = await fetch_google_snippets(primary, limit=lim)
     if not g.strip() and is_sports_live_query(last_user):
         y = datetime.now(timezone.utc).year
-        g = await fetch_google_snippets(f"IPL {y} points table standings teams ranked latest news")
+        m = re.search(r"\b(20\d{2})\b", (last_user or "").strip())
+        if m:
+            y = int(m.group(1))
+        g = await fetch_google_snippets(
+            f"IPL {y} points table standings teams ranked latest news", limit=lim
+        )
     if not g.strip():
         return ""
     stamp = now_ist.strftime("%Y-%m-%d %H:%M %Z")

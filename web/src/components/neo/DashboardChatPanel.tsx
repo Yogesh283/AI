@@ -318,7 +318,7 @@ export function DashboardChatPanel() {
         apiMsgs,
         uid,
         {
-          useWeb: false,
+          useWeb: true,
           signal,
           onLiveFetchStart: () => {
             liveSearchActiveRef.current = true;

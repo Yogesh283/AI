@@ -20,6 +20,8 @@ _REFINE_SYSTEM = (
     "- If they ask for topper / first rank / highest marks, include words like topper, first rank, merit list.\n"
     "- For Indian school boards: if the acronym looks wrong or ambiguous (e.g. RCBC in a Rajasthan / 10th context), "
     "prefer RBSE (Rajasthan Board of Secondary Education) or spell the full board name when obvious.\n"
+    "- For IPL / cricket points table or team rankings: include IPL, year if known, and words like points table standings "
+    "official (English search line even if the user wrote Hindi).\n"
     "- Keep place names (state, district) when present.\n"
 )
 
@@ -32,6 +34,12 @@ def should_refine_google_query(text: str) -> bool:
     low = t.lower()
     keys = (
         "rank",
+        "ranking",
+        "standings",
+        "points table",
+        "point table",
+        "ipl",
+        "cricket",
         "topper",
         "first rank",
         "merit",
@@ -57,7 +65,7 @@ def should_refine_google_query(text: str) -> bool:
     )
     if any(k in low for k in keys):
         return True
-    if any(k in t for k in ("रिजल्ट", "बोर्ड", "टॉपर", "रैंक", "परिणाम")):
+    if any(k in t for k in ("रिजल्ट", "बोर्ड", "टॉपर", "रैंक", "परिणाम", "टेबल", "तालिका", "अंक तालिका", "आईपीएल")):
         return True
     return bool(re.search(r"\b(19|20)\d{2}\b", t))
 

@@ -240,6 +240,7 @@ async def _build_realtime_instructions(
         "already pulled live results here. For any A-to-Z topic, merge training with snippets when present. "
         "Sports or points: speak only numbers that actually appear inside the live web data message—never invent "
         "a full standings table from memory. If a number is not verbatim in that message, omit it. "
+        "Never describe standings as a markdown pipe table aloud—summarize in short spoken sentences from snippets. "
         "Finish each reply completely in one go: do not stop mid-list or mid-explanation; if the answer is long, "
         "speak the top items in full sentences first, then continue with the rest until the question is covered. "
         "If snippets are missing, say no live lines were found, avoid inventing numbers, and still do not send "
