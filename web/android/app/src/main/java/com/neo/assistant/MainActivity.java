@@ -1,14 +1,19 @@
 package com.neo.assistant;
 
+import android.Manifest;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.webkit.CookieManager;
+import android.webkit.PermissionRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
+import androidx.core.content.ContextCompat;
 import com.getcapacitor.Bridge;
 import com.getcapacitor.BridgeActivity;
+import com.getcapacitor.BridgeWebChromeClient;
 
 public class MainActivity extends BridgeActivity {
 
@@ -67,7 +72,45 @@ public class MainActivity extends BridgeActivity {
             if (ua != null && ua.contains("; wv")) {
                 s.setUserAgentString(ua.replace("; wv", ""));
             }
+            attachWebRtcMicChromeClient(wv, bridge);
         } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * WebView getUserMedia (OpenAI Live / WebRTC): if RECORD_AUDIO is already granted, grant the
+     * WebView permission immediately. Otherwise Capacitor’s launcher flow runs (can stall if
+     * another system dialog was showing — common on APK right after Google Sign-In).
+     */
+    private void attachWebRtcMicChromeClient(WebView wv, Bridge bridge) {
+        if (wv.getWebChromeClient() instanceof NeoBridgeWebChromeClient) {
+            return;
+        }
+        wv.setWebChromeClient(new NeoBridgeWebChromeClient(bridge));
+    }
+
+    private final class NeoBridgeWebChromeClient extends BridgeWebChromeClient {
+
+        NeoBridgeWebChromeClient(Bridge bridge) {
+            super(bridge);
+        }
+
+        @Override
+        public void onPermissionRequest(final PermissionRequest request) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
+                request.deny();
+                return;
+            }
+            for (String res : request.getResources()) {
+                if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(res)) {
+                    if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.RECORD_AUDIO)
+                            == PackageManager.PERMISSION_GRANTED) {
+                        request.grant(request.getResources());
+                        return;
+                    }
+                }
+            }
+            super.onPermissionRequest(request);
         }
     }
 

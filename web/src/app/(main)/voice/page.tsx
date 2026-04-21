@@ -39,6 +39,16 @@ import {
 
 const VOICE_HISTORY_PREFIX = "neo-voice-history-";
 
+/** OpenAI Realtime race: harmless if we recover; yellow banner confuses APK users. */
+function shouldSuppressLiveVoiceRealtimeError(msg: string): boolean {
+  const s = (msg || "").toLowerCase();
+  return (
+    s.includes("active response in progress") ||
+    s.includes("conversation already has an active response") ||
+    (s.includes("wait until the response is finished") && s.includes("creating a new one"))
+  );
+}
+
 /** Persona preview TTS (Man / Woman) — slow, warm delivery. */
 const VOICE_CHAT_TTS_SPEED: TtsSpeedPreset = "slow";
 const VOICE_CHAT_TTS_TONE: TtsTonePreset = "warm";
@@ -99,6 +109,7 @@ export default function VoicePage() {
   const liveCloseRef = useRef<(() => void) | null>(null);
   const liveCancelRef = useRef<(() => void) | null>(null);
   const liveSendClientEventRef = useRef<((o: Record<string, unknown>) => void) | null>(null);
+  const liveEnsureMicRef = useRef<(() => void) | null>(null);
   /** Monotonic id so stale live-web async work never calls `response.create` after a newer utterance. */
   const voiceLiveWebTurnRef = useRef(0);
   /** Serialize post-transcript work so two response.create calls never overlap. */
@@ -260,6 +271,7 @@ export default function VoicePage() {
     liveCloseRef.current = null;
     liveCancelRef.current = null;
     liveSendClientEventRef.current = null;
+    liveEnsureMicRef.current = null;
     voiceLiveWebTurnRef.current += 1;
     liveWebPipelineRef.current = Promise.resolve();
     setLiveWebFetching(false);
@@ -301,12 +313,15 @@ export default function VoicePage() {
           if (!sessionOnRef.current) return;
           if (s === "open") {
             liveSendClientEventRef.current = live.sendClientEvent;
+            liveEnsureMicRef.current = live.ensureLocalMicLive;
+            live.ensureLocalMicLive();
             setLiveConnecting(false);
             setListening(true);
             /* No second Web Speech session here: it fought the WebRTC mic and caused OS “tun” cues on phones. */
           }
           if (s === "closed") {
             liveSendClientEventRef.current = null;
+            liveEnsureMicRef.current = null;
             setLiveConnecting(false);
             setListening(false);
             setLiveWebFetching(false);
@@ -379,10 +394,17 @@ export default function VoicePage() {
               return;
             }
             setLiveWebFetching(false);
+            /*
+             * Always clear any in-flight Realtime response before response.create.
+             * speakingRef can be false while the server still holds an active response (text/audio lag),
+             * which caused "active response in progress" on APK — conditional cancel was too narrow.
+             * One cancel per user turn + short delay is far fewer events than the old Web Speech sidecar.
+             */
             liveCancelRef.current?.();
             await new Promise<void>((r) => {
-              setTimeout(r, 140);
+              setTimeout(r, 200);
             });
+            liveEnsureMicRef.current?.();
             if (!sessionOnRef.current || myTurn !== voiceLiveWebTurnRef.current) return;
             if (block) {
               send({
@@ -400,6 +422,8 @@ export default function VoicePage() {
               });
             }
             send({ type: "response.create" });
+            liveEnsureMicRef.current?.();
+            queueMicrotask(() => liveEnsureMicRef.current?.());
           };
           liveWebPipelineRef.current = liveWebPipelineRef.current
             .then(runPipeline)
@@ -455,18 +479,26 @@ export default function VoicePage() {
           setSpeaking(on);
           /* New response: keep false until the first delta creates/opens the row — avoids appending into the prior reply. */
           liveAssistStreamOpenRef.current = false;
+          if (!on) {
+            liveEnsureMicRef.current?.();
+          }
         },
         onError: (msg) => {
+          if (shouldSuppressLiveVoiceRealtimeError(msg)) {
+            return;
+          }
           setErr(msg);
         },
       });
       liveCloseRef.current = live.close;
       liveCancelRef.current = live.cancelAssistant;
       liveSendClientEventRef.current = live.sendClientEvent;
+      liveEnsureMicRef.current = live.ensureLocalMicLive;
     } catch (e) {
       liveCloseRef.current = null;
       liveCancelRef.current = null;
       liveSendClientEventRef.current = null;
+      liveEnsureMicRef.current = null;
       setLiveConnecting(false);
       setListening(false);
       sessionOnRef.current = false;
@@ -484,6 +516,7 @@ export default function VoicePage() {
       speakingRef.current = false;
       setSpeaking(false);
       liveAssistStreamOpenRef.current = false;
+      liveEnsureMicRef.current?.();
     }
   }, []);
 
@@ -518,6 +551,7 @@ export default function VoicePage() {
       liveCloseRef.current = null;
       liveCancelRef.current = null;
       liveSendClientEventRef.current = null;
+      liveEnsureMicRef.current = null;
       stopRecognitionOnly();
       stopBargeInRecognition();
       stopVoiceOutput();

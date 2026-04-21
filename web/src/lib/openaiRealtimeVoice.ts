@@ -141,6 +141,11 @@ export type OpenAiRealtimeVoiceSession = {
   cancelAssistant: () => void;
   /** Send a Realtime client event over the data channel (e.g. conversation.item.create). */
   sendClientEvent: (payload: Record<string, unknown>) => void;
+  /**
+   * Keep the single session mic track enabled (some stacks flip it off after errors / cancel storms).
+   * Safe to call often; only touches local uplink tracks.
+   */
+  ensureLocalMicLive: () => void;
 };
 
 /**
@@ -248,6 +253,24 @@ export async function startOpenAiRealtimeVoiceSession(
     }
   };
 
+  const ensureLocalMicLive = () => {
+    for (const t of ms.getAudioTracks()) {
+      if (t.readyState === "live" && !t.enabled) {
+        t.enabled = true;
+      }
+    }
+    try {
+      for (const sender of pc.getSenders()) {
+        const tr = sender.track;
+        if (tr && tr.kind === "audio" && tr.readyState === "live" && !tr.enabled) {
+          tr.enabled = true;
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+
   const close = () => {
     try {
       dc.close();
@@ -281,5 +304,5 @@ export async function startOpenAiRealtimeVoiceSession(
     }
   };
 
-  return { close, peerConnection: pc, cancelAssistant, sendClientEvent };
+  return { close, peerConnection: pc, cancelAssistant, sendClientEvent, ensureLocalMicLive };
 }
