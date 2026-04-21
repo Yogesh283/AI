@@ -364,12 +364,21 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
         "Never tell the user to open other websites, official portals, apps, or search engines for the same "
         "information (no 'go check there', 'search Google', or browsing homework). "
         "If snippets are missing or thin, give a short honest best-effort reply without inventing specifics—"
-        "still without sending them elsewhere for the same lookup."
+        "still without sending them elsewhere for the same lookup. "
+        "Accuracy over completeness: never invent numbers, rates, or ranks to look helpful—only state what snippets support."
+    )
+    live_presentation_policy = (
+        "Live presentation (chat): the snippet block below is internal research—not something to paste. In your reply, "
+        "never dump raw search payload: no HTML/XML tags, no long Google redirect or encoded link strings (e.g. "
+        "news.google.com/rss/articles/CBM…), no scraper junk. Rewrite as a clean, readable short analysis—lead with "
+        "the takeaway, then key facts in plain words. If snippets disagree or are too thin, say that clearly."
     )
     table_format_policy = (
         "When the user asks for a table, columns/rows, 'in tabular form', or Hindi like 'टेबल में' / 'सारणी में', "
-        "respond with a GitHub-flavored markdown pipe table: header row, a |---|---| separator row, then body rows. "
-        "Keep cells brief; use numbers exactly as in live snippets when applicable."
+        "use a GitHub-flavored markdown pipe table **only if** the live snippets in this turn already contain those "
+        "same numbers next to the same labels (teams, dates, etc.). "
+        "If snippets are narrative-only or missing columns, do **not** invent a full grid — answer in clear prose "
+        "with only facts from snippets and say the full table is not in the retrieved lines."
     )
     hindi_only = _shuddh_hindi_applies(last_user, body.speech_lang)
 
@@ -419,6 +428,7 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
         f"You are NeoXAI — this user's personal AI assistant (warm, present, one-to-one; not a generic bot). "
         f"{knowledge_cutoff_hint} "
         f"{live_google_policy} "
+        f"{live_presentation_policy} "
         f"{table_format_policy} "
         f"For prices, markets, news, or anything time-sensitive: prefer facts from the live web snippets "
         f"when provided — do not rely on training-only data for numbers, rates, or dates after ~2023. "
@@ -438,6 +448,9 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
         system_extra += (
             f"\n\n--- Live data for this turn (Google Programmable Search + Google News RSS; use for {live_year} facts). "
             "Synthesize in your own words; quote numbers, times, and scores only when they appear in the snippets. "
+            "STANDINGS / IPL / LEAGUE TABLES: do not output a full points table unless the snippet lines already list "
+            "each team with matching match/win/loss/point numbers. If snippets only give partial info or headlines, "
+            "summarize that honestly in Hindi or English — never fabricate rows for a future season from training memory. "
             "Answer here from these snippets—do not tell the user to browse other websites for the same lookup. "
             "If snippets are empty or off-topic, say so briefly — do not invent results.\n"
             f"{web_block}"

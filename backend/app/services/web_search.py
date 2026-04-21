@@ -7,6 +7,7 @@ import logging
 import re
 from datetime import datetime, timezone
 from html import unescape
+from urllib.parse import urlparse
 
 import httpx
 
@@ -60,7 +61,9 @@ async def _fetch_google_news_rss_snippets(query: str, *, limit: int = 5) -> str:
         return ""
     lines: list[str] = []
     for i, (title, snippet, link) in enumerate(entries, 1):
-        lines.append(f"{i}. {title}\n   {snippet}\n   {link}")
+        host = urlparse(link).netloc if link else ""
+        src = f" (source: {host})" if host else ""
+        lines.append(f"{i}. {title}\n   {snippet}{src}")
     return "\n".join(lines)
 
 
@@ -99,7 +102,9 @@ async def _fetch_google_cse_snippets(query: str, *, limit: int) -> str:
         title = str(it.get("title") or "").strip()
         snippet = str(it.get("snippet") or "").strip()
         link = str(it.get("link") or "").strip()
-        lines.append(f"{i}. {title}\n   {snippet}\n   {link}")
+        host = urlparse(link).netloc if link else ""
+        src = f"\n   (source: {host})" if host else ""
+        lines.append(f"{i}. {title}\n   {snippet}{src}")
     return "\n".join(lines)
 
 

@@ -463,7 +463,7 @@ export default function VoicePage() {
                   content: [
                     {
                       type: "input_text",
-                      text: `Live web data (Google; use for current facts; do not invent beyond this):\n${block.slice(0, 12000)}`,
+                      text: `Live web data (Google; use for current facts; do not invent beyond this):\n${block.slice(0, 7500)}`,
                     },
                   ],
                 },

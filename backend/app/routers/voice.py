@@ -165,8 +165,8 @@ def _realtime_server_vad() -> dict[str, object]:
     return {
         "type": "server_vad",
         "threshold": 0.62,
-        "prefix_padding_ms": 450,
-        "silence_duration_ms": 1200,
+        "prefix_padding_ms": 500,
+        "silence_duration_ms": 1850,
         "interrupt_response": False,
         "create_response": False,
     }
@@ -233,8 +233,13 @@ async def _build_realtime_instructions(
         "You may receive a system message starting with «Live web data (Google». When that message has real snippets, "
         "treat it as the factual source: summarize what it says in the user's language (for Hindi-only users, use "
         "Shuddh Hindi even if snippets are English—translate only the facts, not filler). "
+        "Never read long link IDs, encoded URLs, or raw snippet boilerplate aloud—paraphrase the fact in natural speech. "
         "Never tell them to open another site, search Google, or check social media for the same information—you "
         "already pulled live results here. For any A-to-Z topic, merge training with snippets when present. "
+        "Sports or points: speak only numbers that actually appear inside the live web data message—never invent "
+        "a full standings table from memory. "
+        "Finish each reply completely in one go: do not stop mid-list or mid-explanation; if the answer is long, "
+        "speak the top items in full sentences first, then continue with the rest until the question is covered. "
         "If snippets are missing, say no live lines were found, avoid inventing numbers, and still do not send "
         "them to external sites or apps for the same answer.\n"
         f"Current year context: {live_year}. "
@@ -283,8 +288,8 @@ async def post_realtime_token(
         "type": "realtime",
         "model": model,
         "instructions": instructions[:32000],
-        # Explicit cap avoids any server-side default that might truncate long spoken answers.
-        "max_output_tokens": "inf",
+        # Use numeric max (4096) so long spoken lists complete; some stacks mishandle string "inf".
+        "max_output_tokens": 4096,
         "audio": {
             "input": {
                 "noise_reduction": {"type": "far_field"},
@@ -301,7 +306,7 @@ async def post_realtime_token(
             "type": "realtime",
             "model": model,
             "instructions": instructions[:32000],
-            "max_output_tokens": "inf",
+            "max_output_tokens": 4096,
             "audio": {
                 "input": {
                     "noise_reduction": {"type": "far_field"},

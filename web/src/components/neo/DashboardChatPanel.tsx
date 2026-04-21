@@ -445,10 +445,10 @@ export function DashboardChatPanel() {
         ref={scrollRef}
         className="neo-chat-scroll min-h-0 flex-1 overflow-y-auto overscroll-y-contain scroll-smooth px-3 py-5 sm:px-5 md:px-8 md:py-6"
       >
-        <div className="mx-auto flex w-full max-w-[44rem] flex-col gap-6 md:gap-7">
+        <div className="mx-auto flex w-full max-w-[52rem] flex-col gap-5 md:gap-6">
           <article className="flex gap-3 sm:gap-4">
             <ChatAssistantAvatar className="mt-0.5" />
-            <div className="min-w-0 flex-1 border-l-2 border-white/[0.1] pl-3 sm:pl-4">
+            <div className="min-w-0 flex-1 rounded-2xl bg-white/[0.04] px-4 py-3 sm:px-5 sm:py-3.5">
               <p className="line-clamp-2 text-[15px] leading-relaxed text-white/[0.92] sm:line-clamp-none">
                 {msgs[0]?.content}
               </p>
@@ -473,8 +473,8 @@ export function DashboardChatPanel() {
                   <div
                     className={
                       m.role === "user"
-                        ? "inline-block max-w-[min(100%,92%)] border-r-2 border-[#00D4FF]/30 pr-3 text-right sm:max-w-[85%]"
-                        : "border-l-2 border-white/[0.1] pl-3 sm:pl-4"
+                        ? "inline-block max-w-[min(100%,92%)] rounded-2xl bg-gradient-to-br from-cyan-500/12 to-indigo-500/10 px-4 py-2.5 text-right shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] sm:max-w-[85%]"
+                        : "rounded-2xl bg-white/[0.045] px-4 py-2.5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] sm:px-5 sm:py-3"
                     }
                   >
                     {m.role === "user" ? (
@@ -520,12 +520,12 @@ export function DashboardChatPanel() {
         </div>
       </div>
 
-      <div className="z-10 shrink-0 border-t border-white/[0.06] bg-[#080a0f] px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-8px_32px_rgba(0,0,0,0.35)] sm:px-5 md:px-8 md:pt-4">
-        <div className="mx-auto w-full max-w-[44rem]">
-          <div className="flex w-full items-end gap-1 rounded-2xl border border-neutral-200/90 bg-white py-1.5 pl-3 pr-1.5 shadow-[0_2px_16px_rgba(0,0,0,0.12)] sm:gap-1.5 sm:pl-4 sm:pr-2">
+      <div className="z-10 shrink-0 border-t border-white/[0.04] bg-gradient-to-t from-[#06080f] via-[#080a0f] to-[#080a0f] px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-12px_48px_rgba(0,0,0,0.4)] sm:px-5 md:px-8 md:pt-4">
+        <div className="mx-auto w-full max-w-[52rem]">
+          <div className="flex w-full items-end gap-1.5 rounded-3xl border border-white/[0.09] bg-white/[0.06] py-2 pl-3 pr-2 shadow-[0_8px_40px_rgba(0,0,0,0.35)] backdrop-blur-xl ring-1 ring-white/[0.05] sm:gap-2 sm:pl-4 sm:pr-2.5">
             <textarea
               ref={inputRef}
-              className="min-h-[44px] min-w-0 flex-1 resize-none overflow-hidden bg-transparent py-2.5 text-[15px] leading-snug text-neutral-900 outline-none placeholder:text-neutral-400 focus-visible:ring-0"
+              className="min-h-[44px] min-w-0 flex-1 resize-none overflow-hidden bg-transparent py-2.5 text-[15px] leading-snug text-white/95 outline-none placeholder:text-white/38 focus-visible:ring-0"
               placeholder={
                 userShort ? `${userShort}, ask anything…` : "Ask anything"
               }
@@ -544,7 +544,7 @@ export function DashboardChatPanel() {
               type="button"
               onClick={() => void send()}
               disabled={loading || voiceListening || !input.trim()}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#00D4FF] to-[#0891b2] text-[#050912] shadow-[0_1px_10px_rgba(0,212,255,0.35)] transition hover:brightness-105 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-35"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#22d3ee] to-[#6366f1] text-white shadow-[0_4px_20px_rgba(34,211,238,0.35)] transition hover:brightness-110 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-35"
               aria-label="Send message"
               title="Send (Enter)"
             >
@@ -562,8 +562,8 @@ export function DashboardChatPanel() {
               type="button"
               onClick={() => toggleVoice()}
               disabled={loading}
-              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-neutral-900 transition hover:bg-neutral-100 disabled:opacity-40 ${
-                voiceListening ? "bg-emerald-50 text-emerald-700 ring-2 ring-emerald-400/50" : ""
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white/85 transition hover:bg-white/[0.08] disabled:opacity-40 ${
+                voiceListening ? "bg-emerald-500/20 text-emerald-200 ring-2 ring-emerald-400/40" : ""
               }`}
               aria-pressed={voiceListening}
               aria-label={voiceListening ? "Stop voice input" : "Voice input"}
