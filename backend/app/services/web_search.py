@@ -67,45 +67,81 @@ async def _fetch_google_news_rss_snippets(query: str, *, limit: int = 5) -> str:
     return "\n".join(lines)
 
 
-async def _fetch_google_cse_snippets(query: str, *, limit: int) -> str:
-    """Programmable Search web results only (empty if not configured or error)."""
+async def _fetch_google_cse_snippets(query: str, *, limit: int) -> tuple[str, bool]:
+    """
+    Programmable Search web results. Returns (snippet_text, rate_limited_after_retries).
+
+    Retries on HTTP 429 / 503 with backoff so brief quota spikes behave more like a stable “live search”.
+    """
     key = (settings.google_cse_api_key or "").strip()
     cx = (settings.google_cse_cx or "").strip()
     q = augment_search_query((query or "").strip()[:MAX_GOOGLE_QUERY_CHARS])
     if not q or not key or not cx:
-        return ""
+        return "", False
     params = {
         "key": key,
         "cx": cx,
         "q": q,
         "num": min(max(limit, 1), 10),
     }
-    try:
-        async with httpx.AsyncClient(timeout=18.0) as client:
-            r = await client.get(GOOGLE_CSE_URL, params=params)
-            r.raise_for_status()
-            data = r.json()
-    except Exception as e:
-        if isinstance(e, httpx.HTTPStatusError):
-            logger.warning("Google CSE failed: HTTP %s (check API key / quota / referrer restrictions)", e.response.status_code)
-        else:
-            logger.warning("Google CSE failed: %s", type(e).__name__)
-        return ""
+    backoff_seconds = (2.0, 5.0)
 
-    items = data.get("items") or []
-    if not isinstance(items, list) or not items:
-        return ""
-    lines: list[str] = []
-    for i, it in enumerate(items[:limit], 1):
-        if not isinstance(it, dict):
-            continue
-        title = str(it.get("title") or "").strip()
-        snippet = str(it.get("snippet") or "").strip()
-        link = str(it.get("link") or "").strip()
-        host = urlparse(link).netloc if link else ""
-        src = f"\n   (source: {host})" if host else ""
-        lines.append(f"{i}. {title}\n   {snippet}{src}")
-    return "\n".join(lines)
+    for attempt in range(3):
+        try:
+            async with httpx.AsyncClient(timeout=22.0) as client:
+                r = await client.get(GOOGLE_CSE_URL, params=params)
+
+            if r.status_code in (429, 503):
+                logger.warning(
+                    "Google CSE HTTP %s (attempt %s/3 — quota or overload; retrying)",
+                    r.status_code,
+                    attempt + 1,
+                )
+                if attempt < 2:
+                    await asyncio.sleep(backoff_seconds[attempt])
+                    continue
+                return "", True
+
+            try:
+                r.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                logger.warning(
+                    "Google CSE failed: HTTP %s (check API key / quota / referrer restrictions)",
+                    e.response.status_code if e.response else "?",
+                )
+                return "", False
+
+            data = r.json()
+        except httpx.HTTPStatusError as e:
+            sc = e.response.status_code if e.response else 0
+            if sc in (429, 503) and attempt < 2:
+                await asyncio.sleep(backoff_seconds[attempt])
+                continue
+            logger.warning(
+                "Google CSE failed: HTTP %s (check API key / quota / referrer restrictions)",
+                sc,
+            )
+            return "", sc in (429, 503)
+        except Exception as e:
+            logger.warning("Google CSE failed: %s", type(e).__name__)
+            return "", False
+
+        items = data.get("items") or []
+        if not isinstance(items, list) or not items:
+            return "", False
+        lines: list[str] = []
+        for i, it in enumerate(items[:limit], 1):
+            if not isinstance(it, dict):
+                continue
+            title = str(it.get("title") or "").strip()
+            snippet = str(it.get("snippet") or "").strip()
+            link = str(it.get("link") or "").strip()
+            host = urlparse(link).netloc if link else ""
+            src = f"\n   (source: {host})" if host else ""
+            lines.append(f"{i}. {title}\n   {snippet}{src}")
+        return "\n".join(lines), False
+
+    return "", True
 
 
 async def fetch_google_snippets(query: str, *, limit: int = 8) -> str:
@@ -132,17 +168,25 @@ async def fetch_google_snippets(query: str, *, limit: int = 8) -> str:
         return ""
 
     cse_limit = min(max(limit, 1), 10)
-    cse, rss = await asyncio.gather(
-        _fetch_google_cse_snippets(query, limit=cse_limit),
-        rss_part(),  # coroutine
-    )
+
+    async def cse_part() -> tuple[str, bool]:
+        return await _fetch_google_cse_snippets(query, limit=cse_limit)
+
+    (cse, cse_rate_limited), rss = await asyncio.gather(cse_part(), rss_part())
     parts: list[str] = []
     if cse.strip():
         parts.append("## Web (Google Programmable Search)\n" + cse.strip())
     if rss.strip():
         parts.append("## News (Google News RSS)\n" + rss.strip())
     if parts:
-        return "\n\n".join(parts)
+        bundle = "\n\n".join(parts)
+        if cse_rate_limited and not cse.strip() and rss.strip():
+            bundle = (
+                "__IMPORTANT: Custom Search (web) API hit rate limits—only News RSS lines appear below. "
+                "Headlines may be incomplete; state only facts visible in these lines—do not invent scores or tables.__\n\n"
+                + bundle
+            )
+        return bundle
     return "(No live Google results for this query.)"
 
 

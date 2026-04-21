@@ -37,7 +37,7 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 IST = ZoneInfo("Asia/Kolkata")
 logger = logging.getLogger(__name__)
 # Tighter decoding when live Google snippets are in context (reduces invented scores / tables).
-CHAT_TEMP_WITH_LIVE_WEB = 0.34
+CHAT_TEMP_WITH_LIVE_WEB = 0.28
 
 
 def _is_live_datetime_query(text: str) -> bool:
