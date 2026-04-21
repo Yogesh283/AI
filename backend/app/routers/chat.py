@@ -291,6 +291,44 @@ def _needs_full_ranking_list_retry(last_user: str, reply: str, web_block: str) -
     return _reply_looks_like_full_numbered_ipl_ranking(reply)
 
 
+def _is_precious_metal_rate_query(text: str) -> bool:
+    s = (text or "").strip().lower()
+    hi = text or ""
+    if not s:
+        return False
+    keys_en = ("gold", "silver", "bullion", "rate", "price", "24k", "22k", "18k", "karat")
+    keys_hi = ("सोना", "चांदी", "कीमत", "भाव", "रेट", "24k", "22k", "18k")
+    return any(k in s for k in keys_en) or any(k in hi for k in keys_hi)
+
+
+def _extract_rupee_amounts(text: str) -> set[str]:
+    out: set[str] = set()
+    for m in re.findall(r"₹\s*[\d,]+(?:\.\d+)?", text or ""):
+        out.add(re.sub(r"\s+", "", m))
+    return out
+
+
+_RATE_VERBATIM_FIX = (
+    "\n\n--- MANDATORY RATE VERBATIM FIX\n"
+    "Your previous answer included rupee rate numbers that were not verbatim in LIVE DATA lines above. "
+    "For gold/silver/price queries: DO NOT guess or round numbers. "
+    "Use only ₹ amounts that appear exactly in snippets; if snippets show ranges, keep ranges; "
+    "if no reliable numbers are present, say rates were not confirmed in retrieved live lines.\n"
+)
+
+
+def _needs_rate_verbatim_retry(last_user: str, reply: str, web_block: str) -> bool:
+    if not (web_block or "").strip() or not (reply or "").strip():
+        return False
+    if not _is_precious_metal_rate_query(last_user):
+        return False
+    amounts = _extract_rupee_amounts(reply)
+    if not amounts:
+        return False
+    wb = re.sub(r"\s+", "", web_block or "")
+    return any(a not in wb for a in amounts)
+
+
 def _append_system_suffix(msgs: list[dict[str, str]], suffix: str) -> list[dict[str, str]]:
     if not msgs or not suffix.strip():
         return msgs
@@ -554,6 +592,12 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
         "Still do not send them elsewhere for the same lookup. "
         "Accuracy over completeness: never invent numbers, rates, or ranks to look helpful—only state what snippets support."
     )
+    current_data_only_policy = (
+        "Current-data mode (global): for factual/current claims (prices, rankings, releases, who won, dates, rates, "
+        "counts, office holders, regulations, market moves), use LIVE DATA snippets as the source of truth for this turn. "
+        "If LIVE DATA does not explicitly support a specific current fact, do not assert it as true from memory. "
+        "Say clearly that current value is not confirmed from retrieved live lines."
+    )
     live_presentation_policy = (
         "Live presentation (chat): the snippet block below is internal research—not something to paste. In your reply, "
         "never dump raw search payload: no HTML/XML tags, no long Google redirect or encoded link strings (e.g. "
@@ -644,6 +688,7 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
         f"You are NeoXAI — this user's personal AI assistant (warm, present, one-to-one; not a generic bot). "
         f"{knowledge_cutoff_hint} "
         f"{live_google_policy} "
+        f"{current_data_only_policy} "
         f"{live_presentation_policy} "
         f"{table_format_policy} "
         f"For prices, markets, news, or anything time-sensitive: prefer facts from the live web snippets "
@@ -676,7 +721,8 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
             "\n\n--- Live web fetch note: Google-backed lookup did not return usable snippets for this message. "
             "For anything that needs **exact** current facts (sports scores/points, live prices, election counts, "
             "breaking who-won): do not invent numbers or a full table from memory—say clearly that live lines were "
-            "not retrieved so those specifics are not confirmed here. General background without fake figures is OK. "
+            "not retrieved so those specifics are not confirmed here. In this case, respond with uncertainty about "
+            "current values instead of giving a definitive number/date/rank from memory. "
             "Reply in a few concise sentences. "
             "Do not tell the user to search Google, open official sites, or use other apps for the same question."
         )
@@ -838,6 +884,15 @@ async def post_chat(
             )
             result = retry
             reply = retry.text
+        if web_block and last_user and _needs_rate_verbatim_retry(last_user, reply, web_block):
+            retry_msgs = _append_system_suffix(msgs, _RATE_VERBATIM_FIX)
+            retry = await unified_chat_completion(
+                retry_msgs,
+                user_id=uid,
+                openai_request_overrides={"temperature": CHAT_TEMP_WITH_LIVE_WEB},
+            )
+            result = retry
+            reply = retry.text
     except HTTPException:
         raise
     except Exception as e:
@@ -979,6 +1034,18 @@ async def post_chat_stream(
                         full = full4
                         usage_h.clear()
                         usage_h.extend(usage_h4)
+                if (
+                    ctx.web_block
+                    and ctx.last_user.strip()
+                    and _needs_rate_verbatim_retry(ctx.last_user, full, ctx.web_block)
+                ):
+                    fix_msgs = _append_system_suffix(msgs, _RATE_VERBATIM_FIX)
+                    usage_h5: list[dict[str, Any]] = []
+                    full5 = await _collect_stream(fix_msgs, usage_h5, force_live_temp=True)
+                    if len(full5.strip()) >= 40:
+                        full = full5
+                        usage_h.clear()
+                        usage_h.extend(usage_h5)
                 for i in range(0, len(full), 120):
                     yield _sse({"d": full[i : i + 120]})
             else:
