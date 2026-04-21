@@ -157,6 +157,10 @@ def _realtime_server_vad() -> dict[str, object]:
     Reduce false “user is speaking” cuts from speaker bleed-through (phone mic hears assistant audio).
     interrupt_response=False: assistant audio is not cancelled on VAD start; user taps “interrupt” to cancel.
     Slightly longer silence + higher threshold so Hindi pauses / room noise do not clip replies.
+
+    create_response=False: the browser sends response.create only after live web context is fetched
+    (see voice page). If True, the server auto-starts a response while that fetch runs and the client
+    hits “Conversation already has an active response in progress”.
     """
     return {
         "type": "server_vad",
@@ -164,7 +168,7 @@ def _realtime_server_vad() -> dict[str, object]:
         "prefix_padding_ms": 450,
         "silence_duration_ms": 1200,
         "interrupt_response": False,
-        "create_response": True,
+        "create_response": False,
     }
 
 
