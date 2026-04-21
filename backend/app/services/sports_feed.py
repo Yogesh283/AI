@@ -85,9 +85,8 @@ def google_fetch_query(user_text: str) -> str:
 async def build_live_web_context_block(last_user: str, *, now_ist: datetime) -> str:
     """
     Single live-data pipeline: **Google only** (Programmable Search + Google News RSS in parallel).
-    `now_ist` is kept for callers (IST anchor in chat route); search bias uses UTC in `web_search`.
+    `now_ist` stamps the block so the model can align 'current season' headlines with real time.
     """
-    _ = now_ist  # reserved for future locale-specific tuning
     from app.services.web_search import fetch_google_snippets
 
     primary = google_fetch_query(last_user)
@@ -97,4 +96,9 @@ async def build_live_web_context_block(last_user: str, *, now_ist: datetime) -> 
         g = await fetch_google_snippets(f"IPL {y} points table standings teams ranked latest news")
     if not g.strip():
         return ""
-    return "### Live data (Google — web search + news)\n" + g.strip()
+    stamp = now_ist.strftime("%Y-%m-%d %H:%M %Z")
+    anchor = (
+        f"Retrieved {stamp}. Use this clock when judging whether a headline's 'current' or 'latest' table matches "
+        "what the user asked; if snippets conflict or are stale, say so—do not guess.\n\n"
+    )
+    return anchor + "### Live data (Google — web search + news)\n" + g.strip()

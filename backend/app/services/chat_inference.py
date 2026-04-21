@@ -128,6 +128,7 @@ async def stream_local_chat_deltas(
     messages: list[dict[str, str]],
     *,
     usage_holder: list[dict[str, Any]] | None = None,
+    temperature: float | None = None,
 ) -> AsyncIterator[str]:
     url = local_chat_url()
     model = local_chat_model_id()
@@ -136,10 +137,11 @@ async def stream_local_chat_deltas(
     if key:
         headers["Authorization"] = f"Bearer {key}"
 
+    temp = 0.76 if temperature is None else float(temperature)
     payload: dict[str, Any] = {
         "model": model,
         "messages": messages,
-        "temperature": 0.76,
+        "temperature": temp,
         "stream": True,
     }
 
@@ -256,13 +258,16 @@ async def unified_stream_chat_deltas(
     messages: list[dict[str, str]],
     *,
     usage_holder: list[dict[str, Any]] | None = None,
+    temperature: float | None = None,
 ) -> AsyncIterator[str]:
     if chat_inference_backend() == "local":
-        async for piece in stream_local_chat_deltas(messages, usage_holder=usage_holder):
+        async for piece in stream_local_chat_deltas(messages, usage_holder=usage_holder, temperature=temperature):
             yield piece
         return
     key = _openai_api_key()
-    async for piece in stream_openai_chat_deltas(messages, key, usage_holder=usage_holder):
+    async for piece in stream_openai_chat_deltas(
+        messages, key, usage_holder=usage_holder, temperature=temperature
+    ):
         yield piece
 
 

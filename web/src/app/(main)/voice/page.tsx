@@ -432,8 +432,8 @@ export default function VoicePage() {
               liveFetchFailed = true;
               /* offline / API error — still continue after min delay */
             }
-            /* Min ~3.5s beat so Google CSE + News can finish before the assistant speaks (user expectation ~3–4s). */
-            const waitMs = Math.max(0, 3500 - (Date.now() - t0));
+            /* Cap extra wait so slow networks still start the reply sooner once fetch returns. */
+            const waitMs = Math.max(0, 2200 - (Date.now() - t0));
             await new Promise<void>((r) => {
               setTimeout(r, waitMs);
             });

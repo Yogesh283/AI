@@ -36,6 +36,8 @@ from app.store import add_chat_turn, add_memory_fact, get_memory, get_profile, g
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 IST = ZoneInfo("Asia/Kolkata")
 logger = logging.getLogger(__name__)
+# Tighter decoding when live Google snippets are in context (reduces invented scores / tables).
+CHAT_TEMP_WITH_LIVE_WEB = 0.34
 
 
 def _is_live_datetime_query(text: str) -> bool:
@@ -371,7 +373,9 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
         "Live presentation (chat): the snippet block below is internal research—not something to paste. In your reply, "
         "never dump raw search payload: no HTML/XML tags, no long Google redirect or encoded link strings (e.g. "
         "news.google.com/rss/articles/CBM…), no scraper junk. Rewrite as a clean, readable short analysis—lead with "
-        "the takeaway, then key facts in plain words. If snippets disagree or are too thin, say that clearly."
+        "the takeaway, then key facts in plain words. If snippets disagree or are too thin, say that clearly. "
+        "Before you send: every number or rank you state must be traceable to a specific phrase in the snippet lines; "
+        "if you cannot trace it, omit it."
     )
     table_format_policy = (
         "When the user asks for a table, columns/rows, 'in tabular form', or Hindi like 'टेबल में' / 'सारणी में', "
@@ -557,7 +561,8 @@ async def post_chat(
     system_extra = ctx.system_extra
 
     try:
-        result = await unified_chat_completion(msgs, user_id=uid)
+        live_ov = {"temperature": CHAT_TEMP_WITH_LIVE_WEB} if web_block else None
+        result = await unified_chat_completion(msgs, user_id=uid, openai_request_overrides=live_ov)
         reply = result.text
         if web_block and last_user and _reply_claims_no_live_data(reply):
             retry_system = (
@@ -569,7 +574,11 @@ async def post_chat(
             retry_msgs = [{"role": "system", "content": retry_system}]
             for m in body.messages:
                 retry_msgs.append({"role": m.role, "content": m.content})
-            retry = await unified_chat_completion(retry_msgs, user_id=uid)
+            retry = await unified_chat_completion(
+                retry_msgs,
+                user_id=uid,
+                openai_request_overrides={"temperature": CHAT_TEMP_WITH_LIVE_WEB},
+            )
             result = retry
             reply = retry.text
         elif not web_block and last_user and _reply_claims_no_live_data(reply):
@@ -589,7 +598,11 @@ async def post_chat(
                 retry_msgs = [{"role": "system", "content": retry_system}]
                 for m in body.messages:
                     retry_msgs.append({"role": m.role, "content": m.content})
-                retry = await unified_chat_completion(retry_msgs, user_id=uid)
+                retry = await unified_chat_completion(
+                    retry_msgs,
+                    user_id=uid,
+                    openai_request_overrides={"temperature": CHAT_TEMP_WITH_LIVE_WEB},
+                )
                 result = retry
                 reply = retry.text
     except HTTPException:
@@ -659,12 +672,17 @@ async def post_chat_stream(
             usage_h: list[dict[str, Any]] = []
             parts: list[str] = []
             model_id = effective_stream_model_id()
+            stream_temp = CHAT_TEMP_WITH_LIVE_WEB if (ctx.web_block or "").strip() else None
 
             async def _collect_stream(
-                mlist: list[dict[str, str]], uh: list[dict[str, Any]]
+                mlist: list[dict[str, str]],
+                uh: list[dict[str, Any]],
+                *,
+                force_live_temp: bool = False,
             ) -> str:
                 acc: list[str] = []
-                async for delta in unified_stream_chat_deltas(mlist, usage_holder=uh):
+                t = CHAT_TEMP_WITH_LIVE_WEB if force_live_temp else stream_temp
+                async for delta in unified_stream_chat_deltas(mlist, usage_holder=uh, temperature=t):
                     acc.append(delta)
                 return "".join(acc)
 
@@ -697,7 +715,7 @@ async def post_chat_stream(
                             )
                 if retry_msgs is not None:
                     usage_h2: list[dict[str, Any]] = []
-                    full2 = await _collect_stream(retry_msgs, usage_h2)
+                    full2 = await _collect_stream(retry_msgs, usage_h2, force_live_temp=True)
                     if len(full2.strip()) >= max(24, int(len(full.strip()) * 0.35)):
                         full = full2
                         usage_h.clear()
@@ -705,7 +723,9 @@ async def post_chat_stream(
                 for i in range(0, len(full), 120):
                     yield _sse({"d": full[i : i + 120]})
             else:
-                async for delta in unified_stream_chat_deltas(msgs, usage_holder=usage_h):
+                async for delta in unified_stream_chat_deltas(
+                    msgs, usage_holder=usage_h, temperature=stream_temp
+                ):
                     parts.append(delta)
                     yield _sse({"d": delta})
                 full = "".join(parts)

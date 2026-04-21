@@ -252,6 +252,7 @@ async def stream_openai_chat_deltas(
     api_key: str,
     *,
     usage_holder: list[dict[str, Any]] | None = None,
+    temperature: float | None = None,
 ) -> AsyncIterator[str]:
     """
     Yields assistant content fragments from OpenAI chat.completions (stream=True).
@@ -297,12 +298,13 @@ async def stream_openai_chat_deltas(
             if isinstance(piece, str) and piece:
                 yield piece
 
+    temp = 0.76 if temperature is None else float(temperature)
     async with _openai_async_client() as client:
         for use_usage in (True, False):
             payload: dict[str, Any] = {
                 "model": "gpt-4o-mini",
                 "messages": messages,
-                "temperature": 0.76,
+                "temperature": temp,
                 "stream": True,
             }
             if use_usage:

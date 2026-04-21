@@ -164,9 +164,10 @@ def _realtime_server_vad() -> dict[str, object]:
     """
     return {
         "type": "server_vad",
-        "threshold": 0.62,
-        "prefix_padding_ms": 500,
-        "silence_duration_ms": 1850,
+        # Slightly lower threshold + longer end-of-turn silence so slow Hindi / long pauses are not cut off early.
+        "threshold": 0.55,
+        "prefix_padding_ms": 620,
+        "silence_duration_ms": 2300,
         "interrupt_response": False,
         "create_response": False,
     }
@@ -222,13 +223,14 @@ async def _build_realtime_instructions(
         f"Persona: {voice_persona}. "
         f"{lang_line}"
         "Voice mode rules: sound like a natural phone call — clear sentences, no markdown or bullet lists "
-        "unless they explicitly want detail. Always finish the thought in this turn: do not stop mid-sentence or "
-        "mid-explanation; if it is long, use two or three complete sentences rather than trailing off. "
+        "unless they explicitly want detail. Wait until the user has actually finished their question (slow speech "
+        "and long pauses are normal); do not jump in mid-sentence. Always finish the thought in this turn: do not stop "
+        "mid-sentence or mid-explanation; if it is long, use two or three complete sentences rather than trailing off. "
         "Do not read URLs character-by-character. "
         "Avoid stock-bot phrases ('I'd be happy to help', 'Great question', 'As an AI'). "
         "Do not label yourself as an AI unless they ask.\n"
-        "Spoken audio: use warm, human pacing — slight pauses between thoughts, varied intonation, never monotone or "
-        "flat like a screen reader. Sound like a calm friend speaking, not a robot.\n"
+        "Spoken audio: warm, human intonation—answer efficiently once you have the facts (not sluggish), with short "
+        "breaths between ideas, never monotone like a screen reader.\n"
         "Live answers: NeoXAI runs automatic Google (Programmable Search + Google News) lookup each turn. "
         "You may receive a system message starting with «Live web data (Google». When that message has real snippets, "
         "treat it as the factual source: summarize what it says in the user's language (for Hindi-only users, use "
@@ -237,7 +239,7 @@ async def _build_realtime_instructions(
         "Never tell them to open another site, search Google, or check social media for the same information—you "
         "already pulled live results here. For any A-to-Z topic, merge training with snippets when present. "
         "Sports or points: speak only numbers that actually appear inside the live web data message—never invent "
-        "a full standings table from memory. "
+        "a full standings table from memory. If a number is not verbatim in that message, omit it. "
         "Finish each reply completely in one go: do not stop mid-list or mid-explanation; if the answer is long, "
         "speak the top items in full sentences first, then continue with the rest until the question is covered. "
         "If snippets are missing, say no live lines were found, avoid inventing numbers, and still do not send "
