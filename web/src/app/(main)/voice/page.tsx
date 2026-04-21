@@ -514,6 +514,20 @@ export default function VoicePage() {
                   ],
                 },
               });
+              send({
+                type: "conversation.item.create",
+                item: {
+                  type: "message",
+                  role: "system",
+                  content: [
+                    {
+                      type: "input_text",
+                      text:
+                        "Current-data strict mode: for this turn, speak only current facts that are explicitly present in the Live web data lines above. Do not guess any number/date/rank/price from memory. If a specific current value is missing in those lines, say it is not confirmed from retrieved live data.",
+                    },
+                  ],
+                },
+              });
             } else {
               const hint = liveFetchFailed
                 ? "Live Google lookup failed (network or server). Answer briefly with clear uncertainty. Do not tell the user to visit other sites, official portals, or search engines for the same question—NeoXAI handles lookup here."

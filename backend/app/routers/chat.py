@@ -329,6 +329,70 @@ def _needs_rate_verbatim_retry(last_user: str, reply: str, web_block: str) -> bo
     return any(a not in wb for a in amounts)
 
 
+_CURRENT_FACT_VERBATIM_FIX = (
+    "\n\n--- MANDATORY CURRENT-FACT VERBATIM FIX\n"
+    "Your previous answer contained specific current numbers/facts that are not clearly present in LIVE DATA lines. "
+    "Regenerate the answer with strict grounding: only use numbers/dates/ranks/rates explicitly visible in snippets. "
+    "If a specific current value is missing in snippets, say it is not confirmed from retrieved live lines.\n"
+)
+
+
+def _is_current_numeric_query(text: str) -> bool:
+    s = (text or "").strip().lower()
+    hi = text or ""
+    if not s:
+        return False
+    keys_en = (
+        "today",
+        "latest",
+        "current",
+        "live",
+        "price",
+        "rate",
+        "ranking",
+        "points",
+        "score",
+        "release",
+        "result",
+        "won",
+        "who is",
+        "inflation",
+        "gdp",
+        "election",
+        "seat",
+        "seats",
+    )
+    keys_hi = ("आज", "अभी", "लेटेस्ट", "वर्तमान", "कीमत", "भाव", "रैंक", "स्कोर", "रिजल्ट", "जीता", "सीट")
+    return any(k in s for k in keys_en) or any(k in hi for k in keys_hi)
+
+
+def _extract_numeric_tokens(text: str) -> set[str]:
+    """
+    Extract concrete numeric tokens (rates/counts/percent/date-like). Ignore short 1-2 digit noise.
+    Normalized by removing commas/spaces.
+    """
+    out: set[str] = set()
+    for m in re.findall(r"(?:₹\s*)?[\d,]{3,}(?:\.\d+)?%?", text or ""):
+        t = re.sub(r"[\s,]", "", m)
+        if len(re.sub(r"\D", "", t)) >= 3:
+            out.add(t)
+    return out
+
+
+def _needs_current_fact_verbatim_retry(last_user: str, reply: str, web_block: str) -> bool:
+    if not (web_block or "").strip() or not (reply or "").strip():
+        return False
+    if not _is_current_numeric_query(last_user):
+        return False
+    tokens = _extract_numeric_tokens(reply)
+    if not tokens:
+        return False
+    wb = re.sub(r"[\s,]", "", web_block or "")
+    missing = [t for t in tokens if t not in wb]
+    # Trigger only when enough concrete numeric claims are unsupported.
+    return len(missing) >= 2
+
+
 def _append_system_suffix(msgs: list[dict[str, str]], suffix: str) -> list[dict[str, str]]:
     if not msgs or not suffix.strip():
         return msgs
@@ -893,6 +957,15 @@ async def post_chat(
             )
             result = retry
             reply = retry.text
+        if web_block and last_user and _needs_current_fact_verbatim_retry(last_user, reply, web_block):
+            retry_msgs = _append_system_suffix(msgs, _CURRENT_FACT_VERBATIM_FIX)
+            retry = await unified_chat_completion(
+                retry_msgs,
+                user_id=uid,
+                openai_request_overrides={"temperature": CHAT_TEMP_WITH_LIVE_WEB},
+            )
+            result = retry
+            reply = retry.text
     except HTTPException:
         raise
     except Exception as e:
@@ -1046,6 +1119,18 @@ async def post_chat_stream(
                         full = full5
                         usage_h.clear()
                         usage_h.extend(usage_h5)
+                if (
+                    ctx.web_block
+                    and ctx.last_user.strip()
+                    and _needs_current_fact_verbatim_retry(ctx.last_user, full, ctx.web_block)
+                ):
+                    fix_msgs = _append_system_suffix(msgs, _CURRENT_FACT_VERBATIM_FIX)
+                    usage_h6: list[dict[str, Any]] = []
+                    full6 = await _collect_stream(fix_msgs, usage_h6, force_live_temp=True)
+                    if len(full6.strip()) >= 40:
+                        full = full6
+                        usage_h.clear()
+                        usage_h.extend(usage_h6)
                 for i in range(0, len(full), 120):
                     yield _sse({"d": full[i : i + 120]})
             else:
