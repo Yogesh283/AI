@@ -55,29 +55,29 @@ export default function MemoryPage() {
   return (
     <div className="relative z-[1] px-4 pb-10 pt-6 md:px-8 md:pt-8">
       <div className="mx-auto max-w-3xl">
-        <h1 className="neo-gradient-text mb-1 text-2xl font-bold tracking-tight">
+        <h1 className="mb-1 text-2xl font-bold tracking-tight text-slate-900">
           NeoXAI Memory
         </h1>
-        <p className="mb-8 text-sm text-white/45">
+        <p className="mb-8 text-sm text-slate-600">
           Saved conversation history from Chat and Voice.
         </p>
 
         {err ? (
-          <div className="mb-6 rounded-2xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-200/90">
+          <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
             {err}
           </div>
         ) : null}
 
-        <div className="neo-glass space-y-5 rounded-[26px] p-6 ring-1 ring-white/[0.06]">
+        <div className="neo-screen-card space-y-5 rounded-[26px] p-6">
           {loading ? (
-            <p className="text-sm text-white/50">Loading…</p>
+            <p className="text-sm text-slate-500">Loading…</p>
           ) : (
             <>
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-white/35">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                   Account
                 </p>
-                <p className="mt-1 text-sm text-white/80">
+                <p className="mt-1 text-sm text-slate-800">
                   {user
                     ? `${user.display_name} · ${user.email}`
                     : "Guest — sign in to see your saved chats here."}
@@ -86,10 +86,10 @@ export default function MemoryPage() {
 
               {profile ? (
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-white/35">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                     Display name
                   </p>
-                  <p className="mt-1 text-sm text-white/80">
+                  <p className="mt-1 text-sm text-slate-800">
                     {String(profile.display_name ?? "—")}
                   </p>
                 </div>
@@ -97,13 +97,13 @@ export default function MemoryPage() {
 
               {facts.length > 0 ? (
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-white/35">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                     Facts NeoXAI remembers
                   </p>
-                  <ul className="mt-2 space-y-2 text-sm text-white/75">
+                  <ul className="mt-2 space-y-2 text-sm text-slate-700">
                     {facts.map((f, i) => (
                       <li key={`${f.key}-${i}`}>
-                        <span className="text-[#00D4FF]/80">{f.key}:</span>{" "}
+                        <span className="font-medium text-[#2563eb]">{f.key}:</span>{" "}
                         {f.value}
                       </li>
                     ))}
@@ -113,10 +113,10 @@ export default function MemoryPage() {
 
               {insights.length > 0 ? (
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-white/35">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                     Insights
                   </p>
-                  <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-white/65">
+                  <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-slate-600">
                     {insights.map((x) => (
                       <li key={x}>{x}</li>
                     ))}
@@ -128,21 +128,21 @@ export default function MemoryPage() {
         </div>
 
         <div className="mt-8">
-          <h2 className="mb-3 text-lg font-semibold tracking-tight text-white">
+          <h2 className="mb-3 text-lg font-semibold tracking-tight text-slate-900">
             Chat &amp; Voice (saved)
           </h2>
-          <div className="neo-glass max-h-[min(58vh,520px)] space-y-3 overflow-y-auto rounded-[26px] border border-white/[0.08] p-4 ring-1 ring-white/[0.05] md:p-5">
+          <div className="neo-screen-card max-h-[min(58vh,520px)] space-y-3 overflow-y-auto rounded-[26px] p-4 md:p-5">
             {loading ? (
-              <p className="text-sm text-white/50">Loading…</p>
+              <p className="text-sm text-slate-500">Loading…</p>
             ) : !user ? (
-              <p className="text-sm text-white/55">
+              <p className="text-sm text-slate-600">
                 Sign in or register first. After that, anything you chat with NeoXAI (when MySQL is enabled) will
                 show up here.
               </p>
             ) : chats.length === 0 ? (
-              <p className="text-sm text-white/55">
-                No entries yet. Send a message from <strong className="text-white/75">Chat</strong> or{" "}
-                <strong className="text-white/75">Voice</strong> first — then your history will appear here. With
+              <p className="text-sm text-slate-600">
+                No entries yet. Send a message from <strong className="text-slate-900">Chat</strong> or{" "}
+                <strong className="text-slate-900">Voice</strong> first — then your history will appear here. With
                 MySQL enabled on the server, data can persist across restarts; without it, you may still see what this
                 server process kept in memory.
               </p>
@@ -152,16 +152,16 @@ export default function MemoryPage() {
                   key={m.id}
                   className={`rounded-2xl border px-3.5 py-2.5 text-sm leading-relaxed ${
                     m.role === "user"
-                      ? "border-[#00D4FF]/20 bg-[rgba(0,212,255,0.07)] text-white/90"
-                      : "border-white/[0.08] bg-black/30 text-white/80"
+                      ? "border-[#2563eb]/25 bg-[#eff6ff] text-slate-900"
+                      : "border-slate-200 bg-slate-50 text-slate-800"
                   }`}
                 >
-                  <div className="mb-1 flex items-center justify-between gap-2 text-[10px] font-semibold uppercase tracking-wide text-white/40">
+                  <div className="mb-1 flex items-center justify-between gap-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                     <span>
                       {(m.source === "voice" ? "Voice" : "Chat")} ·{" "}
                       {m.role === "user" ? "You" : NEO_ASSISTANT_NAME}
                     </span>
-                    <span className="font-normal normal-case text-white/35">
+                    <span className="font-normal normal-case text-slate-400">
                       {formatChatTime(m.created_at)}
                     </span>
                   </div>

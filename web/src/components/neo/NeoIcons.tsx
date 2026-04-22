@@ -1,5 +1,5 @@
 export function IconHome({ active }: { active?: boolean }) {
-  const c = active ? "#00D4FF" : "rgba(167,176,214,0.72)";
+  const c = active ? "#2563EB" : "#94A3B8";
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
@@ -13,7 +13,7 @@ export function IconHome({ active }: { active?: boolean }) {
 }
 
 export function IconChat({ active }: { active?: boolean }) {
-  const c = active ? "#00D4FF" : "rgba(167,176,214,0.72)";
+  const c = active ? "#2563EB" : "#94A3B8";
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
@@ -27,7 +27,7 @@ export function IconChat({ active }: { active?: boolean }) {
 }
 
 export function IconMemory({ active }: { active?: boolean }) {
-  const c = active ? "#00D4FF" : "rgba(255,255,255,0.4)";
+  const c = active ? "#2563EB" : "#94A3B8";
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
@@ -41,7 +41,7 @@ export function IconMemory({ active }: { active?: boolean }) {
 }
 
 export function IconUser({ active }: { active?: boolean }) {
-  const c = active ? "#00D4FF" : "rgba(167,176,214,0.72)";
+  const c = active ? "#2563EB" : "#94A3B8";
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
       <circle cx="12" cy="8" r="3.5" stroke={c} strokeWidth="1.6" />
@@ -59,7 +59,7 @@ export function IconMicCenter() {
   return (
     <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
-        fill="#0a0a0a"
+        fill="#2563EB"
         d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Zm6-3a6 6 0 0 1-12 0H5a7 7 0 0 0 6 6.92V22h2v-4.08A7 7 0 0 0 19 11h-1Z"
       />
     </svg>
@@ -68,7 +68,7 @@ export function IconMicCenter() {
 
 /** Sidebar: 3D avatar + chat + TTS demo */
 export function IconCube3D({ active }: { active?: boolean }) {
-  const c = active ? "#00D4FF" : "rgba(255,255,255,0.4)";
+  const c = active ? "#2563EB" : "#94A3B8";
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path

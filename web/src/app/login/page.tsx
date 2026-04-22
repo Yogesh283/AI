@@ -77,21 +77,21 @@ export default function LoginPage() {
           >
             ← Back
           </Link>
-          <h1 className="text-3xl font-bold tracking-tight text-white">
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">
             Welcome Back!
           </h1>
-          <p className="mt-2 text-sm text-white/55">
+          <p className="mt-2 text-sm text-slate-600">
             Login to continue with {brandName}
           </p>
           {sessionExpiredBanner ? (
-            <p className="mt-4 rounded-[12px] border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100/95" role="status">
+            <p className="mt-4 rounded-[12px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">
               Your session ended after 24 hours for security. Please sign in again.
             </p>
           ) : null}
 
           <form onSubmit={onSubmit} className="mt-8 flex flex-col gap-4">
             <div>
-              <label className="mb-2 block text-xs font-semibold tracking-wide text-white/55">
+              <label className="mb-2 block text-xs font-semibold tracking-wide text-slate-600">
                 Email or Username
               </label>
               <input
@@ -105,7 +105,7 @@ export default function LoginPage() {
               />
             </div>
             <div>
-              <label className="mb-2 block text-xs font-semibold tracking-wide text-white/55">
+              <label className="mb-2 block text-xs font-semibold tracking-wide text-slate-600">
                 Password
               </label>
               <input
@@ -117,18 +117,18 @@ export default function LoginPage() {
                 className="neo-input text-sm"
                 placeholder="••••••••"
               />
-              <label className="mt-2 inline-flex cursor-pointer items-center gap-2 text-xs text-white/65">
+              <label className="mt-2 inline-flex cursor-pointer items-center gap-2 text-xs text-slate-600">
                 <input
                   type="checkbox"
                   checked={showPassword}
                   onChange={(e) => setShowPassword(e.target.checked)}
-                  className="h-4 w-4 accent-[#00D4FF]"
+                  className="h-4 w-4 accent-[#2563eb]"
                 />
                 Show password
               </label>
             </div>
             {err ? (
-              <p className="text-sm text-red-400/95" role="alert">
+              <p className="text-sm text-red-700" role="alert">
                 {err}
               </p>
             ) : null}

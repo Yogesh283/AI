@@ -82,16 +82,16 @@ export default function RegisterPage() {
           >
             ← Back
           </Link>
-          <h1 className="text-3xl font-bold tracking-tight text-white">
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">
             Create Account
           </h1>
-          <p className="mt-2 text-sm text-white/55">
+          <p className="mt-2 text-sm text-slate-600">
             Start your AI journey with {brandName}
           </p>
 
           <form onSubmit={onSubmit} className="mt-8 flex flex-col gap-4">
             <div>
-              <label className="mb-2 block text-xs font-semibold tracking-wide text-white/55">
+              <label className="mb-2 block text-xs font-semibold tracking-wide text-slate-600">
                 Display name
               </label>
               <input
@@ -104,7 +104,7 @@ export default function RegisterPage() {
               />
             </div>
             <div>
-              <label className="mb-2 block text-xs font-semibold tracking-wide text-white/55">
+              <label className="mb-2 block text-xs font-semibold tracking-wide text-slate-600">
                 Email
               </label>
               <input
@@ -118,7 +118,7 @@ export default function RegisterPage() {
               />
             </div>
             <div>
-              <label className="mb-2 block text-xs font-semibold tracking-wide text-white/55">
+              <label className="mb-2 block text-xs font-semibold tracking-wide text-slate-600">
                 Password
               </label>
               <input
@@ -132,7 +132,7 @@ export default function RegisterPage() {
               />
             </div>
             <div>
-              <label className="mb-2 block text-xs font-semibold tracking-wide text-white/55">
+              <label className="mb-2 block text-xs font-semibold tracking-wide text-slate-600">
                 Confirm password
               </label>
               <input
@@ -144,18 +144,18 @@ export default function RegisterPage() {
                 className="neo-input text-sm"
                 placeholder="Repeat password"
               />
-              <label className="mt-2 inline-flex cursor-pointer items-center gap-2 text-xs text-white/55">
+              <label className="mt-2 inline-flex cursor-pointer items-center gap-2 text-xs text-slate-600">
                 <input
                   type="checkbox"
                   checked={showPassword}
                   onChange={(e) => setShowPassword(e.target.checked)}
-                  className="h-4 w-4 accent-[#00D4FF]"
+                  className="h-4 w-4 accent-[#2563eb]"
                 />
                 Show passwords
               </label>
             </div>
             {err ? (
-              <p className="text-sm text-red-400/95" role="alert">
+              <p className="text-sm text-red-700" role="alert">
                 {err}
               </p>
             ) : null}

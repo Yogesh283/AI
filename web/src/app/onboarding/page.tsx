@@ -26,7 +26,7 @@ export default function OnboardingPage() {
     <NeoPublicShell maxWidth="max-w-3xl">
       <div className="mb-8 text-center">
         <OnboardingMeetHeading />
-        <p className="mt-3 text-sm text-white/45">
+        <p className="mt-3 text-sm text-slate-600">
           Real-time · Personalized · Smart
         </p>
       </div>
@@ -34,12 +34,12 @@ export default function OnboardingPage() {
         {features.map((f) => (
           <div
             key={f.title}
-            className="neo-glass flex gap-4 rounded-[28px] p-5 ring-1 ring-white/[0.06]"
+            className="neo-screen-card flex gap-4 rounded-[28px] p-5"
           >
             <span className="text-2xl">{f.icon}</span>
             <div>
-              <h2 className="font-semibold text-[#00D4FF]">{f.title}</h2>
-              <p className="mt-1 text-sm text-white/50">{f.desc}</p>
+              <h2 className="font-semibold text-[#2563eb]">{f.title}</h2>
+              <p className="mt-1 text-sm text-slate-600">{f.desc}</p>
             </div>
           </div>
         ))}
@@ -52,7 +52,7 @@ export default function OnboardingPage() {
           Next
         </GradientButton>
       </div>
-      <p className="mt-6 text-center text-xs text-white/30">
+      <p className="mt-6 text-center text-xs text-slate-500">
         <Link href="/dashboard" className="underline-offset-2 hover:underline">
           Skip to dashboard
         </Link>

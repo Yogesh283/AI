@@ -17,6 +17,7 @@ function firstCharFromProfileName(name: string) {
 export const MAIN_NAV_MENU: { href: string; label: string }[] = [
   { href: "/dashboard", label: "Home" },
   { href: "/chat?new=1", label: "New chat" },
+  { href: "/create", label: "Create" },
   { href: "/memory", label: "Memory" },
   { href: "/voice", label: "Voice" },
   { href: "/profile", label: "Profile" },
@@ -24,9 +25,7 @@ export const MAIN_NAV_MENU: { href: string; label: string }[] = [
 ];
 
 type Props = {
-  /** Shown centered (e.g. voice session status). */
   center?: ReactNode;
-  /** Extra controls before the profile chip (e.g. language + Voice settings). */
   trailingBeforeProfile?: ReactNode;
 };
 
@@ -53,26 +52,26 @@ export function MainTopNav({ center, trailingBeforeProfile }: Props) {
   const profileLetter = firstCharFromProfileName(displayName);
 
   return (
-    <header className="neo-topbar sticky top-0 z-40 flex h-[52px] shrink-0 items-center justify-between gap-2 px-4 sm:h-14 sm:gap-3 sm:px-5 md:px-6">
+    <header className="neo-topbar sticky top-0 z-40 flex h-[52px] shrink-0 items-center justify-between gap-2 px-4 text-slate-900 sm:h-14 sm:gap-3 sm:px-5 md:px-6">
       <div className="relative shrink-0">
         <button
           type="button"
           onClick={() => setMenuOpen((o) => !o)}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] border border-white/[0.1] bg-white/[0.06] text-white/90 shadow-[0_1px_8px_rgba(0,0,0,0.2)] transition hover:bg-white/[0.1]"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] border border-slate-200 bg-white text-slate-700 shadow-[3px_3px_10px_rgba(15,23,42,0.06)] transition hover:bg-slate-50"
           aria-expanded={menuOpen}
           aria-controls="main-nav-menu"
           aria-label="Open menu"
         >
           <span className="flex h-[11px] w-[18px] flex-col justify-between" aria-hidden>
-            <span className="h-0.5 w-[17px] rounded-sm bg-white/90" />
-            <span className="h-0.5 w-[11px] rounded-sm bg-white/90" />
+            <span className="h-0.5 w-[17px] rounded-sm bg-slate-700" />
+            <span className="h-0.5 w-[11px] rounded-sm bg-slate-700" />
           </span>
         </button>
         {menuOpen ? (
           <>
             <button
               type="button"
-              className="fixed inset-0 z-40 cursor-default bg-black/50 md:bg-black/40"
+              className="fixed inset-0 z-40 cursor-default bg-slate-900/25"
               aria-label="Close menu"
               onClick={() => setMenuOpen(false)}
             />
@@ -82,7 +81,7 @@ export function MainTopNav({ center, trailingBeforeProfile }: Props) {
               role="navigation"
               aria-label="Main menu"
             >
-              <p className="px-4 pb-2 pt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white/40">
+              <p className="px-4 pb-2 pt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
                 Menu
               </p>
               <ul className="space-y-0.5 px-1">
@@ -100,8 +99,8 @@ export function MainTopNav({ center, trailingBeforeProfile }: Props) {
                         href={item.href}
                         className={`block rounded-lg px-3 py-2.5 text-sm font-medium transition ${
                           active
-                            ? "border-l-2 border-[#3B82F6] bg-[#3B82F6]/16 pl-[10px] text-white"
-                            : "border-l-2 border-transparent pl-[10px] text-white/85 hover:bg-white/[0.06]"
+                            ? "border-l-2 border-[#2563EB] bg-[#eff6ff] pl-[10px] text-[#1e40af]"
+                            : "border-l-2 border-transparent pl-[10px] text-slate-700 hover:bg-slate-100"
                         }`}
                         onClick={() => setMenuOpen(false)}
                       >
@@ -110,10 +109,10 @@ export function MainTopNav({ center, trailingBeforeProfile }: Props) {
                     </li>
                   );
                 })}
-                <li className="mt-1 border-t border-white/[0.08] pt-1">
+                <li className="mt-1 border-t border-slate-200 pt-1">
                   <button
                     type="button"
-                    className="block w-full rounded-lg border-l-2 border-transparent px-3 py-2.5 pl-[10px] text-left text-sm font-medium text-rose-300/95 transition hover:bg-rose-500/10 hover:text-rose-200"
+                    className="block w-full rounded-lg border-l-2 border-transparent px-3 py-2.5 pl-[10px] text-left text-sm font-medium text-rose-600 transition hover:bg-rose-50"
                     onClick={() => {
                       setMenuOpen(false);
                       clearSession();
@@ -130,11 +129,11 @@ export function MainTopNav({ center, trailingBeforeProfile }: Props) {
       </div>
 
       {center ? (
-        <div className="min-w-0 flex-1 truncate text-center text-[13px] font-semibold tracking-tight text-white sm:text-[15px]">
+        <div className="min-w-0 flex-1 truncate text-center text-[13px] font-semibold tracking-tight text-slate-900 sm:text-[15px]">
           {center}
         </div>
       ) : (
-        <div className="min-w-0 flex-1 truncate text-center text-[13px] font-semibold tracking-tight text-white/92 sm:text-[15px]">
+        <div className="min-w-0 flex-1 truncate text-center text-[13px] font-semibold tracking-tight text-slate-900 sm:text-[15px]">
           {brandName}
         </div>
       )}
@@ -143,15 +142,15 @@ export function MainTopNav({ center, trailingBeforeProfile }: Props) {
         {trailingBeforeProfile}
         <Link
           href="/profile"
-          className="flex items-center gap-2 rounded-[12px] border border-white/[0.08] bg-white/[0.04] py-1 pl-1 pr-2.5 transition hover:border-white/[0.12]"
+          className="flex items-center gap-2 rounded-[12px] border border-slate-200 bg-white py-1 pl-1 pr-2.5 shadow-[3px_3px_10px_rgba(15,23,42,0.05)] transition hover:bg-slate-50"
         >
           <span
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-500 to-orange-600 text-[10px] font-bold text-white shadow-sm"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 to-blue-600 text-[10px] font-bold text-white shadow-sm"
             aria-hidden
           >
             {profileLetter}
           </span>
-          <span className="hidden max-w-[8rem] truncate text-xs font-medium text-white/80 sm:inline">
+          <span className="hidden max-w-[8rem] truncate text-xs font-medium text-slate-700 sm:inline">
             {displayName || "Account"}
           </span>
         </Link>

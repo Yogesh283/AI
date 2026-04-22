@@ -3,7 +3,6 @@
 import { usePathname } from "next/navigation";
 import { AppSidebar } from "@/components/neo/AppSidebar";
 import { NeoBottomDock } from "@/components/neo/NeoBottomDock";
-import { NeoBackground } from "@/components/neo/NeoBackground";
 import { NeoWakeNativeSync } from "@/components/neo/NeoWakeNativeSync";
 import { SessionExpiryBridge } from "@/components/neo/SessionExpiryBridge";
 
@@ -18,7 +17,10 @@ export default function MainLayout({
     <div className="relative min-h-[100dvh] pb-[env(safe-area-inset-bottom,0px)]">
       <SessionExpiryBridge />
       <NeoWakeNativeSync />
-      <NeoBackground stars={12} />
+      <div
+        className="pointer-events-none fixed inset-0 -z-10 bg-[linear-gradient(180deg,#fafbfd_0%,#f5f7fa_45%,#edeff3_100%)]"
+        aria-hidden
+      />
       <div
         className={`relative z-[1] flex min-h-0 ${
           isChat
@@ -28,7 +30,7 @@ export default function MainLayout({
       >
         <AppSidebar />
         <main
-          className={`relative flex min-h-0 min-w-0 flex-1 flex-col bg-[#0b0f16]/75 pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))] pt-[env(safe-area-inset-top,0px)] md:pb-0 md:pt-0 ${
+          className={`relative flex min-h-0 min-w-0 flex-1 flex-col bg-transparent pb-[calc(5.25rem+env(safe-area-inset-bottom,0px))] pt-[env(safe-area-inset-top,0px)] md:pb-0 md:pt-0 ${
             isChat
               ? "h-full max-h-full overflow-hidden overscroll-none"
               : "overflow-y-auto"

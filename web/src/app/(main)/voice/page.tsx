@@ -756,16 +756,12 @@ export default function VoicePage() {
   }, [sessionOn, speaking, liveConnecting, liveWebFetching, userSpeaking, listening]);
 
   return (
-    <div className="relative z-[1] flex min-h-0 flex-1 flex-col bg-[#080a0f] md:min-h-0">
-      <div
-        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_85%_55%_at_50%_18%,rgba(0,212,255,0.12),transparent_55%),radial-gradient(ellipse_70%_50%_at_80%_70%,rgba(106,92,255,0.14),transparent_50%),radial-gradient(ellipse_55%_40%_at_20%_80%,rgba(200,92,255,0.06),transparent_50%),linear-gradient(180deg,#080a0f_0%,#070b12_45%,#080a0f_100%)]"
-        aria-hidden
-      />
+    <div className="relative z-[1] flex min-h-0 flex-1 flex-col bg-[#F5F7FA] md:min-h-0">
       <MainTopNav
         center={headerTitle}
         trailingBeforeProfile={
           <div
-            className="relative z-30 flex shrink-0 items-center rounded-[12px] border border-white/[0.1] bg-black/45 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+            className="relative z-30 flex shrink-0 items-center rounded-[12px] border border-slate-200 bg-white p-0.5 shadow-sm"
             role="group"
             aria-label="Assistant voice gender"
           >
@@ -774,8 +770,8 @@ export default function VoicePage() {
               onClick={() => void applyPersona("arjun")}
               className={`rounded-lg px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide transition sm:px-2.5 ${
                 activePersonaId === "arjun"
-                  ? "bg-[#22D3EE]/20 text-white shadow-[inset_0_0_0_1px_rgba(34,211,238,0.35)]"
-                  : "text-white/45 hover:bg-white/[0.06] hover:text-white/85"
+                  ? "bg-[#eff6ff] text-[#1e40af] shadow-[inset_0_0_0_1px_rgba(37,99,235,0.35)]"
+                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
               }`}
             >
               Man
@@ -785,8 +781,8 @@ export default function VoicePage() {
               onClick={() => void applyPersona("sara")}
               className={`rounded-lg px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide transition sm:px-2.5 ${
                 activePersonaId === "sara"
-                  ? "bg-[#22D3EE]/20 text-white shadow-[inset_0_0_0_1px_rgba(34,211,238,0.35)]"
-                  : "text-white/45 hover:bg-white/[0.06] hover:text-white/85"
+                  ? "bg-[#eff6ff] text-[#1e40af] shadow-[inset_0_0_0_1px_rgba(37,99,235,0.35)]"
+                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
               }`}
             >
               Woman
@@ -821,7 +817,7 @@ export default function VoicePage() {
               <button
                 type="button"
                 onClick={tapToSpeak}
-                className="mb-3 mt-1 rounded-[12px] border border-[#22D3EE]/35 bg-[#22D3EE]/10 px-5 py-2.5 text-sm font-semibold text-[#a5f3fc] transition hover:bg-[#22D3EE]/18"
+                className="mb-3 mt-1 rounded-[12px] border border-[#2563EB]/35 bg-[#eff6ff] px-5 py-2.5 text-sm font-semibold text-[#1e40af] transition hover:bg-[#dbeafe]"
               >
                 Tap to interrupt
               </button>
@@ -862,10 +858,10 @@ export default function VoicePage() {
             </button>
           </div>
 
-          <p className="mt-4 text-sm font-medium text-white/75">
+          <p className="mt-4 text-sm font-medium text-slate-800">
             {sessionOn ? "Listening..." : "Voice Chat"}
           </p>
-          <p className="mt-1 text-xs text-white/55">
+          <p className="mt-1 text-xs text-slate-500">
             {sessionOn ? "Tap the button to stop" : "Speak with AI naturally"}
           </p>
           {err && !sessionOn ? (

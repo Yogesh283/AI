@@ -73,10 +73,10 @@ export default function VoicePersonasPage() {
   }, []);
 
   return (
-    <div className="relative z-[1] mx-auto flex min-h-screen max-w-3xl flex-col bg-[#080a0f] px-4 pb-28 pt-0 md:min-h-0 md:flex-1 md:px-8 md:pb-12 md:pt-0">
-      <MainTopNav center={<span className="text-white">Voice avatar</span>} />
+    <div className="relative z-[1] mx-auto flex min-h-screen max-w-3xl flex-col bg-[#F5F7FA] px-4 pb-28 pt-0 md:min-h-0 md:flex-1 md:px-8 md:pb-12 md:pt-0">
+      <MainTopNav center={<span className="text-slate-900">Voice avatar</span>} />
 
-      <p className="mb-6 mt-4 max-w-md text-[12px] leading-relaxed text-white/45">
+      <p className="mb-6 mt-4 max-w-md text-[12px] leading-relaxed text-slate-600">
         Select how your assistant appears in voice mode.
       </p>
 
@@ -91,8 +91,8 @@ export default function VoicePersonasPage() {
                 onClick={() => select(p.id)}
                 className={`group relative overflow-hidden rounded-2xl border text-left transition ${
                   on
-                    ? "border-[#00D4FF]/55 bg-[#00D4FF]/10 shadow-[0_0_28px_rgba(0,212,255,0.2)] ring-2 ring-[#00D4FF]/35"
-                    : "border-white/[0.1] bg-white/[0.04] hover:border-white/20 hover:bg-white/[0.07]"
+                    ? "border-[#2563eb]/45 bg-[#eff6ff] shadow-[0_0_24px_rgba(37,99,235,0.12)] ring-2 ring-[#2563eb]/30"
+                    : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
                 }`}
               >
                 <div className="relative aspect-[3/4] w-full bg-black/30">
@@ -114,19 +114,19 @@ export default function VoicePersonasPage() {
                     </div>
                   )}
                 </div>
-                <div className="flex items-center justify-between gap-2 px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-2 px-3 py-2.5">
                   <div className="min-w-0">
-                    <span className="block text-sm font-semibold text-white/90">{p.name}</span>
-                    <span className="text-[11px] text-white/45">
+                    <span className="block text-sm font-semibold text-slate-900">{p.name}</span>
+                    <span className="text-[11px] text-slate-500">
                       {p.ttsGender === "female" ? "Woman" : "Man"} · Human style
                     </span>
                   </div>
-                  <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-white/50">
+                  <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-slate-500">
                     Voice
                   </span>
                 </div>
                 {on ? (
-                  <span className="absolute right-2 top-2 rounded-full bg-[#00D4FF]/90 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#0a0d12]">
+                  <span className="absolute right-2 top-2 rounded-full bg-[#2563eb] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
                     Selected
                   </span>
                 ) : null}
