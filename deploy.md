@@ -434,3 +434,5 @@ git log -1 --oneline
 cd "$APP_ROOT/web" && rm -rf .next && npm ci && npm run build
 cd "$APP_ROOT/backend" && . .venv/bin/activate && pip install -r requirements.txt
 pm2 restart neo-api neo-web
+
+
