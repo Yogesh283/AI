@@ -128,15 +128,15 @@ export function NeoGoogleSignIn({
           type="button"
           disabled={busy}
           onClick={() => void runNativeSignIn()}
-          className="neo-glass flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-white/[0.12] bg-white/[0.06] px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex h-12 w-full items-center justify-center gap-2.5 rounded-2xl border border-slate-200/95 bg-white px-4 text-sm font-semibold text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.06)] transition hover:bg-slate-50 active:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-55"
         >
           <span
-            className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white text-[13px] font-bold text-[#4285F4]"
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-[14px] font-bold leading-none text-[#4285F4] shadow-[inset_0_0_0_1px_rgba(0,0,0,0.06)]"
             aria-hidden
           >
             G
           </span>
-          {nativeBusy ? "Signing in…" : "Continue with Google"}
+          <span className="text-center">{nativeBusy ? "Signing in…" : "Continue with Google"}</span>
         </button>
       </div>
     );

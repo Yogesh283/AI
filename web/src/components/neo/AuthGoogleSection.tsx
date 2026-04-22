@@ -11,7 +11,7 @@ const NeoGoogleSignIn = dynamic(
     ssr: false,
     loading: () => (
       <div
-        className="neo-glass h-12 w-full rounded-2xl border border-white/[0.08] bg-white/[0.04]"
+        className="h-12 w-full animate-pulse rounded-2xl border border-slate-200 bg-slate-100"
         aria-hidden
       />
     ),
@@ -59,27 +59,27 @@ export function AuthGoogleSection({
 
   const dividerAfterGoogle = (
     <div className="flex items-center gap-3">
-      <div className="h-px flex-1 bg-white/10" />
-      <span className="shrink-0 text-xs uppercase tracking-wider text-white/35">
+      <div className="h-px flex-1 bg-slate-200" />
+      <span className="shrink-0 text-xs uppercase tracking-wider text-slate-500">
         Or use email and password
       </span>
-      <div className="h-px flex-1 bg-white/10" />
+      <div className="h-px flex-1 bg-slate-200" />
     </div>
   );
 
   const dividerBeforeGoogle = (
     <div className="flex items-center gap-3">
-      <div className="h-px flex-1 bg-white/10" />
-      <span className="shrink-0 text-xs uppercase tracking-wider text-white/35">
+      <div className="h-px flex-1 bg-slate-200" />
+      <span className="shrink-0 text-xs uppercase tracking-wider text-slate-500">
         Or continue with Google
       </span>
-      <div className="h-px flex-1 bg-white/10" />
+      <div className="h-px flex-1 bg-slate-200" />
     </div>
   );
 
   const googleBlock =
     !ready && !buildId ? (
-      <p className="text-center text-[11px] text-white/40">Loading sign-in options…</p>
+      <p className="text-center text-[11px] text-slate-500">Loading sign-in options…</p>
     ) : hasGoogle ? (
       <NeoGoogleSignIn
         clientId={clientId}
@@ -93,28 +93,29 @@ export function AuthGoogleSection({
         <button
           type="button"
           disabled
-          className="neo-glass flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-white/[0.12] bg-white/[0.03] px-4 text-sm font-semibold text-white/55"
+          className="flex h-12 w-full cursor-not-allowed items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-100 px-4 text-sm font-semibold text-slate-400"
           aria-label="Continue with Google"
           title="Google sign-in is not configured yet"
         >
           <span
-            className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white text-[13px] font-bold text-[#4285F4]"
+            className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white text-[13px] font-bold text-[#4285F4] shadow-[inset_0_0_0_1px_rgba(0,0,0,0.06)]"
             aria-hidden
           >
             G
           </span>
           Continue with Google
         </button>
-        <p className="text-center text-[11px] leading-relaxed text-white/38">
+        <p className="text-center text-[11px] leading-relaxed text-slate-500">
           Set{" "}
-          <code className="rounded bg-white/[0.08] px-1 py-0.5 font-mono text-[10px] text-[#00D4FF]/85">
+          <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[10px] text-slate-800">
             NEXT_PUBLIC_GOOGLE_CLIENT_ID
           </code>{" "}
           or server-only{" "}
-          <code className="rounded bg-white/[0.08] px-1 font-mono text-[10px]">GOOGLE_OAUTH_WEB_CLIENT_ID</code> in{" "}
-          <code className="rounded bg-white/[0.08] px-1 font-mono text-[10px]">web/.env.production</code>, plus{" "}
-          <code className="rounded bg-white/[0.08] px-1 font-mono text-[10px]">GOOGLE_CLIENT_IDS</code> in backend, then
-          restart <code className="rounded bg-white/[0.08] px-1 font-mono text-[10px]">neo-web</code>.
+          <code className="rounded bg-slate-100 px-1 font-mono text-[10px] text-slate-800">GOOGLE_OAUTH_WEB_CLIENT_ID</code>{" "}
+          in <code className="rounded bg-slate-100 px-1 font-mono text-[10px] text-slate-800">web/.env.production</code>,
+          plus <code className="rounded bg-slate-100 px-1 font-mono text-[10px] text-slate-800">GOOGLE_CLIENT_IDS</code> in
+          backend, then restart{" "}
+          <code className="rounded bg-slate-100 px-1 font-mono text-[10px] text-slate-800">neo-web</code>.
         </p>
       </>
     );
