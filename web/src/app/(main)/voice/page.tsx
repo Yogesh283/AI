@@ -38,7 +38,6 @@ import {
 } from "@/lib/openaiRealtimeVoice";
 
 const VOICE_HISTORY_PREFIX = "neo-voice-history-";
-const REALTIME_MAX_OUTPUT_TOKENS = 1024;
 
 /**
  * OpenAI Realtime noise: harmless or self-inflicted; do not flash yellow on APK.
@@ -542,12 +541,7 @@ export default function VoicePage() {
                 },
               });
             }
-            send({
-              type: "response.create",
-              response: {
-                max_output_tokens: REALTIME_MAX_OUTPUT_TOKENS,
-              },
-            });
+            send({ type: "response.create" });
             /* Single re-arm after new response starts — no per-turn spam (reduces APK mic focus noise). */
             liveEnsureMicRef.current?.();
           };

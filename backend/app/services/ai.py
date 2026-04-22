@@ -225,8 +225,8 @@ async def _openai_chat(
             logger.warning("OpenAI request/network error: %s", e)
             return ChatCompletionResult(
                 text=(
-                    f"[OpenAI network] {type(e).__name__}: {e}\n\n"
-                    "Check whether this server can reach api.openai.com (firewall / DNS / outbound HTTPS)."
+                    "Network is temporarily busy, so I could not complete that reply right now. "
+                    "Please send your message once again."
                 ),
                 model="gpt-4o-mini",
             )
