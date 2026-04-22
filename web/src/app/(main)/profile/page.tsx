@@ -346,23 +346,6 @@ export default function ProfilePage() {
           }}
         />
 
-        <section className="neo-glass overflow-hidden rounded-[22px] ring-1 ring-white/[0.06]">
-          <div className="border-b border-white/[0.07] px-5 py-3.5">
-            <h2 className="text-sm font-semibold text-white/90">Avatar</h2>
-            <p className="mt-0.5 text-xs text-white/40">
-              Current: <span className="text-white/70">{avatar.name}</span>
-            </p>
-          </div>
-          <div className="px-5 py-4">
-            <Link
-              href="/avatars"
-              className="flex w-full items-center justify-center rounded-xl border border-white/[0.1] bg-white/[0.05] py-3 text-sm font-medium text-white/90 transition hover:bg-white/[0.09]"
-            >
-              Change avatar
-            </Link>
-          </div>
-        </section>
-
         <button
           type="button"
           onClick={onLogout}

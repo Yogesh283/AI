@@ -33,7 +33,7 @@ export default function Onboarding() {
         <Pressable style={[neoUi.outlineCta, styles.actionBtn]} onPress={() => router.replace("/(tabs)")}>
           <Text style={neoUi.outlineCtaText}>Skip</Text>
         </Pressable>
-        <Pressable onPress={() => router.push("/avatars")} style={styles.actionBtn}>
+        <Pressable onPress={() => router.push("/customize")} style={styles.actionBtn}>
           <LinearGradient colors={[...neoGradientPrimary]} style={[neoUi.primaryCta, { marginTop: 0 }]}>
             <Text style={neoUi.primaryCtaText}>Next</Text>
           </LinearGradient>

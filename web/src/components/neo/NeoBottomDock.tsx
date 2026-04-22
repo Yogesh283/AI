@@ -4,8 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   IconChat,
+  IconCube3D,
   IconHome,
-  IconImageGraphics,
   IconPersonalAssistantDock,
   IconUser,
 } from "@/components/neo/NeoIcons";
@@ -14,7 +14,7 @@ type DockItem =
   | {
       href: string;
       label: string;
-      Icon: typeof IconHome;
+      Icon: typeof IconHome | typeof IconCube3D;
       variant: "normal";
     }
   | {
@@ -35,7 +35,7 @@ const ITEMS: DockItem[] = [
     Icon: IconPersonalAssistantDock,
     variant: "center",
   },
-  { href: "/avatars", label: "Image & Graphics", Icon: IconImageGraphics, variant: "normal" },
+  { href: "/customize", label: "Customize", Icon: IconCube3D, variant: "normal" },
   { href: "/profile", label: "Profile", Icon: IconUser, variant: "normal" },
 ];
 

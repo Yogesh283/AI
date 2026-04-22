@@ -229,16 +229,10 @@ export function ProfileVoiceSettings({ user, onUserUpdated, onMessage }: Props) 
           </div>
         </div>
 
-        <div className="flex flex-col gap-2 border-t border-white/[0.06] pt-4 sm:flex-row">
-          <Link
-            href="/avatars"
-            className="flex flex-1 items-center justify-center rounded-xl border border-white/[0.1] bg-white/[0.05] py-3 text-sm font-medium text-white/90 transition hover:bg-white/[0.09]"
-          >
-            Change avatar
-          </Link>
+        <div className="flex flex-col gap-2 border-t border-white/[0.06] pt-4">
           <Link
             href="/voice-personas"
-            className="flex flex-1 items-center justify-center rounded-xl border border-[#00D4FF]/25 bg-[#00D4FF]/10 py-3 text-sm font-medium text-[#00D4FF] transition hover:bg-[#00D4FF]/15"
+            className="flex w-full items-center justify-center rounded-xl border border-[#00D4FF]/25 bg-[#00D4FF]/10 py-3 text-sm font-medium text-[#00D4FF] transition hover:bg-[#00D4FF]/15"
           >
             Voice appearance
           </Link>

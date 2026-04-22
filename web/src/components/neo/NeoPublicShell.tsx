@@ -18,7 +18,7 @@ export function NeoPublicShell({
 }: {
   children: React.ReactNode;
   maxWidth?: "max-w-lg" | "max-w-2xl" | "max-w-3xl" | "max-w-4xl" | "max-w-6xl";
-  /** Optional “← Label” before the logo — keeps one chrome for flows like `/avatars/metaperson`. */
+  /** Optional “← Label” before the logo — sub-page chrome. */
   leadingBack?: { href: string; label: string };
 }) {
   const { brandName } = useSiteBrand();

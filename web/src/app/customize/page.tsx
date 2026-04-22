@@ -29,7 +29,7 @@ export default function CustomizePage() {
     <NeoPublicShell maxWidth="max-w-3xl">
       <header className="mb-8">
         <Link
-          href="/avatars"
+          href="/dashboard"
           className="mb-4 inline-block text-sm text-[#00D4FF]/90"
         >
           ← Back

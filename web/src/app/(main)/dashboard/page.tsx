@@ -2,7 +2,6 @@
 
 import { DashboardModeCards } from "@/components/neo/DashboardModeCards";
 import { MainTopNav } from "@/components/neo/MainTopNav";
-import { NeoDashboardRibbonBanner } from "@/components/neo/NeoDashboardRibbonBanner";
 
 function DashboardShell() {
   return (
@@ -13,7 +12,6 @@ function DashboardShell() {
       />
       <div className="relative z-[1] flex min-h-0 flex-1 flex-col overflow-hidden">
         <MainTopNav />
-        <NeoDashboardRibbonBanner />
         <div className="min-h-0 flex-1 overflow-y-auto">
           <DashboardModeCards />
         </div>

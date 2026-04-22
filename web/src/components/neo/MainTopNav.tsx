@@ -19,7 +19,6 @@ export const MAIN_NAV_MENU: { href: string; label: string }[] = [
   { href: "/memory", label: "Memory" },
   { href: "/voice", label: "Voice" },
   { href: "/profile", label: "Profile" },
-  { href: "/avatars", label: "Avatars" },
   { href: "/customize", label: "Customize" },
 ];
 

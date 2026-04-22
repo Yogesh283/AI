@@ -47,7 +47,7 @@ function Chevron() {
 const quickLinks = [
   { href: "/memory", label: "Memory", Icon: IconMemory },
   { href: "/profile", label: "Profile", Icon: IconUser },
-  { href: "/customize", label: "Avatars", Icon: IconCube3D },
+  { href: "/customize", label: "Customize", Icon: IconCube3D },
   { href: "/voice-personas", label: "Voice style", Icon: IconMicCenter },
 ] as const;
 

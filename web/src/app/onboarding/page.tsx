@@ -48,7 +48,7 @@ export default function OnboardingPage() {
         <GradientButton href="/dashboard" variant="outline" className="flex-1 !px-4">
           Skip
         </GradientButton>
-        <GradientButton href="/avatars" className="flex-1 !px-4">
+        <GradientButton href="/customize" className="flex-1 !px-4">
           Next
         </GradientButton>
       </div>

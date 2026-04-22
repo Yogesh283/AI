@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   IconChat,
-  IconImageGraphics,
   IconMemory,
   IconMicCenter,
   IconHome,
@@ -35,7 +34,6 @@ const nav: (SimpleNav | ChatNav)[] = [
     label: "Chat",
     nested: { href: "/voice", label: "Personal Assistant" },
   },
-  { kind: "simple", href: "/avatars", label: "Image & Graphics", Icon: IconImageGraphics },
   { kind: "simple", href: "/profile", label: "Profile", Icon: IconUser },
   { kind: "simple", href: "/memory", label: "Memory", Icon: IconMemory },
 ];

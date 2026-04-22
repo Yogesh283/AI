@@ -30,7 +30,6 @@ const MENU_ITEMS: MenuItem[] = [
   { label: "Dashboard", href: "/(tabs)/dashboard", icon: "grid-outline" },
   { label: "Memory", href: "/(tabs)/memory", icon: "library-outline" },
   { label: "Profile", href: "/(tabs)/profile", icon: "person-outline" },
-  { label: "Avatars", href: "/avatars", icon: "color-palette-outline" },
   { label: "Customize", href: "/customize", icon: "options-outline" },
 ];
 
@@ -87,7 +86,6 @@ export function AppHeader() {
     if (href === "/(tabs)/dashboard") return p.includes("dashboard");
     if (href === "/(tabs)/memory") return p.includes("memory");
     if (href === "/(tabs)/profile") return p.includes("profile");
-    if (href === "/avatars") return p.includes("avatars");
     if (href === "/customize") return p.includes("customize");
     return false;
   };
