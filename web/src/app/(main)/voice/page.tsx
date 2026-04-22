@@ -741,18 +741,18 @@ export default function VoicePage() {
 
   const micButtonClass = useMemo(() => {
     if (!sessionOn) {
-      return "bg-gradient-to-br from-[#00D4FF] via-[#6A5CFF] to-[#C85CFF] shadow-[0_0_48px_rgba(0,212,255,0.32),0_0_72px_rgba(106,92,255,0.22),0_0_88px_rgba(200,92,255,0.14)] ring-[3px] ring-[#6A5CFF]/45 hover:brightness-110";
+      return "bg-gradient-to-br from-[#00E5FF] via-[#22D3EE] to-[#7C3AED] shadow-[0_0_42px_rgba(0,229,255,0.3),0_0_64px_rgba(124,58,237,0.2)] ring-[3px] ring-[#22D3EE]/45 hover:brightness-110";
     }
     if (speaking) {
-      return "bg-gradient-to-br from-violet-600 via-teal-700 to-emerald-900 shadow-[0_0_40px_rgba(139,92,246,0.35)] ring-[4px] ring-violet-400/50";
+      return "bg-gradient-to-br from-[#7C3AED] via-[#22D3EE] to-[#0F172A] shadow-[0_0_36px_rgba(124,58,237,0.32)] ring-[4px] ring-[#7C3AED]/45";
     }
     if (liveConnecting || liveWebFetching) {
-      return "bg-gradient-to-br from-slate-700 via-indigo-800 to-slate-900 shadow-[0_0_32px_rgba(99,102,241,0.25)] ring-[3px] ring-indigo-400/35";
+      return "bg-gradient-to-br from-slate-700 via-[#334155] to-slate-900 shadow-[0_0_30px_rgba(34,211,238,0.22)] ring-[3px] ring-[#22D3EE]/35";
     }
     if (userSpeaking && listening) {
-      return "bg-gradient-to-br from-[#00D4FF] via-[#C85CFF] to-[#6A5CFF] shadow-[0_0_44px_rgba(200,92,255,0.35),0_0_56px_rgba(106,92,255,0.25)] ring-[4px] ring-[#C85CFF]/45 neo-voice-mic-user-talk";
+      return "bg-gradient-to-br from-[#00E5FF] via-[#22D3EE] to-[#7C3AED] shadow-[0_0_40px_rgba(0,229,255,0.28),0_0_52px_rgba(124,58,237,0.24)] ring-[4px] ring-[#7C3AED]/45 neo-voice-mic-user-talk";
     }
-    return "bg-gradient-to-br from-emerald-500 to-teal-800 shadow-[0_0_36px_rgba(16,185,129,0.22)] ring-[3px] ring-emerald-300/45 neo-voice-mic-session-start neo-voice-mic-idle-live";
+    return "bg-gradient-to-br from-[#22D3EE] to-[#0F172A] shadow-[0_0_30px_rgba(34,211,238,0.22)] ring-[3px] ring-[#22D3EE]/45 neo-voice-mic-session-start neo-voice-mic-idle-live";
   }, [sessionOn, speaking, liveConnecting, liveWebFetching, userSpeaking, listening]);
 
   return (
@@ -765,7 +765,7 @@ export default function VoicePage() {
         center={headerTitle}
         trailingBeforeProfile={
           <div
-            className="relative z-30 flex shrink-0 items-center rounded-xl border border-white/[0.1] bg-black/45 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+            className="relative z-30 flex shrink-0 items-center rounded-[12px] border border-white/[0.1] bg-black/45 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
             role="group"
             aria-label="Assistant voice gender"
           >
@@ -774,7 +774,7 @@ export default function VoicePage() {
               onClick={() => void applyPersona("arjun")}
               className={`rounded-lg px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide transition sm:px-2.5 ${
                 activePersonaId === "arjun"
-                  ? "bg-[#00D4FF]/20 text-white shadow-[inset_0_0_0_1px_rgba(0,212,255,0.35)]"
+                  ? "bg-[#22D3EE]/20 text-white shadow-[inset_0_0_0_1px_rgba(34,211,238,0.35)]"
                   : "text-white/45 hover:bg-white/[0.06] hover:text-white/85"
               }`}
             >
@@ -785,7 +785,7 @@ export default function VoicePage() {
               onClick={() => void applyPersona("sara")}
               className={`rounded-lg px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide transition sm:px-2.5 ${
                 activePersonaId === "sara"
-                  ? "bg-[#00D4FF]/20 text-white shadow-[inset_0_0_0_1px_rgba(0,212,255,0.35)]"
+                  ? "bg-[#22D3EE]/20 text-white shadow-[inset_0_0_0_1px_rgba(34,211,238,0.35)]"
                   : "text-white/45 hover:bg-white/[0.06] hover:text-white/85"
               }`}
             >
@@ -796,7 +796,7 @@ export default function VoicePage() {
       />
 
       <div className="mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col px-4 py-6 md:max-w-xl">
-        <div className="neo-screen-card flex min-h-0 flex-1 flex-col items-center justify-center rounded-[24px] px-4 py-5">
+        <div className="neo-screen-card flex min-h-0 flex-1 flex-col items-center justify-center rounded-[16px] px-4 py-5">
           {!isOpenAiRealtimeVoiceSupported() ? (
             <p className="mb-6 max-w-sm text-center text-[11px] leading-relaxed text-amber-400/90">
               Live needs HTTPS and WebRTC. Update Android System WebView / Chrome on this device.
@@ -821,7 +821,7 @@ export default function VoicePage() {
               <button
                 type="button"
                 onClick={tapToSpeak}
-                className="mb-3 mt-1 rounded-2xl border border-[#00D4FF]/35 bg-[#00D4FF]/10 px-5 py-2.5 text-sm font-semibold text-[#a5f3fc] transition hover:bg-[#00D4FF]/18"
+                className="mb-3 mt-1 rounded-[12px] border border-[#22D3EE]/35 bg-[#22D3EE]/10 px-5 py-2.5 text-sm font-semibold text-[#a5f3fc] transition hover:bg-[#22D3EE]/18"
               >
                 Tap to interrupt
               </button>

@@ -75,7 +75,7 @@ export default function RegisterPage() {
 
   return (
     <NeoPublicShell>
-      <div className="neo-screen-card mx-auto w-full max-w-[28rem] rounded-[22px] px-5 py-6 pt-5 sm:px-7 sm:py-7">
+      <div className="neo-screen-card mx-auto w-full max-w-[28rem] rounded-[12px] px-5 py-6 pt-5 sm:px-7 sm:py-7">
           <Link
             href="/"
             className="neo-link-accent mb-7 inline-block text-sm hover:underline"
@@ -159,7 +159,7 @@ export default function RegisterPage() {
                 {err}
               </p>
             ) : null}
-            <GradientButton type="submit" disabled={loading} className="!mt-1 w-full !rounded-xl !py-3.5 disabled:opacity-60">
+            <GradientButton type="submit" disabled={loading} className="!mt-1 w-full !rounded-[12px] !py-3.5 disabled:opacity-60">
               {loading ? "Creating account…" : "Register"}
             </GradientButton>
           </form>

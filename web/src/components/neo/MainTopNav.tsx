@@ -58,7 +58,7 @@ export function MainTopNav({ center, trailingBeforeProfile }: Props) {
         <button
           type="button"
           onClick={() => setMenuOpen((o) => !o)}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/[0.1] bg-white/[0.06] text-white/90 shadow-[0_1px_8px_rgba(0,0,0,0.25)] transition hover:bg-white/[0.1]"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] border border-white/[0.1] bg-white/[0.06] text-white/90 shadow-[0_1px_8px_rgba(0,0,0,0.2)] transition hover:bg-white/[0.1]"
           aria-expanded={menuOpen}
           aria-controls="main-nav-menu"
           aria-label="Open menu"
@@ -78,7 +78,7 @@ export function MainTopNav({ center, trailingBeforeProfile }: Props) {
             />
             <nav
               id="main-nav-menu"
-              className="neo-shell-surface absolute left-0 top-[calc(100%+8px)] z-50 min-w-[13.5rem] rounded-xl py-2"
+              className="neo-shell-surface absolute left-0 top-[calc(100%+8px)] z-50 min-w-[13.5rem] rounded-[12px] py-2"
               role="navigation"
               aria-label="Main menu"
             >
@@ -143,7 +143,7 @@ export function MainTopNav({ center, trailingBeforeProfile }: Props) {
         {trailingBeforeProfile}
         <Link
           href="/profile"
-          className="flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.04] py-1 pl-1 pr-2.5 transition hover:border-white/[0.12]"
+          className="flex items-center gap-2 rounded-[12px] border border-white/[0.08] bg-white/[0.04] py-1 pl-1 pr-2.5 transition hover:border-white/[0.12]"
         >
           <span
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-500 to-orange-600 text-[10px] font-bold text-white shadow-sm"

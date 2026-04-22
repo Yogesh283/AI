@@ -194,7 +194,7 @@ export default function ProfilePage() {
       </div>
       <div className="relative z-[1] min-h-0 flex-1 overflow-y-auto px-4 pb-10 pt-4 md:px-8">
       <div className="mx-auto max-w-3xl space-y-6">
-        <div className="neo-screen-card flex flex-col items-center rounded-[22px] px-5 py-6 text-center">
+        <div className="neo-screen-card flex flex-col items-center rounded-[12px] px-5 py-6 text-center">
           <div className="relative mb-3 h-24 w-24 overflow-hidden rounded-full border-2 border-[#64bdff]/45 bg-[#0a0f18] shadow-[0_0_36px_rgba(35,136,255,0.35)] ring-2 ring-black/20">
             <Image
               src={avatar.imageSrc}
@@ -227,7 +227,7 @@ export default function ProfilePage() {
         )}
 
         {/* Account */}
-        <section className="neo-screen-card overflow-hidden rounded-[22px]">
+        <section className="neo-screen-card overflow-hidden rounded-[12px]">
           <div className="border-b border-white/[0.07] px-5 py-3.5">
             <h2 className="text-sm font-semibold text-white/90">Account</h2>
             <p className="mt-0.5 text-xs text-white/40">Email, display name &amp; password</p>
@@ -268,7 +268,7 @@ export default function ProfilePage() {
                     !nameDraft.trim() ||
                     nameDraft.trim() === (user.display_name ?? "").trim()
                   }
-                  className="neo-gradient-fill rounded-xl px-5 py-2.5 text-sm font-semibold text-[#050912] shadow-[0_4px_20px_rgba(106,92,255,0.25)] transition hover:brightness-110 disabled:opacity-40"
+                  className="neo-gradient-fill rounded-[12px] px-5 py-2.5 text-sm font-semibold text-[#050912] shadow-[0_4px_16px_rgba(106,92,255,0.2)] transition hover:brightness-110 disabled:opacity-40"
                 >
                   {savingProfile ? "Saving…" : "Save name"}
                 </button>
@@ -310,7 +310,7 @@ export default function ProfilePage() {
                     type="button"
                     onClick={() => void savePassword()}
                     disabled={savingPw || !curPw || !newPw}
-                    className="w-full rounded-xl border border-[#00D4FF]/35 bg-[#00D4FF]/10 py-2.5 text-sm font-semibold text-[#00D4FF] transition hover:bg-[#00D4FF]/15 disabled:opacity-40 sm:w-auto sm:px-6"
+                    className="w-full rounded-[12px] border border-[#00D4FF]/35 bg-[#00D4FF]/10 py-2.5 text-sm font-semibold text-[#00D4FF] transition hover:bg-[#00D4FF]/15 disabled:opacity-40 sm:w-auto sm:px-6"
                   >
                     {savingPw ? "Updating…" : "Update password"}
                   </button>
@@ -349,7 +349,7 @@ export default function ProfilePage() {
         <button
           type="button"
           onClick={onLogout}
-          className="w-full rounded-[22px] border border-red-500/35 bg-red-500/5 py-4 text-sm font-semibold text-red-400/95 transition hover:bg-red-500/10"
+          className="w-full rounded-[12px] border border-red-500/35 bg-red-500/5 py-4 text-sm font-semibold text-red-400/95 transition hover:bg-red-500/10"
         >
           Logout
         </button>

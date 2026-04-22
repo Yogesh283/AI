@@ -70,7 +70,7 @@ export function DashboardModeCards() {
   return (
     <div className="flex min-h-0 flex-1 flex-col justify-center px-4 pb-12 pt-5 sm:px-6 md:px-10 md:pb-16 md:pt-8">
       <div className="mx-auto w-full max-w-5xl">
-        <div className="neo-screen-card relative overflow-hidden rounded-[1.85rem] p-5 sm:p-8 md:p-10">
+        <div className="neo-screen-card relative overflow-hidden rounded-[12px] p-5 sm:p-8 md:p-10">
           <div
             className="pointer-events-none absolute -right-24 -top-28 h-72 w-72 rounded-full bg-[#00D4FF]/[0.1] blur-3xl"
             aria-hidden
@@ -98,13 +98,13 @@ export function DashboardModeCards() {
               <div className="mt-5 flex flex-wrap gap-3">
                 <Link
                   href="/chat?new=1"
-                  className="neo-blue-button inline-flex rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition hover:brightness-110"
+                  className="neo-blue-button inline-flex rounded-[12px] px-5 py-2.5 text-sm font-semibold text-white transition hover:brightness-110"
                 >
                   Start Chatting
                 </Link>
                 <Link
                   href="/customize"
-                  className="inline-flex rounded-xl border border-white/20 bg-white/5 px-5 py-2.5 text-sm font-semibold text-white/90 transition hover:bg-white/10"
+                  className="inline-flex rounded-[12px] border border-white/20 bg-white/5 px-5 py-2.5 text-sm font-semibold text-white/90 transition hover:bg-white/10"
                 >
                   Explore Features
                 </Link>
@@ -119,73 +119,86 @@ export function DashboardModeCards() {
             </div>
           </div>
 
-          <div className="relative mt-8 grid gap-3 grid-cols-2 lg:grid-cols-4">
-            <Link
-              href="/voice"
-              className="neo-list-row group relative flex flex-col overflow-hidden rounded-xl p-4 transition duration-200 hover:-translate-y-0.5 hover:border-[#3B82F6]/45"
-            >
-              <div className="mb-3 flex items-start justify-between gap-3">
-                <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-white/[0.12] bg-black/50 shadow-inner">
-                  <Image
-                    src={voiceThumb.imageSrc}
-                    alt=""
-                    fill
-                    className="object-cover object-center"
-                    sizes="56px"
-                    unoptimized={voiceThumbUnoptimized}
-                  />
-                </div>
-                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#00D4FF]/15 text-[#00D4FF] ring-1 ring-[#00D4FF]/28">
-                  <IconMicCenter />
-                </span>
-              </div>
-              <h2 className="text-base font-bold tracking-tight text-white">Voice Chat</h2>
-              <p className="mt-1.5 flex-1 text-xs leading-relaxed text-white/55">
-                Talk naturally and get instant spoken responses.
-              </p>
-              <span className="mt-3 flex items-center gap-1.5 text-[11px] font-semibold text-[#8dd6ff]">
-                Open <Chevron />
-              </span>
-            </Link>
-
-            <Link
-              href="/chat"
-              className="neo-list-row group relative flex flex-col overflow-hidden rounded-xl p-4 transition duration-200 hover:-translate-y-0.5 hover:border-[#3B82F6]/42"
-            >
-              <div className="mb-4 flex items-start justify-between gap-3">
-                <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[#00D4FF]/22 bg-[#0a1018]">
-                  <ChatBubbleThumb />
-                </div>
-                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.06] text-white/70 ring-1 ring-white/[0.1]">
-                  <IconChat />
-                </span>
-              </div>
-              <h2 className="text-base font-bold tracking-tight text-white">Smart Chat</h2>
-              <p className="mt-1.5 flex-1 text-xs leading-relaxed text-white/55">
-                Get clean answers, drafts, ideas and planning help.
-              </p>
-              <span className="mt-3 flex items-center gap-1.5 text-[11px] font-semibold text-[#8dd6ff]">
-                Open <Chevron />
-              </span>
-            </Link>
-            {quickLinks.map(({ href, label, Icon }) => (
+          <section className="mt-8">
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#22D3EE]/80">
+              Core AI
+            </p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Link
-                key={href}
-                href={href}
-                className="neo-list-row group relative flex min-h-[148px] flex-col overflow-hidden rounded-xl p-4 transition duration-200 hover:-translate-y-0.5 hover:border-[#3B82F6]/42"
+                href="/voice"
+                className="neo-list-row group relative flex flex-col overflow-hidden rounded-[12px] p-4 transition duration-200 hover:-translate-y-1 hover:border-[#22D3EE]/50 hover:shadow-[0_10px_22px_rgba(0,0,0,0.24),0_0_18px_rgba(34,211,238,0.18)]"
               >
-                <span className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.06] text-white/80">
-                  <Icon />
-                </span>
-                <h2 className="text-base font-bold tracking-tight text-white">{label}</h2>
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-[12px] border border-white/[0.12] bg-black/50 shadow-inner">
+                    <Image
+                      src={voiceThumb.imageSrc}
+                      alt=""
+                      fill
+                      className="object-cover object-center"
+                      sizes="56px"
+                      unoptimized={voiceThumbUnoptimized}
+                    />
+                  </div>
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#00D4FF]/15 text-[#00D4FF] ring-1 ring-[#00D4FF]/28">
+                    <IconMicCenter />
+                  </span>
+                </div>
+                <h2 className="text-base font-bold tracking-tight text-white">Voice Chat</h2>
                 <p className="mt-1.5 flex-1 text-xs leading-relaxed text-white/55">
-                  Manage your {label.toLowerCase()} settings quickly.
+                  Talk naturally and get instant spoken responses.
                 </p>
+                <span className="mt-3 flex items-center gap-1.5 text-[11px] font-semibold text-[#8dd6ff]">
+                  Open <Chevron />
+                </span>
               </Link>
-            ))}
-          </div>
+
+              <Link
+                href="/chat"
+                className="neo-list-row group relative flex flex-col overflow-hidden rounded-[12px] p-4 transition duration-200 hover:-translate-y-1 hover:border-[#22D3EE]/50 hover:shadow-[0_10px_22px_rgba(0,0,0,0.24),0_0_18px_rgba(34,211,238,0.18)]"
+              >
+                <div className="mb-4 flex items-start justify-between gap-3">
+                  <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-[12px] border border-[#00D4FF]/22 bg-[#0a1018]">
+                    <ChatBubbleThumb />
+                  </div>
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.06] text-white/70 ring-1 ring-white/[0.1]">
+                    <IconChat />
+                  </span>
+                </div>
+                <h2 className="text-base font-bold tracking-tight text-white">Smart Chat</h2>
+                <p className="mt-1.5 flex-1 text-xs leading-relaxed text-white/55">
+                  Get clean answers, drafts, ideas and planning help.
+                </p>
+                <span className="mt-3 flex items-center gap-1.5 text-[11px] font-semibold text-[#8dd6ff]">
+                  Open <Chevron />
+                </span>
+              </Link>
+            </div>
+          </section>
+
+          <section className="mt-7">
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#22D3EE]/80">
+              Account &amp; Personalization
+            </p>
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              {quickLinks.map(({ href, label, Icon }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className="neo-list-row group relative flex min-h-[148px] flex-col overflow-hidden rounded-[12px] p-4 transition duration-200 hover:-translate-y-1 hover:border-[#22D3EE]/50 hover:shadow-[0_10px_22px_rgba(0,0,0,0.24),0_0_18px_rgba(34,211,238,0.18)]"
+                >
+                  <span className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.06] text-white/80 transition group-hover:bg-[#22D3EE]/20 group-hover:text-[#E2E8F0]">
+                    <Icon />
+                  </span>
+                  <h2 className="text-base font-bold tracking-tight text-white">{label}</h2>
+                  <p className="mt-1.5 flex-1 text-xs leading-relaxed text-white/55">
+                    Manage your {label.toLowerCase()} settings quickly.
+                  </p>
+                </Link>
+              ))}
+            </div>
+          </section>
         </div>
-      </div>
+        </div>
     </div>
   );
 }

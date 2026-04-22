@@ -43,7 +43,7 @@ export function AppSidebar() {
   const { brandName } = useSiteBrand();
 
   return (
-    <aside className="neo-shell-surface relative z-[2] hidden w-[260px] shrink-0 flex-col border-r-0 rounded-r-2xl md:flex">
+    <aside className="neo-shell-surface relative z-[2] hidden w-[260px] shrink-0 flex-col border-r-0 rounded-[16px] md:ml-3 md:mt-3 md:flex md:h-[calc(100dvh-1.5rem)]">
       <div className="flex h-14 items-center border-b border-white/[0.07] px-4">
         <Link
           href="/dashboard"
@@ -64,10 +64,10 @@ export function AppSidebar() {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${
+                className={`group flex items-center gap-3 rounded-[12px] px-3 py-2.5 text-sm transition duration-300 ${
                   active
-                    ? "bg-[#0f223f] text-[#79D8FF] shadow-[inset_0_0_0_1px_rgba(59,130,246,0.28)]"
-                    : "text-white/55 hover:bg-white/[0.06] hover:text-white/90"
+                    ? "bg-gradient-to-r from-[#00E5FF]/18 to-[#7C3AED]/18 text-[#E2E8F0] shadow-[inset_0_0_0_1px_rgba(34,211,238,0.34),0_0_18px_rgba(34,211,238,0.18)]"
+                    : "text-white/60 hover:bg-white/[0.06] hover:text-white/95 hover:shadow-[0_0_14px_rgba(34,211,238,0.14)]"
                 }`}
               >
                 <item.Icon active={active} />
@@ -88,12 +88,12 @@ export function AppSidebar() {
             <div key={item.href} className="flex flex-col gap-0.5">
               <Link
                 href={item.href}
-                className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${
+                className={`group flex items-center gap-3 rounded-[12px] px-3 py-2.5 text-sm transition duration-300 ${
                   chatActive && !nestedOnly
-                    ? "bg-[#0f223f] text-[#79D8FF] shadow-[inset_0_0_0_1px_rgba(59,130,246,0.24)]"
+                    ? "bg-gradient-to-r from-[#00E5FF]/18 to-[#7C3AED]/18 text-[#E2E8F0] shadow-[inset_0_0_0_1px_rgba(34,211,238,0.3),0_0_16px_rgba(34,211,238,0.16)]"
                     : chatActive
-                      ? "bg-white/[0.04] text-white/80"
-                      : "text-white/55 hover:bg-white/[0.06] hover:text-white/90"
+                      ? "bg-white/[0.05] text-white/85"
+                      : "text-white/60 hover:bg-white/[0.06] hover:text-white/95 hover:shadow-[0_0_14px_rgba(34,211,238,0.14)]"
                 }`}
               >
                 <IconChat active={chatActive} />
@@ -101,10 +101,10 @@ export function AppSidebar() {
               </Link>
               <Link
                 href={item.nested.href}
-                className={`ml-6 flex items-center gap-2 rounded-lg py-2 pl-3 pr-2 text-[12px] transition ${
+                className={`ml-6 flex items-center gap-2 rounded-[12px] py-2 pl-3 pr-2 text-[12px] transition duration-300 ${
                   nestedOnly
-                    ? "bg-[#0f223f] font-medium text-[#79D8FF] shadow-[inset_0_0_0_1px_rgba(59,130,246,0.24)]"
-                    : "text-white/45 hover:bg-white/[0.05] hover:text-white/75"
+                    ? "bg-gradient-to-r from-[#00E5FF]/14 to-[#7C3AED]/14 font-medium text-[#E2E8F0] shadow-[inset_0_0_0_1px_rgba(34,211,238,0.25)]"
+                    : "text-white/50 hover:bg-white/[0.05] hover:text-white/82"
                 }`}
               >
                 <span className="opacity-50" aria-hidden>

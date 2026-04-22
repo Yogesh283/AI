@@ -70,9 +70,9 @@ export function NeoBottomDock() {
       className="fixed inset-x-0 bottom-0 z-50 px-3 pb-[max(0.2rem,env(safe-area-inset-bottom))] md:hidden"
     >
       <div className="mx-auto w-[min(96vw,52rem)]">
-        <div className="relative overflow-hidden border border-white/10 bg-[linear-gradient(180deg,rgba(7,16,36,0.96),rgba(4,10,24,0.98))] shadow-[0_-10px_34px_rgba(0,0,0,0.46),inset_0_1px_0_rgba(255,255,255,0.07)] backdrop-blur-2xl">
-          <div className="pointer-events-none absolute inset-x-12 top-0 h-px bg-gradient-to-r from-transparent via-[#3B82F6]/60 to-transparent" />
-          <div className="pointer-events-none absolute -top-11 left-1/2 h-24 w-44 -translate-x-1/2 rounded-full bg-[#00D4FF]/12 blur-3xl" />
+        <div className="relative overflow-hidden rounded-[16px] border border-cyan-300/20 bg-[linear-gradient(180deg,rgba(9,16,32,0.96),rgba(2,6,23,0.98))] shadow-[0_-8px_20px_rgba(0,0,0,0.34),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-2xl">
+          <div className="pointer-events-none absolute inset-x-12 top-0 h-px bg-gradient-to-r from-transparent via-[#22D3EE]/70 to-transparent" />
+          <div className="pointer-events-none absolute -top-11 left-1/2 h-24 w-44 -translate-x-1/2 rounded-full bg-[#00E5FF]/14 blur-3xl" />
 
           <div className="grid h-[70px] grid-cols-5 items-stretch gap-1 px-1">
             {ITEMS.map((item) => {
@@ -90,14 +90,14 @@ export function NeoBottomDock() {
                       active ? "-translate-y-1" : ""
                     }`}
                   >
-                    <span className="pointer-events-none absolute -top-6 rounded-md border border-white/15 bg-[#081a37]/90 px-2 py-0.5 text-[10px] font-medium text-white/90 opacity-0 shadow-md transition-opacity duration-200 group-hover:opacity-100">
+                    <span className="pointer-events-none absolute -top-6 rounded-[8px] border border-white/15 bg-[#081a37]/90 px-2 py-0.5 text-[10px] font-medium text-white/90 opacity-0 shadow-md transition-opacity duration-200 group-hover:opacity-100">
                       {item.title}
                     </span>
                     <span
-                      className={`relative flex flex-col items-center border px-2 py-1 transition-all duration-300 ${
+                      className={`relative flex flex-col items-center rounded-[12px] border px-2 py-1 transition-all duration-300 ${
                         active
-                          ? "border-[#3B82F6]/45 bg-gradient-to-br from-[#00D4FF]/18 via-[#3B82F6]/14 to-[#6A5CFF]/18 shadow-[0_0_30px_rgba(59,130,246,0.28)]"
-                          : "border-white/5 bg-white/[0.03]"
+                          ? "border-[#22D3EE]/45 bg-gradient-to-br from-[#00E5FF]/18 via-[#22D3EE]/14 to-[#7C3AED]/18 shadow-[0_0_26px_rgba(34,211,238,0.25)]"
+                          : "border-white/5 bg-white/[0.03] group-hover:border-[#22D3EE]/30 group-hover:shadow-[0_0_16px_rgba(34,211,238,0.18)]"
                       }`}
                     >
                       <Icon active={active} />
@@ -113,7 +113,7 @@ export function NeoBottomDock() {
                     {active && (
                       <span
                         aria-hidden
-                        className="absolute bottom-0 left-3 right-3 h-[3px] rounded-full bg-gradient-to-r from-[#00D4FF] via-[#3B82F6] to-[#6A5CFF] shadow-[0_0_14px_rgba(59,130,246,0.68)]"
+                        className="absolute bottom-0 left-3 right-3 h-[3px] rounded-full bg-gradient-to-r from-[#00E5FF] via-[#22D3EE] to-[#7C3AED] shadow-[0_0_14px_rgba(34,211,238,0.55)]"
                       />
                     )}
                   </Link>
@@ -127,15 +127,23 @@ export function NeoBottomDock() {
                   aria-current={active ? "page" : undefined}
                   title={item.label}
                   className={`group relative flex min-w-0 flex-col items-center justify-center gap-0.5 px-1 py-1 transition-all duration-300 hover:-translate-y-0.5 active:scale-[0.98] ${
-                    active ? "text-[#79D8FF]" : "text-[#A7B0D6]/75"
+                    active ? "text-[#22D3EE]" : "text-[#A7B0D6]/75"
                   }`}
                 >
-                  <Icon active={active} />
+                  <span
+                    className={`flex h-9 w-9 items-center justify-center rounded-[12px] border transition-all duration-300 ${
+                      active
+                        ? "border-[#22D3EE]/45 bg-[#22D3EE]/12 shadow-[0_0_18px_rgba(34,211,238,0.22)]"
+                        : "border-white/5 bg-white/[0.02] group-hover:border-[#22D3EE]/30 group-hover:bg-[#22D3EE]/10 group-hover:shadow-[0_0_14px_rgba(34,211,238,0.16)]"
+                    }`}
+                  >
+                    <Icon active={active} />
+                  </span>
 
                   <span
                     title={item.label}
                     className={`max-w-[4.6rem] truncate text-center text-[8px] font-semibold tracking-tight leading-tight transition-colors ${
-                      active ? "text-white" : "text-white/72 group-hover:text-white/90"
+                      active ? "text-[#E2E8F0]" : "text-white/72 group-hover:text-[#E2E8F0]"
                     }`}
                   >
                     {item.label}
@@ -144,7 +152,7 @@ export function NeoBottomDock() {
                   {active && (
                     <span
                       aria-hidden
-                      className="absolute bottom-1.5 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-[#00D4FF] shadow-[0_0_12px_rgba(0,212,255,0.9)]"
+                      className="absolute bottom-1.5 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-[#00E5FF] shadow-[0_0_12px_rgba(0,229,255,0.8)]"
                     />
                   )}
                 </Link>

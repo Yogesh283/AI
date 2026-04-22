@@ -18,8 +18,11 @@ export default function LandingPage() {
 
   return (
     <NeoPublicShell maxWidth="max-w-6xl">
-      <section className="neo-screen-card relative mx-auto mt-3 w-full overflow-hidden rounded-[26px] px-6 py-8 sm:px-8 md:px-10 md:py-10">
-        <div className="pointer-events-none absolute -right-20 top-12 h-72 w-72 rounded-full bg-[#1f86ff]/25 blur-3xl" aria-hidden />
+      <section className="neo-screen-card relative mx-auto mt-3 w-full overflow-hidden rounded-[20px] px-6 py-8 sm:px-8 md:px-10 md:py-10">
+        <div className="pointer-events-none absolute -right-20 top-12 h-72 w-72 rounded-full bg-[#22D3EE]/20 blur-3xl" aria-hidden />
+        <div className="pointer-events-none absolute left-[12%] top-[18%] h-1.5 w-1.5 rounded-full bg-[#00E5FF]/85 shadow-[0_0_14px_rgba(0,229,255,0.8)]" aria-hidden />
+        <div className="pointer-events-none absolute left-[28%] top-[12%] h-1 w-1 rounded-full bg-[#7C3AED]/80 shadow-[0_0_12px_rgba(124,58,237,0.8)]" aria-hidden />
+        <div className="pointer-events-none absolute right-[24%] top-[28%] h-1.5 w-1.5 rounded-full bg-[#22D3EE]/75 shadow-[0_0_12px_rgba(34,211,238,0.8)]" aria-hidden />
         <div className="grid items-center gap-8 md:grid-cols-[1.1fr_0.9fr]">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#84d6ff]">
@@ -43,9 +46,10 @@ export default function LandingPage() {
             </div>
           </div>
           <div className="relative flex items-center justify-center py-2">
-            <div className="absolute h-56 w-56 rounded-full bg-[#2591ff]/30 blur-3xl" />
-            <div className="relative flex h-52 w-52 items-center justify-center rounded-full border border-[#a8cbff]/40 bg-[radial-gradient(circle_at_30%_30%,rgba(182,229,255,0.45),rgba(34,120,255,0.58)_56%,rgba(10,29,76,0.95)_100%)] shadow-[0_0_70px_rgba(33,128,255,0.55)]">
-              <NeoLogoHead className="h-20 w-20" priority />
+            <div className="absolute h-56 w-56 rounded-full bg-[#22D3EE]/20 blur-3xl" />
+            <div className="relative flex h-56 w-56 items-center justify-center rounded-full border border-[#22D3EE]/45 bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.12),rgba(255,255,255,0.04)_56%,rgba(2,6,23,0.92)_100%)] shadow-[0_0_70px_rgba(34,211,238,0.45)] backdrop-blur-xl">
+              <span className="absolute inset-[10px] rounded-full border border-[#7C3AED]/45" aria-hidden />
+              <NeoLogoHead className="h-20 w-20 drop-shadow-[0_0_16px_rgba(0,229,255,0.42)]" priority />
             </div>
           </div>
         </div>

@@ -42,7 +42,7 @@ export default function CustomizePage() {
         </p>
       </header>
 
-      <section className="mb-8">
+      <section className="neo-screen-card mb-8 p-5">
         <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-white/40">
           Select Voice
         </h2>
@@ -52,9 +52,9 @@ export default function CustomizePage() {
               key={v.id}
               type="button"
               onClick={() => setVoice(v.id)}
-              className={`neo-card-soft rounded-2xl px-2 py-4 text-center transition ${
+              className={`neo-card-soft rounded-[12px] px-2 py-4 text-center transition ${
                 voice === v.id
-                  ? "ring-2 ring-[#00D4FF] shadow-[0_0_24px_rgba(0,212,255,0.2)]"
+                  ? "ring-2 ring-[#22D3EE] shadow-[0_0_18px_rgba(34,211,238,0.22)]"
                   : ""
               }`}
             >
@@ -65,7 +65,7 @@ export default function CustomizePage() {
         </div>
       </section>
 
-      <section className="mb-8">
+      <section className="neo-screen-card mb-8 p-5">
         <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-white/40">
           Personality
         </h2>
@@ -79,7 +79,7 @@ export default function CustomizePage() {
                 onClick={() => toggle(c)}
                 className={`neo-pill px-4 py-2 text-sm font-medium transition ${
                   on
-                    ? "border-[#00D4FF]/50 bg-[#00D4FF]/15 text-[#00D4FF]"
+                    ? "border-[#22D3EE]/50 bg-[#22D3EE]/15 text-[#E2E8F0]"
                     : "text-white/55"
                 }`}
               >
@@ -90,11 +90,11 @@ export default function CustomizePage() {
         </div>
       </section>
 
-      <section className="neo-panel mb-10 space-y-6 rounded-[28px] p-6">
+      <section className="neo-screen-card mb-10 space-y-6 rounded-[12px] p-6">
         <div>
           <div className="mb-2 flex justify-between text-sm">
             <span className="text-white/70">Speaking Speed</span>
-            <span className="text-[#00D4FF]">{speed}%</span>
+            <span className="text-[#22D3EE]">{speed}%</span>
           </div>
           <input
             type="range"
@@ -102,13 +102,13 @@ export default function CustomizePage() {
             max={100}
             value={speed}
             onChange={(e) => setSpeed(+e.target.value)}
-            className="h-2 w-full accent-[#00D4FF]"
+            className="h-2 w-full accent-[#22D3EE]"
           />
         </div>
         <div>
           <div className="mb-2 flex justify-between text-sm">
             <span className="text-white/70">Response Detail</span>
-            <span className="text-[#C85CFF]">{detail}%</span>
+            <span className="text-[#7C3AED]">{detail}%</span>
           </div>
           <div className="mb-1 flex justify-between text-[10px] uppercase text-white/35">
             <span>Concise</span>
@@ -120,7 +120,7 @@ export default function CustomizePage() {
             max={100}
             value={detail}
             onChange={(e) => setDetail(+e.target.value)}
-            className="h-2 w-full accent-[#C85CFF]"
+            className="h-2 w-full accent-[#7C3AED]"
           />
         </div>
       </section>

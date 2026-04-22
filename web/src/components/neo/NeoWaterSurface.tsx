@@ -54,9 +54,9 @@ export function NeoWaterSurface() {
       <svg width="0" height="0" className="absolute overflow-hidden opacity-0" aria-hidden>
         <defs>
           <linearGradient id="neoCrestGlow" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#00D4FF" stopOpacity="0.95" />
-            <stop offset="50%" stopColor="#6A5CFF" stopOpacity="0.88" />
-            <stop offset="100%" stopColor="#C85CFF" stopOpacity="0.9" />
+            <stop offset="0%" stopColor="#00E5FF" stopOpacity="0.95" />
+            <stop offset="55%" stopColor="#22D3EE" stopOpacity="0.9" />
+            <stop offset="100%" stopColor="#7C3AED" stopOpacity="0.9" />
           </linearGradient>
         </defs>
       </svg>
@@ -69,9 +69,9 @@ export function NeoWaterSurface() {
             gradId="neoWaterGradA"
             stops={
               <>
-                <stop offset="0%" stopColor="#00D4FF" stopOpacity="0.24" />
-                <stop offset="55%" stopColor="#6A5CFF" stopOpacity="0.15" />
-                <stop offset="100%" stopColor="#C85CFF" stopOpacity="0.2" />
+                <stop offset="0%" stopColor="#00E5FF" stopOpacity="0.2" />
+                <stop offset="55%" stopColor="#22D3EE" stopOpacity="0.15" />
+                <stop offset="100%" stopColor="#7C3AED" stopOpacity="0.22" />
               </>
             }
           />
@@ -81,9 +81,9 @@ export function NeoWaterSurface() {
             gradId="neoWaterGradA2"
             stops={
               <>
-                <stop offset="0%" stopColor="#00D4FF" stopOpacity="0.24" />
-                <stop offset="55%" stopColor="#6A5CFF" stopOpacity="0.15" />
-                <stop offset="100%" stopColor="#C85CFF" stopOpacity="0.2" />
+                <stop offset="0%" stopColor="#00E5FF" stopOpacity="0.2" />
+                <stop offset="55%" stopColor="#22D3EE" stopOpacity="0.15" />
+                <stop offset="100%" stopColor="#7C3AED" stopOpacity="0.22" />
               </>
             }
           />
@@ -98,9 +98,9 @@ export function NeoWaterSurface() {
             gradId="neoWaterGradB"
             stops={
               <>
-                <stop offset="0%" stopColor="#6A5CFF" stopOpacity="0.2" />
-                <stop offset="50%" stopColor="#00D4FF" stopOpacity="0.14" />
-                <stop offset="100%" stopColor="#C85CFF" stopOpacity="0.12" />
+                <stop offset="0%" stopColor="#7C3AED" stopOpacity="0.2" />
+                <stop offset="50%" stopColor="#22D3EE" stopOpacity="0.14" />
+                <stop offset="100%" stopColor="#00E5FF" stopOpacity="0.14" />
               </>
             }
           />
@@ -110,9 +110,9 @@ export function NeoWaterSurface() {
             gradId="neoWaterGradB2"
             stops={
               <>
-                <stop offset="0%" stopColor="#6A5CFF" stopOpacity="0.2" />
-                <stop offset="50%" stopColor="#00D4FF" stopOpacity="0.14" />
-                <stop offset="100%" stopColor="#C85CFF" stopOpacity="0.12" />
+                <stop offset="0%" stopColor="#7C3AED" stopOpacity="0.2" />
+                <stop offset="50%" stopColor="#22D3EE" stopOpacity="0.14" />
+                <stop offset="100%" stopColor="#00E5FF" stopOpacity="0.14" />
               </>
             }
           />
@@ -127,8 +127,8 @@ export function NeoWaterSurface() {
             gradId="neoWaterGradC"
             stops={
               <>
-                <stop offset="0%" stopColor="#00D4FF" stopOpacity="0.16" />
-                <stop offset="100%" stopColor="#C85CFF" stopOpacity="0.12" />
+                <stop offset="0%" stopColor="#00E5FF" stopOpacity="0.16" />
+                <stop offset="100%" stopColor="#7C3AED" stopOpacity="0.14" />
               </>
             }
           />
@@ -138,8 +138,8 @@ export function NeoWaterSurface() {
             gradId="neoWaterGradC2"
             stops={
               <>
-                <stop offset="0%" stopColor="#00D4FF" stopOpacity="0.16" />
-                <stop offset="100%" stopColor="#C85CFF" stopOpacity="0.12" />
+                <stop offset="0%" stopColor="#00E5FF" stopOpacity="0.16" />
+                <stop offset="100%" stopColor="#7C3AED" stopOpacity="0.14" />
               </>
             }
           />

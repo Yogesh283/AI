@@ -440,7 +440,7 @@ export function DashboardChatPanel() {
   }
 
   return (
-    <div className="relative z-[1] flex min-h-0 flex-1 flex-col overflow-hidden bg-[#070d1d]">
+    <div className="relative z-[1] flex min-h-0 flex-1 flex-col overflow-hidden bg-[#020617]">
       <div
         ref={scrollRef}
         className="neo-chat-scroll min-h-0 flex-1 overflow-y-auto overscroll-y-contain scroll-smooth px-3 py-5 sm:px-5 md:px-8 md:py-6"
@@ -448,7 +448,7 @@ export function DashboardChatPanel() {
         <div className="mx-auto flex w-full max-w-[52rem] flex-col gap-5 md:gap-6">
           <article className="flex gap-3 sm:gap-4">
             <ChatAssistantAvatar className="mt-0.5" />
-            <div className="neo-list-row min-w-0 flex-1 rounded-2xl px-4 py-3 sm:px-5 sm:py-3.5">
+            <div className="neo-list-row min-w-0 flex-1 rounded-[16px] border-[#22D3EE]/18 px-4 py-3 sm:px-5 sm:py-3.5">
               <p className="line-clamp-2 text-[15px] leading-relaxed text-white/[0.92] sm:line-clamp-none">
                 {msgs[0]?.content}
               </p>
@@ -473,8 +473,8 @@ export function DashboardChatPanel() {
                   <div
                     className={
                       m.role === "user"
-                        ? "inline-block max-w-[min(100%,92%)] rounded-2xl bg-gradient-to-br from-[#1f8fff]/26 via-[#2f6cff]/16 to-[#5a5dff]/14 px-4 py-2.5 text-right shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] sm:max-w-[85%]"
-                        : "neo-list-row rounded-2xl px-4 py-2.5 text-left sm:px-5 sm:py-3"
+                        ? "inline-block max-w-[min(100%,92%)] rounded-[16px] border border-[#22D3EE]/20 bg-gradient-to-br from-[#00E5FF]/16 via-[#22D3EE]/12 to-[#7C3AED]/16 px-4 py-2.5 text-right shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_16px_rgba(34,211,238,0.12)] sm:max-w-[85%]"
+                        : "neo-list-row rounded-[16px] border-[#22D3EE]/16 px-4 py-2.5 text-left sm:px-5 sm:py-3"
                     }
                   >
                     {m.role === "user" ? (
@@ -520,9 +520,9 @@ export function DashboardChatPanel() {
         </div>
       </div>
 
-      <div className="z-10 shrink-0 border-t border-white/[0.06] bg-gradient-to-t from-[#040b1a] via-[#060f22] to-[#060f22] px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-12px_48px_rgba(0,0,0,0.4)] sm:px-5 md:px-8 md:pt-4">
+      <div className="z-10 shrink-0 border-t border-[#22D3EE]/16 bg-gradient-to-t from-[#020617] via-[#050b19] to-[#050b19] px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-12px_48px_rgba(0,0,0,0.4)] sm:px-5 md:px-8 md:pt-4">
         <div className="mx-auto w-full max-w-[52rem]">
-          <div className="flex w-full items-end gap-1.5 rounded-3xl border border-[#81baff]/25 bg-[#0b1d3f]/72 py-2 pl-3 pr-2 shadow-[0_8px_40px_rgba(0,0,0,0.35)] backdrop-blur-xl ring-1 ring-white/[0.05] sm:gap-2 sm:pl-4 sm:pr-2.5">
+          <div className="flex w-full items-end gap-1.5 rounded-[16px] border border-[#22D3EE]/26 bg-[linear-gradient(180deg,rgba(13,24,46,0.78),rgba(6,13,30,0.84))] py-2 pl-3 pr-2 shadow-[0_8px_22px_rgba(0,0,0,0.28),0_0_20px_rgba(34,211,238,0.1)] backdrop-blur-xl ring-1 ring-white/[0.05] sm:gap-2 sm:pl-4 sm:pr-2.5">
             <textarea
               ref={inputRef}
               className="min-h-[44px] min-w-0 flex-1 resize-none overflow-hidden bg-transparent py-2.5 text-[15px] leading-snug text-white/95 outline-none placeholder:text-white/38 focus-visible:ring-0"
@@ -544,7 +544,7 @@ export function DashboardChatPanel() {
               type="button"
               onClick={() => void send()}
               disabled={loading || voiceListening || !input.trim()}
-              className="neo-gradient-fill flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white shadow-[0_4px_20px_rgba(0,212,255,0.3),0_4px_36px_rgba(106,92,255,0.22)] transition hover:brightness-110 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-35"
+              className="neo-gradient-fill flex h-10 w-10 shrink-0 items-center justify-center rounded-[16px] text-white shadow-[0_4px_16px_rgba(0,229,255,0.26),0_4px_24px_rgba(124,58,237,0.2)] transition duration-300 hover:scale-[1.04] hover:brightness-110 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-35"
               aria-label="Send message"
               title="Send (Enter)"
             >
@@ -562,7 +562,7 @@ export function DashboardChatPanel() {
               type="button"
               onClick={() => toggleVoice()}
               disabled={loading}
-              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white/85 transition hover:bg-white/[0.08] disabled:opacity-40 ${
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[16px] text-white/85 transition duration-300 hover:bg-[#22D3EE]/12 hover:shadow-[0_0_16px_rgba(34,211,238,0.14)] disabled:opacity-40 ${
                 voiceListening ? "bg-emerald-500/20 text-emerald-200 ring-2 ring-emerald-400/40" : ""
               }`}
               aria-pressed={voiceListening}
@@ -578,7 +578,7 @@ export function DashboardChatPanel() {
             </button>
             <Link
               href="/voice"
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#10a37f] text-white shadow-[0_2px_12px_rgba(16,163,127,0.45)] transition hover:brightness-105 active:scale-[0.97]"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] bg-gradient-to-br from-[#00E5FF] to-[#7C3AED] text-white shadow-[0_2px_10px_rgba(124,58,237,0.35)] transition duration-300 hover:scale-[1.03] hover:brightness-105 active:scale-[0.97]"
               aria-label="Voice chat"
               title="Voice chat"
             >

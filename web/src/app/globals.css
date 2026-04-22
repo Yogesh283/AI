@@ -3,19 +3,22 @@
 :root {
   /* DM Sans via next/font/google needs outbound HTTPS at build time; use stack so CI/VPS builds work */
   --font-neo: ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --neo-bg: #0a1f44;
-  --neo-bg-deep: #050c1b;
-  --neo-surface: rgba(15, 42, 90, 0.82);
-  --neo-accent-1: #00cfff;
-  --neo-accent-2: #1e90ff;
-  --neo-accent-3: #0a1f44;
-  --neo-gradient-brand: linear-gradient(135deg, #0a1f44, #1e90ff);
-  --neo-cyan: #00cfff;
-  --neo-cyan-dim: #187bda;
-  --neo-purple: #1e90ff;
-  --neo-magenta: #1e90ff;
-  --neo-text: #ffffff;
-  --neo-muted: #b0c4de;
+  --neo-bg: #0a0f1c;
+  --neo-bg-deep: #020617;
+  --neo-surface: rgba(255, 255, 255, 0.05);
+  --neo-accent-1: #00e5ff;
+  --neo-accent-2: #22d3ee;
+  --neo-accent-3: #7c3aed;
+  --neo-gradient-brand: linear-gradient(135deg, #00e5ff, #7c3aed);
+  --neo-cyan: #00e5ff;
+  --neo-cyan-dim: #22d3ee;
+  --neo-purple: #7c3aed;
+  --neo-magenta: #7c3aed;
+  --neo-text: #e2e8f0;
+  --neo-muted: #9fb2ce;
+  --neo-radius-sm: 12px;
+  --neo-radius-md: 12px;
+  --neo-radius-lg: 12px;
 }
 
 @theme inline {
@@ -27,63 +30,92 @@
 body {
   background-color: var(--neo-bg-deep);
   background-image:
-    radial-gradient(ellipse 120% 90% at 50% -15%, rgba(0, 207, 255, 0.2), transparent 55%),
-    radial-gradient(ellipse 70% 45% at 100% 30%, rgba(30, 144, 255, 0.16), transparent 50%),
-    radial-gradient(ellipse 60% 40% at 0% 70%, rgba(10, 31, 68, 0.18), transparent 45%),
+    radial-gradient(ellipse 120% 90% at 50% -15%, rgba(0, 229, 255, 0.16), transparent 55%),
+    radial-gradient(ellipse 70% 45% at 100% 30%, rgba(124, 58, 237, 0.14), transparent 50%),
+    radial-gradient(ellipse 60% 40% at 0% 70%, rgba(34, 211, 238, 0.1), transparent 45%),
     linear-gradient(180deg, var(--neo-bg) 0%, var(--neo-bg-deep) 100%);
   color: var(--neo-text);
   min-height: 100vh;
+  letter-spacing: 0.01em;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "liga" 1, "kern" 1;
+}
+
+/* Global interactive behavior — consistent hover feel across all pages */
+a,
+button,
+[role="button"] {
+  transition:
+    transform 0.3s ease,
+    box-shadow 0.3s ease,
+    border-color 0.3s ease,
+    background-color 0.3s ease,
+    color 0.3s ease,
+    filter 0.3s ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  a:hover,
+  button:hover,
+  [role="button"]:hover {
+    filter: brightness(1.04);
+  }
 }
 
 .neo-shell-surface {
   background:
-    linear-gradient(180deg, rgba(15, 42, 90, 0.9), rgba(7, 23, 52, 0.94)),
-    rgba(8, 20, 45, 0.92);
-  border: 1px solid #1c3b70;
+    linear-gradient(180deg, rgba(14, 27, 51, 0.9), rgba(8, 15, 31, 0.94)),
+    rgba(9, 17, 34, 0.92);
+  border: 1px solid rgba(34, 211, 238, 0.22);
+  border-radius: var(--neo-radius-lg);
   box-shadow:
-    0 18px 48px rgba(0, 0, 0, 0.42),
-    0 0 0 1px rgba(30, 144, 255, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    0 10px 30px rgba(0, 0, 0, 0.28),
+    0 0 0 1px rgba(34, 211, 238, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(18px);
 }
 
 .neo-topbar {
   background:
-    linear-gradient(180deg, rgba(10, 31, 68, 0.96), rgba(5, 12, 27, 0.95)),
-    rgba(5, 12, 27, 0.95);
-  border-bottom: 1px solid #1c3b70;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    linear-gradient(180deg, rgba(10, 15, 28, 0.96), rgba(2, 6, 23, 0.95)),
+    rgba(2, 6, 23, 0.95);
+  border-bottom: 1px solid rgba(34, 211, 238, 0.2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   backdrop-filter: blur(16px);
 }
 
 .neo-screen-card {
-  border: 1px solid #1c3b70;
+  border: 1px solid rgba(34, 211, 238, 0.2);
   background:
-    linear-gradient(180deg, rgba(15, 42, 90, 0.94), rgba(9, 27, 60, 0.95)),
-    #0f2a5a;
+    linear-gradient(180deg, rgba(10, 20, 40, 0.82), rgba(5, 12, 27, 0.84)),
+    rgba(255, 255, 255, 0.05);
+  border-radius: var(--neo-radius-lg);
   box-shadow:
-    0 22px 56px rgba(0, 0, 0, 0.42),
-    0 0 0 1px rgba(30, 144, 255, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    0 14px 36px rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(34, 211, 238, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
   backdrop-filter: blur(14px);
 }
 
 .neo-blue-button {
-  background: #1e90ff;
-  border: 1px solid #1c3b70;
+  background: linear-gradient(135deg, #00e5ff, #7c3aed);
+  border: 1px solid rgba(34, 211, 238, 0.28);
+  border-radius: var(--neo-radius-md);
   box-shadow:
-    0 10px 24px rgba(24, 123, 218, 0.45),
+    0 6px 16px rgba(124, 58, 237, 0.28),
     inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .neo-blue-button:hover {
-  background: #187bda;
+  filter: brightness(1.08);
 }
 
 .neo-list-row {
-  border: 1px solid #1c3b70;
-  background: rgba(15, 42, 90, 0.75);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(34, 211, 238, 0.16);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: var(--neo-radius-md);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .neo-glass {
@@ -116,9 +148,9 @@ body {
 
 .neo-input {
   width: 100%;
-  border-radius: 0.95rem;
-  border: 1px solid #1c3b70;
-  background: rgba(15, 42, 90, 0.38);
+  border-radius: var(--neo-radius-md);
+  border: 1px solid rgba(34, 211, 238, 0.2);
+  background: rgba(255, 255, 255, 0.04);
   padding: 0.8rem 0.95rem;
   color: var(--neo-text);
   outline: none;
@@ -130,32 +162,32 @@ body {
 }
 
 .neo-input:focus {
-  border-color: #1e90ff;
+  border-color: #22d3ee;
   box-shadow:
-    0 0 0 3px rgba(30, 144, 255, 0.2),
-    0 0 20px #00cfff;
-  background: rgba(15, 42, 90, 0.56);
+    0 0 0 3px rgba(34, 211, 238, 0.18),
+    0 0 14px rgba(0, 229, 255, 0.52);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .neo-link-accent {
-  color: #1e90ff;
+  color: #22d3ee;
   transition: color 0.2s ease;
 }
 
 .neo-link-accent:hover {
-  color: #00cfff;
+  color: #00e5ff;
 }
 
 .neo-glow {
   box-shadow:
-    0 0 20px #00cfff,
-    0 0 40px rgba(0, 207, 255, 0.28);
+    0 0 14px rgba(0, 229, 255, 0.64),
+    0 0 28px rgba(124, 58, 237, 0.2);
 }
 
 .neo-glow-magenta {
   box-shadow:
-    0 0 24px rgba(200, 92, 255, 0.22),
-    0 0 48px rgba(106, 92, 255, 0.12);
+    0 0 20px rgba(124, 58, 237, 0.26),
+    0 0 40px rgba(124, 58, 237, 0.12);
 }
 
 .neo-pill {
@@ -181,8 +213,8 @@ body {
 .neo-gradient-wash {
   background: linear-gradient(
     135deg,
-    rgba(10, 31, 68, 0.75),
-    rgba(30, 144, 255, 0.2)
+    rgba(0, 229, 255, 0.1),
+    rgba(124, 58, 237, 0.12)
   );
 }
 

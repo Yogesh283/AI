@@ -5,9 +5,9 @@ import { MainTopNav } from "@/components/neo/MainTopNav";
 
 function DashboardShell() {
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-[#050505]">
+    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-[#020617]">
       <div
-        className="pointer-events-none absolute inset-0 opacity-[0.22] [background-image:radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.14)_0.5px,transparent_1px)] [background-size:3px_3px]"
+        className="pointer-events-none absolute inset-0 opacity-[0.3] [background-image:radial-gradient(circle_at_1px_1px,rgba(34,211,238,0.24)_0.5px,transparent_1px)] [background-size:3px_3px]"
         aria-hidden
       />
       <div className="relative z-[1] flex min-h-0 flex-1 flex-col overflow-hidden">

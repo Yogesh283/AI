@@ -70,7 +70,7 @@ export default function LoginPage() {
 
   return (
     <NeoPublicShell>
-      <div className="neo-screen-card mx-auto w-full max-w-[28rem] rounded-[22px] px-5 py-6 pt-5 sm:px-7 sm:py-7">
+      <div className="neo-screen-card mx-auto w-full max-w-[28rem] rounded-[12px] px-5 py-6 pt-5 sm:px-7 sm:py-7">
           <Link
             href="/"
             className="neo-link-accent mb-7 inline-block text-sm hover:underline"
@@ -84,7 +84,7 @@ export default function LoginPage() {
             Login to continue with {brandName}
           </p>
           {sessionExpiredBanner ? (
-            <p className="mt-4 rounded-xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100/95" role="status">
+            <p className="mt-4 rounded-[12px] border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100/95" role="status">
               Your session ended after 24 hours for security. Please sign in again.
             </p>
           ) : null}
@@ -132,7 +132,7 @@ export default function LoginPage() {
                 {err}
               </p>
             ) : null}
-            <GradientButton type="submit" disabled={loading} className="!mt-1 w-full !rounded-xl !py-3.5 disabled:opacity-60">
+            <GradientButton type="submit" disabled={loading} className="!mt-1 w-full !rounded-[12px] !py-3.5 disabled:opacity-60">
               {loading ? "Signing in…" : "Sign in"}
             </GradientButton>
           </form>
