@@ -90,19 +90,30 @@ function proxyViaHttpModule(req: NextRequest, target: string): Promise<Response>
         if (Array.isArray(val)) val.forEach((v) => out.append(key, v));
         else out.set(key, val);
       }
-      const chunks: Buffer[] = [];
-      incoming.on("data", (c: Buffer) => chunks.push(c));
-      incoming.on("end", () => {
-        const body = Buffer.concat(chunks);
-        resolve(
-          new Response(body, {
-            status: incoming.statusCode ?? 502,
-            statusText: incoming.statusMessage,
-            headers: out,
-          })
-        );
+      /**
+       * Must stream — buffering the full body breaks SSE (`text/event-stream`) so chat never
+       * shows token-by-token / “Searching…” → live deltas until the entire reply finishes.
+       */
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          incoming.on("data", (c: Buffer) => {
+            controller.enqueue(new Uint8Array(c));
+          });
+          incoming.on("end", () => {
+            controller.close();
+          });
+          incoming.on("error", (err) => {
+            controller.error(err);
+          });
+        },
       });
-      incoming.on("error", reject);
+      resolve(
+        new Response(body, {
+          status: incoming.statusCode ?? 502,
+          statusText: incoming.statusMessage,
+          headers: out,
+        })
+      );
     });
 
     pr.on("error", (e) => {
