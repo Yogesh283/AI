@@ -144,14 +144,14 @@ export default function ProfilePage() {
     }
   }
 
-  const navCenter = <span className="text-sm font-semibold text-slate-900">Profile</span>;
+  const navCenter = <span className="text-sm font-semibold text-black">Profile</span>;
 
   if (loading) {
     return (
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#F5F7FA]">
         <MainTopNav center={navCenter} />
         <div className="relative z-[1] min-h-0 flex-1 overflow-y-auto px-4 pb-10 pt-4 md:px-8">
-          <p className="text-center text-sm text-slate-600">Loading profile…</p>
+          <p className="text-center text-sm text-black">Loading profile…</p>
         </div>
       </div>
     );
@@ -163,10 +163,10 @@ export default function ProfilePage() {
         <MainTopNav center={navCenter} />
         <div className="relative z-[1] min-h-0 flex-1 overflow-y-auto px-4 pb-10 pt-4 md:px-8">
           <div className="neo-screen-card mx-auto max-w-md rounded-[26px] p-8 text-center">
-            <p className="text-slate-700">Sign in to view and edit your profile.</p>
+            <p className="text-black">Sign in to view and edit your profile.</p>
             <Link
               href="/login"
-              className="neo-gradient-fill mt-6 inline-flex rounded-xl px-6 py-3 text-sm font-semibold text-[#050912]"
+              className="mt-6 inline-flex rounded-xl bg-emerald-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700"
             >
               Sign in
             </Link>
@@ -185,7 +185,7 @@ export default function ProfilePage() {
         <button
           type="button"
           onClick={goBackFromProfile}
-          className="text-sm font-semibold text-[#2563EB] transition hover:text-[#1d4ed8]"
+          className="text-sm font-semibold text-emerald-700 transition hover:text-emerald-800"
         >
           ← Back
         </button>
@@ -204,13 +204,13 @@ export default function ProfilePage() {
               unoptimized={avatar.imageSrc.endsWith(".svg")}
             />
           </div>
-          <h1 className="neo-gradient-text text-xl font-bold">
+          <h1 className="text-xl font-bold text-black">
             {user.display_name?.trim() || "Add your display name below"}
           </h1>
-          <p className="mt-1 max-w-sm truncate text-sm text-slate-600">
+          <p className="mt-1 max-w-sm truncate text-sm text-black">
             {user.email}
           </p>
-          <p className="mt-2 rounded-full border border-blue-200/80 bg-blue-50/90 px-4 py-1.5 text-xs font-semibold text-blue-800 md:border-[#3B82F6]/40 md:bg-[#3B82F6]/12 md:text-[#b5deff]">
+          <p className="mt-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-1.5 text-xs font-semibold text-black">
             {user.auth_provider === "google" ? "Google account" : "Email account"}
           </p>
         </div>
@@ -229,32 +229,32 @@ export default function ProfilePage() {
         {/* Account */}
         <section className="neo-screen-card overflow-hidden rounded-[12px]">
           <div className="border-b border-slate-200/80 px-5 py-3.5">
-            <h2 className="text-sm font-semibold text-slate-900">Account</h2>
-            <p className="mt-0.5 text-xs text-slate-500">
+            <h2 className="text-sm font-semibold text-black">Account</h2>
+            <p className="mt-0.5 text-xs text-black/75">
               Email, display name &amp; password
             </p>
           </div>
           <div className="space-y-4 px-5 py-4">
             <div>
-              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-black">
                 Email
               </label>
               <input
                 readOnly
                 value={user.email}
-                className="neo-input text-sm text-slate-600"
+                className="neo-input text-sm text-black"
               />
-              <p className="mt-1 text-[11px] text-slate-400">Email change — coming soon.</p>
+              <p className="mt-1 text-[11px] text-black/60">Email change — coming soon.</p>
             </div>
             <div>
-              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-black">
                 Display name <span className="text-rose-600">*</span>
               </label>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <input
                   value={nameDraft}
                   onChange={(e) => setNameDraft(e.target.value)}
-                  className="neo-input min-w-0 flex-1 text-sm"
+                  className="neo-input min-w-0 flex-1 text-sm text-black"
                   maxLength={80}
                   minLength={1}
                   required
@@ -270,17 +270,17 @@ export default function ProfilePage() {
                     !nameDraft.trim() ||
                     nameDraft.trim() === (user.display_name ?? "").trim()
                   }
-                  className="neo-gradient-fill rounded-[12px] px-5 py-2.5 text-sm font-semibold text-white transition hover:brightness-105 disabled:opacity-40"
+                  className="rounded-[12px] bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-40"
                 >
                   {savingProfile ? "Saving…" : "Save name"}
                 </button>
               </div>
-              <p className="mt-1.5 text-[11px] text-slate-500">Shown in the header and voice chat — cannot be empty.</p>
+              <p className="mt-1.5 text-[11px] text-black/65">Shown in the header and voice chat — cannot be empty.</p>
             </div>
 
             {isPasswordAccount ? (
               <div className="border-t border-slate-200/80 pt-4">
-                <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-black">
                   Change password
                 </p>
                 <div className="space-y-3">
@@ -289,7 +289,7 @@ export default function ProfilePage() {
                     value={curPw}
                     onChange={(e) => setCurPw(e.target.value)}
                     placeholder="Current password"
-                    className="neo-input text-sm"
+                    className="neo-input text-sm text-black"
                     autoComplete="current-password"
                   />
                   <input
@@ -297,7 +297,7 @@ export default function ProfilePage() {
                     value={newPw}
                     onChange={(e) => setNewPw(e.target.value)}
                     placeholder="New password (min 6)"
-                    className="neo-input text-sm"
+                    className="neo-input text-sm text-black"
                     autoComplete="new-password"
                   />
                   <input
@@ -305,21 +305,21 @@ export default function ProfilePage() {
                     value={confirmPw}
                     onChange={(e) => setConfirmPw(e.target.value)}
                     placeholder="Confirm new password"
-                    className="neo-input text-sm"
+                    className="neo-input text-sm text-black"
                     autoComplete="new-password"
                   />
                   <button
                     type="button"
                     onClick={() => void savePassword()}
                     disabled={savingPw || !curPw || !newPw}
-                    className="w-full rounded-[12px] border border-[#2563EB]/35 bg-[#eff6ff] py-2.5 text-sm font-semibold text-[#1d4ed8] transition hover:bg-[#dbeafe] disabled:opacity-40 sm:w-auto sm:px-6"
+                    className="w-full rounded-[12px] border border-emerald-600 bg-emerald-50 py-2.5 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-40 sm:w-auto sm:px-6"
                   >
                     {savingPw ? "Updating…" : "Update password"}
                   </button>
                 </div>
               </div>
             ) : (
-              <p className="border-t border-slate-200/80 pt-4 text-xs text-slate-500">
+              <p className="border-t border-slate-200/80 pt-4 text-xs text-black/75">
                 Signed in with Google — password is managed by Google.
               </p>
             )}
@@ -351,7 +351,7 @@ export default function ProfilePage() {
         <button
           type="button"
           onClick={onLogout}
-          className="w-full rounded-[12px] border border-red-200 bg-red-50 py-4 text-sm font-semibold text-red-700 transition hover:bg-red-100"
+          className="w-full rounded-[12px] bg-red-600 py-4 text-sm font-semibold text-white shadow-sm transition hover:bg-red-700"
         >
           Logout
         </button>

@@ -370,16 +370,16 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
   if (!assistantActive) {
     if (isProfile) {
       return (
-        <section className="neo-glass overflow-hidden rounded-[22px] ring-1 ring-white/[0.06]">
-          <div className="border-b border-white/[0.07] px-5 py-3.5">
-            <h2 className="text-sm font-semibold text-white/90">Try Neo</h2>
-            <p className="mt-0.5 text-xs text-white/40">Voice commands from this screen</p>
+        <section className="neo-screen-card overflow-hidden rounded-[22px]">
+          <div className="border-b border-slate-200/90 px-5 py-3.5">
+            <h2 className="text-sm font-semibold text-black">Try Neo</h2>
+            <p className="mt-0.5 text-xs text-black/65">Voice commands from this screen</p>
           </div>
           <div className="px-5 py-4">
-            <p className="text-[13px] leading-relaxed text-white/50">
-              <span className="font-semibold text-white/65">Neo</span> is set to Inactive above. Turn{" "}
-              <span className="text-emerald-400/90">Status</span> to Active, then tap the mic or turn on Hello Neo wake
-              listen above.
+            <p className="text-[13px] leading-relaxed text-black/75">
+              <span className="font-semibold text-black">Neo</span> is set to Inactive above. Turn{" "}
+              <span className="font-semibold text-emerald-700">Status</span> to Active, then tap the mic or turn on Hello
+              Neo wake listen above.
             </p>
           </div>
         </section>
@@ -403,12 +403,12 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
 
   if (isProfile) {
     return (
-      <section className="neo-glass overflow-hidden rounded-[22px] ring-1 ring-white/[0.06]">
-        <div className="border-b border-white/[0.07] px-5 py-3.5">
-          <h2 className="text-sm font-semibold text-white/90">Try Neo</h2>
-          <p className="mt-0.5 text-xs text-white/40">
-            Say <span className="text-white/60">Neo</span> or Hello Neo, then e.g. music, YouTube, WhatsApp, Telegram,
-            contacts, or time.{" "}
+      <section className="neo-screen-card overflow-hidden rounded-[22px]">
+        <div className="border-b border-slate-200/90 px-5 py-3.5">
+          <h2 className="text-sm font-semibold text-black">Try Neo</h2>
+          <p className="mt-0.5 text-xs text-black/70">
+            Say <span className="font-medium text-black">Neo</span> or Hello Neo, then e.g. music, YouTube, WhatsApp,
+            Telegram, contacts, or time.{" "}
             {isNativeCapacitor()
               ? "Wake listen runs in the app while Hello Neo wake is on (see Profile); other speech is ignored until you say the wake phrase."
               : "Wake listen only runs while you stay on this page; other speech is ignored until you say the wake phrase."}
@@ -416,17 +416,17 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
         </div>
         <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0 space-y-2">
-            <p className="text-[11px] leading-snug text-amber-300/85">
+            <p className="text-[11px] leading-snug text-amber-900/95">
               Cannot read chats or auto-post for you here — only open WhatsApp Web, Telegram Web, or dial a number.
               Phone locked or app fully closed: not supported in this browser app (needs native Android).
             </p>
-            <p className="text-[11px] text-white/38">
+            <p className="text-[11px] text-black/65">
               Type?{" "}
-              <Link href="/chat" className="text-[#00D4FF]/90 underline-offset-2 hover:underline">
+              <Link href="/chat" className="font-semibold text-emerald-700 underline-offset-2 hover:underline">
                 Chat
               </Link>
               {" · "}
-              <Link href="/voice" className="text-[#00D4FF]/90 underline-offset-2 hover:underline">
+              <Link href="/voice" className="font-semibold text-emerald-700 underline-offset-2 hover:underline">
                 Voice chat
               </Link>
             </p>
@@ -437,12 +437,12 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
             onClick={listening ? stopRec : startListen}
             className={`flex w-full shrink-0 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-bold transition disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto ${
               listening
-                ? "bg-rose-500/25 text-rose-100 ring-2 ring-rose-400/50"
-                : "neo-gradient-fill text-[#050912] shadow-[0_4px_24px_rgba(0,212,255,0.28),0_4px_40px_rgba(106,92,255,0.2)] hover:brightness-105"
+                ? "bg-red-600 text-white shadow-sm ring-2 ring-red-500/40 hover:bg-red-700"
+                : "bg-emerald-600 text-white shadow-sm hover:bg-emerald-700"
             }`}
             aria-pressed={listening}
           >
-            <span className="text-lg tabular-nums text-white/50" aria-hidden>
+            <span className={`text-lg tabular-nums ${listening ? "text-white/90" : "text-white/80"}`} aria-hidden>
               {listening ? "■" : "●"}
             </span>
             {alexaMode ? "Voice ready (off above)" : listening ? "Stop" : "Tap — talk once"}
@@ -452,11 +452,11 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
           <div
             role="status"
             aria-live="polite"
-            className="border-t border-white/[0.06] bg-white/[0.04] px-5 py-2 text-center text-[11px] leading-snug text-white/50"
+            className="border-t border-slate-200/80 bg-emerald-50/40 px-5 py-2 text-center text-[11px] leading-snug text-black/75"
           >
             Neo is active — say your command now (~8s, no need to say &quot;Neo&quot; again). After that, say{" "}
-            <span className="text-white/70">Hello Neo</span> again. Wake listen restarts quietly in the background — no
-            extra tones.
+            <span className="font-semibold text-black">Hello Neo</span> again. Wake listen restarts quietly in the
+            background — no extra tones.
           </div>
         ) : null}
         {alexaMode ? (
@@ -465,7 +465,7 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
           </p>
         ) : null}
         {hint ? (
-          <p className="border-t border-white/[0.06] px-5 py-2.5 text-center text-[11px] text-amber-300/95">{hint}</p>
+          <p className="border-t border-slate-200/80 px-5 py-2.5 text-center text-[11px] text-amber-900">{hint}</p>
         ) : null}
       </section>
     );

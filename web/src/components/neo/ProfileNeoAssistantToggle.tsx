@@ -42,22 +42,23 @@ export function ProfileNeoAssistantToggle() {
   };
 
   return (
-    <section className="neo-glass overflow-hidden rounded-[22px] ring-1 ring-white/[0.06]">
-      <div className="border-b border-white/[0.07] px-5 py-3.5">
-        <h2 className="text-sm font-semibold text-white/90">Neo assistant</h2>
-        <p className="mt-0.5 text-xs text-white/40">
-          Starts <span className="text-white/50">Inactive</span> — turn Status to Active when you want voice commands.
-          Wake with <span className="text-white/55">Neo</span>, <span className="text-white/55">Hello Neo</span>, or
-          <span className="text-white/55"> Hello New</span> (speech often writes it that way) — then e.g. &quot;open my
-          WhatsApp&quot;, &quot;my Telegram&quot;, or a phone number to call. In the browser, keep this tab open; in the
-          Android app, Hello Neo wake can run in the background while the app stays open (optional lock-screen listen
-          below). Fully closed app or killed process: wake does not run.
+    <section className="neo-screen-card overflow-hidden rounded-[22px]">
+      <div className="border-b border-slate-200/90 px-5 py-3.5">
+        <h2 className="text-sm font-semibold text-black">Neo assistant</h2>
+        <p className="mt-0.5 text-xs text-black/70">
+          Starts <span className="font-medium text-black">Inactive</span> — turn Status to Active when you want voice
+          commands. Wake with <span className="font-medium text-black">Neo</span>,{" "}
+          <span className="font-medium text-black">Hello Neo</span>, or
+          <span className="font-medium text-black"> Hello New</span> (speech often writes it that way) — then e.g.
+          &quot;open my WhatsApp&quot;, &quot;my Telegram&quot;, or a phone number to call. In the browser, keep this tab
+          open; in the Android app, Hello Neo wake can run in the background while the app stays open (optional
+          lock-screen listen below). Fully closed app or killed process: wake does not run.
         </p>
       </div>
       <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-white/85">Status</p>
-          <p className="mt-0.5 text-[11px] text-white/38">
+          <p className="text-sm font-medium text-black">Status</p>
+          <p className="mt-0.5 text-[11px] text-black/65">
             Inactive: the top bar stays quiet (no wake, no mic). Works only while this app is open — not when the app
             is closed.
           </p>
@@ -65,7 +66,7 @@ export function ProfileNeoAssistantToggle() {
         <div className="flex shrink-0 items-center gap-3">
           <span
             className={`text-xs font-semibold uppercase tracking-wider ${
-              active ? "text-emerald-400/95" : "text-white/35"
+              active ? "text-emerald-700" : "text-black/40"
             }`}
           >
             {active ? "Active" : "Inactive"}
@@ -76,7 +77,7 @@ export function ProfileNeoAssistantToggle() {
             aria-checked={active}
             onClick={toggle}
             className={`relative h-9 w-[52px] shrink-0 rounded-full transition ${
-              active ? "bg-emerald-500/35 ring-1 ring-emerald-400/40" : "bg-white/[0.08] ring-1 ring-white/10"
+              active ? "bg-emerald-500/40 ring-1 ring-emerald-500/50" : "bg-slate-200 ring-1 ring-slate-300"
             }`}
           >
             <span
@@ -88,35 +89,35 @@ export function ProfileNeoAssistantToggle() {
         </div>
       </div>
 
-      <div className="border-t border-white/[0.06] px-5 py-4 sm:flex sm:items-center sm:justify-between sm:gap-4">
+      <div className="border-t border-slate-200/80 px-5 py-4 sm:flex sm:items-center sm:justify-between sm:gap-4">
         {active && alexaListen ? (
           <div className="flex w-full flex-col gap-3">
             <div className="flex items-center justify-between gap-3">
-              <p className="text-[12px] text-white/55">
-                Neo is ready — say <span className="text-white/75">Hello Neo</span> first, then your command. Voice
-                chat turns this off automatically.
+              <p className="text-[12px] text-black/80">
+                Neo is ready — say <span className="font-semibold text-black">Hello Neo</span> first, then your command.
+                Voice chat turns this off automatically.
               </p>
               <button
                 type="button"
                 onClick={toggleAlexa}
-                className="shrink-0 rounded-lg border border-white/15 px-3 py-1.5 text-[11px] font-semibold text-white/80 transition hover:bg-white/[0.06]"
+                className="shrink-0 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-[11px] font-semibold text-red-700 transition hover:bg-red-100"
               >
                 Turn off
               </button>
             </div>
             {isNativeCapacitor() ? (
-              <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-3 sm:flex sm:items-center sm:justify-between sm:gap-4">
+              <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-3 sm:flex sm:items-center sm:justify-between sm:gap-4">
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-white/85">Listen when screen is off</p>
-                  <p className="mt-0.5 text-[11px] text-white/38">
-                    Uses a foreground notification and partial wake lock — higher battery use; turn off if you get
-                    pocket noise.
+                  <p className="text-sm font-medium text-black">Listen when screen is off</p>
+                  <p className="mt-0.5 text-[11px] text-black/65">
+                    Uses a foreground notification and partial wake lock — higher battery use; turn off if you get pocket
+                    noise.
                   </p>
                 </div>
                 <div className="mt-3 flex shrink-0 items-center justify-end gap-3 sm:mt-0">
                   <span
                     className={`text-xs font-semibold uppercase tracking-wider ${
-                      wakeScreenOff ? "text-emerald-400/95" : "text-white/35"
+                      wakeScreenOff ? "text-emerald-700" : "text-black/40"
                     }`}
                   >
                     {wakeScreenOff ? "On" : "Off"}
@@ -128,8 +129,8 @@ export function ProfileNeoAssistantToggle() {
                     onClick={() => void persistWakeScreenOffNative(!wakeScreenOff)}
                     className={`relative h-9 w-[52px] shrink-0 rounded-full transition ${
                       wakeScreenOff
-                        ? "bg-emerald-500/35 ring-1 ring-emerald-400/40"
-                        : "bg-white/[0.08] ring-1 ring-white/10"
+                        ? "bg-emerald-500/40 ring-1 ring-emerald-500/50"
+                        : "bg-slate-200 ring-1 ring-slate-300"
                     }`}
                   >
                     <span
@@ -145,21 +146,21 @@ export function ProfileNeoAssistantToggle() {
         ) : (
           <>
             <div className={`min-w-0 ${!active ? "opacity-45" : ""}`}>
-              <p className="text-sm font-medium text-white/85">Hello Neo wake listen</p>
-              <p className="mt-0.5 text-[11px] text-white/38">
+              <p className="text-sm font-medium text-black">Hello Neo wake listen</p>
+              <p className="mt-0.5 text-[11px] text-black/65">
                 {isNativeCapacitor() ? (
                   <>
                     With wake on, the Android app keeps a native listener while you use other screens in the app. Open{" "}
-                    <span className="text-white/55">Try Neo</span> below for tap-to-talk. Speech without{" "}
-                    <span className="text-white/55">Hello Neo</span> / <span className="text-white/55">Neo</span> is
-                    ignored.
+                    <span className="font-medium text-black">Try Neo</span> below for tap-to-talk. Speech without{" "}
+                    <span className="font-medium text-black">Hello Neo</span> /{" "}
+                    <span className="font-medium text-black">Neo</span> is ignored.
                   </>
                 ) : (
                   <>
-                    Mic stays on only on <span className="text-white/50">Profile</span> (Try Neo below) to catch{" "}
-                    <span className="text-white/55">Hello Neo</span> / <span className="text-white/55">Neo</span>, then
-                    runs your command (music, WhatsApp, Telegram, YouTube, contacts, time). Speech without the wake
-                    phrase is ignored — not “always command” mode.
+                    Mic stays on only on <span className="font-medium text-black">Profile</span> (Try Neo below) to catch{" "}
+                    <span className="font-medium text-black">Hello Neo</span> / <span className="font-medium text-black">Neo</span>, then
+                    runs your command (music, WhatsApp, Telegram, YouTube, contacts, time). Speech without the wake phrase
+                    is ignored — not “always command” mode.
                   </>
                 )}
                 {!active ? " Turn Neo assistant Active above to enable this." : ""}
@@ -168,7 +169,7 @@ export function ProfileNeoAssistantToggle() {
             <div className="mt-3 flex shrink-0 items-center justify-between gap-3 sm:mt-0 sm:justify-end">
               <span
                 className={`text-xs font-semibold uppercase tracking-wider ${
-                  alexaListen && active ? "text-emerald-400/95" : "text-white/35"
+                  alexaListen && active ? "text-emerald-700" : "text-black/40"
                 }`}
               >
                 {alexaListen && active ? "On" : "Off"}
@@ -181,8 +182,8 @@ export function ProfileNeoAssistantToggle() {
                 onClick={toggleAlexa}
                 className={`relative h-9 w-[52px] shrink-0 rounded-full transition ${
                   alexaListen && active
-                    ? "bg-emerald-500/35 ring-1 ring-emerald-400/40"
-                    : "bg-white/[0.08] ring-1 ring-white/10"
+                    ? "bg-emerald-500/40 ring-1 ring-emerald-500/50"
+                    : "bg-slate-200 ring-1 ring-slate-300"
                 } ${!active ? "cursor-not-allowed opacity-50" : ""}`}
               >
                 <span

@@ -104,30 +104,31 @@ export function ProfileVoiceSettings({ user, onUserUpdated, onMessage }: Props) 
     [onMessage],
   );
 
+  const segOn = "bg-emerald-100 text-emerald-950 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.45)]";
+  const segOff = "text-black/55 hover:bg-slate-100 hover:text-black";
+
   return (
-    <section className="neo-glass overflow-hidden rounded-[22px] ring-1 ring-white/[0.06]">
-      <div className="border-b border-white/[0.07] px-5 py-3.5">
-        <h2 className="text-sm font-semibold text-white/90">Voice settings</h2>
-        <p className="mt-0.5 text-xs text-white/40">
-          Voice chat and Hello Neo use <span className="text-white/55">separate</span> speaking speeds below. Tone
-          weight (warm / bright) was removed so replies stay calm and consistent — no extra “mic” or toy sounds from
+    <section className="neo-screen-card overflow-hidden rounded-[22px]">
+      <div className="border-b border-slate-200/90 px-5 py-3.5">
+        <h2 className="text-sm font-semibold text-black">Voice settings</h2>
+        <p className="mt-0.5 text-xs text-black/70">
+          Voice chat and Hello Neo use <span className="font-medium text-black">separate</span> speaking speeds below.
+          Tone weight (warm / bright) was removed so replies stay calm and consistent — no extra “mic” or toy sounds from
           those controls.
         </p>
       </div>
       <div className="space-y-6 px-5 py-5">
         <div>
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-white/40">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-black">
             Assistant voice (woman / man)
           </p>
-          <div className="flex max-w-md rounded-xl border border-white/[0.1] bg-black/30 p-0.5">
+          <div className="flex max-w-md rounded-xl border border-slate-200 bg-slate-100 p-0.5">
             <button
               type="button"
               disabled={savingPersona}
               onClick={() => void applyPersona("sara")}
               className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition disabled:opacity-50 ${
-                persona === "sara"
-                  ? "bg-[#00D4FF]/20 text-white shadow-[inset_0_0_0_1px_rgba(0,212,255,0.35)]"
-                  : "text-white/50 hover:bg-white/[0.06] hover:text-white/85"
+                persona === "sara" ? segOn : segOff
               }`}
             >
               Woman (Sara)
@@ -137,33 +138,29 @@ export function ProfileVoiceSettings({ user, onUserUpdated, onMessage }: Props) 
               disabled={savingPersona}
               onClick={() => void applyPersona("arjun")}
               className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition disabled:opacity-50 ${
-                persona === "arjun"
-                  ? "bg-[#00D4FF]/20 text-white shadow-[inset_0_0_0_1px_rgba(0,212,255,0.35)]"
-                  : "text-white/50 hover:bg-white/[0.06] hover:text-white/85"
+                persona === "arjun" ? segOn : segOff
               }`}
             >
               Man (Arjun)
             </button>
           </div>
-          <p className="mt-2 text-[11px] text-white/35">
+          <p className="mt-2 text-[11px] text-black/65">
             When you pick Woman, the assistant keeps using a woman voice until you change it.
           </p>
         </div>
 
         <div>
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-white/40">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-black">
             Voice chat — speaking speed
           </p>
-          <div className="flex max-w-md flex-wrap gap-1 rounded-xl border border-white/[0.1] bg-black/30 p-0.5">
+          <div className="flex max-w-md flex-wrap gap-1 rounded-xl border border-slate-200 bg-slate-100 p-0.5">
             {SPEED_OPTIONS.map((o) => (
               <button
                 key={o.id}
                 type="button"
                 onClick={() => applySpeed(o.id)}
                 className={`min-w-[5.5rem] flex-1 rounded-lg py-2 text-xs font-bold uppercase tracking-wide sm:text-[13px] ${
-                  speed === o.id
-                    ? "bg-[#00D4FF]/20 text-white shadow-[inset_0_0_0_1px_rgba(0,212,255,0.35)]"
-                    : "text-white/45 hover:bg-white/[0.06] hover:text-white/85"
+                  speed === o.id ? segOn : segOff
                 }`}
               >
                 {o.label}
@@ -172,25 +169,23 @@ export function ProfileVoiceSettings({ user, onUserUpdated, onMessage }: Props) 
           </div>
         </div>
 
-        <div className="rounded-xl border border-[#00D4FF]/15 bg-[#00D4FF]/[0.04] p-4 space-y-4">
+        <div className="space-y-4 rounded-xl border border-emerald-200/90 bg-emerald-50/40 p-4">
           <div>
-            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-[#00D4FF]/90">
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-emerald-900">
               Hello Neo commands (top bar)
             </p>
-            <p className="text-[11px] text-white/38">
-              Wake replies, time, open apps — <span className="text-white/55">alag</span> speed from voice chat.
+            <p className="text-[11px] text-black/70">
+              Wake replies, time, open apps — <span className="font-medium text-black">alag</span> speed from voice chat.
             </p>
           </div>
           <div>
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-white/40">Voice (man / woman)</p>
-            <div className="flex max-w-md rounded-xl border border-white/[0.1] bg-black/30 p-0.5">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-black">Voice (man / woman)</p>
+            <div className="flex max-w-md rounded-xl border border-slate-200 bg-white p-0.5">
               <button
                 type="button"
                 onClick={() => applyHelloNeoGender("female")}
                 className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition ${
-                  helloNeoGender === "female"
-                    ? "bg-[#00D4FF]/20 text-white shadow-[inset_0_0_0_1px_rgba(0,212,255,0.35)]"
-                    : "text-white/50 hover:bg-white/[0.06] hover:text-white/85"
+                  helloNeoGender === "female" ? segOn : segOff
                 }`}
               >
                 Woman
@@ -199,9 +194,7 @@ export function ProfileVoiceSettings({ user, onUserUpdated, onMessage }: Props) 
                 type="button"
                 onClick={() => applyHelloNeoGender("male")}
                 className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition ${
-                  helloNeoGender === "male"
-                    ? "bg-[#00D4FF]/20 text-white shadow-[inset_0_0_0_1px_rgba(0,212,255,0.35)]"
-                    : "text-white/50 hover:bg-white/[0.06] hover:text-white/85"
+                  helloNeoGender === "male" ? segOn : segOff
                 }`}
               >
                 Man
@@ -209,17 +202,15 @@ export function ProfileVoiceSettings({ user, onUserUpdated, onMessage }: Props) 
             </div>
           </div>
           <div>
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-white/40">Speaking speed</p>
-            <div className="flex max-w-md flex-wrap gap-1 rounded-xl border border-white/[0.1] bg-black/30 p-0.5">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-black">Speaking speed</p>
+            <div className="flex max-w-md flex-wrap gap-1 rounded-xl border border-slate-200 bg-white p-0.5">
               {SPEED_OPTIONS.map((o) => (
                 <button
                   key={`neo-${o.id}`}
                   type="button"
                   onClick={() => applyHelloNeoSpeed(o.id)}
                   className={`min-w-[5.5rem] flex-1 rounded-lg py-2 text-xs font-bold uppercase tracking-wide sm:text-[13px] ${
-                    helloNeoSpeed === o.id
-                      ? "bg-[#00D4FF]/20 text-white shadow-[inset_0_0_0_1px_rgba(0,212,255,0.35)]"
-                      : "text-white/45 hover:bg-white/[0.06] hover:text-white/85"
+                    helloNeoSpeed === o.id ? segOn : segOff
                   }`}
                 >
                   {o.label}
@@ -229,10 +220,10 @@ export function ProfileVoiceSettings({ user, onUserUpdated, onMessage }: Props) 
           </div>
         </div>
 
-        <div className="flex flex-col gap-2 border-t border-white/[0.06] pt-4">
+        <div className="flex flex-col gap-2 border-t border-slate-200/80 pt-4">
           <Link
             href="/voice-personas"
-            className="flex w-full items-center justify-center rounded-xl border border-[#00D4FF]/25 bg-[#00D4FF]/10 py-3 text-sm font-medium text-[#00D4FF] transition hover:bg-[#00D4FF]/15"
+            className="flex w-full items-center justify-center rounded-xl border border-emerald-600 bg-emerald-50 py-3 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100"
           >
             Voice appearance
           </Link>
