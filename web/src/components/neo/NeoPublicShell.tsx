@@ -55,7 +55,7 @@ export function NeoPublicShell({
             }`}
           >
             <NeoLogoMark className="h-8 w-8 shrink-0 drop-shadow-[0_0_12px_rgba(0,212,255,0.25)] sm:h-9 sm:w-9" />
-            <span className="truncate bg-gradient-to-r from-[#00D2FF] to-[#9D50BB] bg-clip-text text-base font-semibold tracking-tight text-transparent sm:text-lg">
+            <span className="neo-gradient-text truncate text-base font-semibold tracking-tight sm:text-lg">
               {brandName}
             </span>
           </Link>

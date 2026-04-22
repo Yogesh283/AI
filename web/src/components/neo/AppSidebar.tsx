@@ -50,7 +50,7 @@ export function AppSidebar() {
           className="flex min-w-0 items-center gap-2.5"
         >
           <NeoLogoMark className="h-9 w-9 shrink-0 drop-shadow-[0_0_14px_rgba(0,206,209,0.35)]" />
-          <span className="truncate bg-gradient-to-r from-[#00CED1] to-[#8A2BE2] bg-clip-text text-lg font-semibold tracking-tight text-transparent">
+          <span className="neo-gradient-text truncate text-lg font-semibold tracking-tight">
             {brandName}
           </span>
         </Link>
@@ -66,7 +66,7 @@ export function AppSidebar() {
                 href={item.href}
                 className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${
                   active
-                    ? "bg-[#0d1a28] text-[#00CED1] shadow-[inset_0_0_0_1px_rgba(0,206,209,0.22)]"
+                    ? "bg-[#0d1a28] text-[#00D4FF] shadow-[inset_0_0_0_1px_rgba(0,212,255,0.22)]"
                     : "text-white/55 hover:bg-white/[0.06] hover:text-white/90"
                 }`}
               >
@@ -90,7 +90,7 @@ export function AppSidebar() {
                 href={item.href}
                 className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${
                   chatActive && !nestedOnly
-                    ? "bg-[#0d1a28] text-[#00CED1] shadow-[inset_0_0_0_1px_rgba(0,206,209,0.18)]"
+                    ? "bg-[#0d1a28] text-[#00D4FF] shadow-[inset_0_0_0_1px_rgba(0,212,255,0.18)]"
                     : chatActive
                       ? "bg-white/[0.04] text-white/80"
                       : "text-white/55 hover:bg-white/[0.06] hover:text-white/90"
@@ -103,7 +103,7 @@ export function AppSidebar() {
                 href={item.nested.href}
                 className={`ml-6 flex items-center gap-2 rounded-lg py-2 pl-3 pr-2 text-[12px] transition ${
                   nestedOnly
-                    ? "bg-[#0d1a28] font-medium text-[#00CED1] shadow-[inset_0_0_0_1px_rgba(0,206,209,0.18)]"
+                    ? "bg-[#0d1a28] font-medium text-[#00D4FF] shadow-[inset_0_0_0_1px_rgba(0,212,255,0.18)]"
                     : "text-white/45 hover:bg-white/[0.05] hover:text-white/75"
                 }`}
               >

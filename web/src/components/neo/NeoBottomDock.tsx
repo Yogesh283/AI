@@ -69,7 +69,7 @@ export function NeoBottomDock() {
                 <span
                   className={`relative flex flex-col items-center rounded-2xl border px-2 py-2 transition ${
                     active
-                      ? "border-[#00D2FF]/35 bg-gradient-to-br from-[#00D2FF]/20 to-[#9D50BB]/15 shadow-[0_0_28px_rgba(0,210,255,0.25)]"
+                      ? "border-[#6A5CFF]/40 bg-gradient-to-br from-[#00D4FF]/18 via-[#6A5CFF]/12 to-[#C85CFF]/14 shadow-[0_0_28px_rgba(106,92,255,0.22)]"
                       : "border-transparent bg-white/[0.04]"
                   }`}
                 >
@@ -83,7 +83,7 @@ export function NeoBottomDock() {
                 </span>
                 {active ? (
                   <span
-                    className="absolute bottom-0 left-2 right-2 h-[3px] rounded-full bg-gradient-to-r from-[#00D2FF] via-[#00D2FF]/90 to-[#9D50BB]"
+                    className="neo-gradient-fill absolute bottom-0 left-2 right-2 h-[3px] rounded-full opacity-95"
                     aria-hidden
                   />
                 ) : null}
@@ -98,7 +98,7 @@ export function NeoBottomDock() {
               key={item.href}
               href={item.href}
               className={`relative flex min-w-0 flex-1 flex-col items-center gap-1 px-1 py-1.5 transition active:opacity-90 ${
-                active ? "text-[#00D2FF]" : "text-white/42"
+                active ? "text-[#00D4FF]" : "text-white/42"
               }`}
             >
               <Icon active={active} />
@@ -111,7 +111,7 @@ export function NeoBottomDock() {
               </span>
               {active ? (
                 <span
-                  className="absolute bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-[#00D2FF] shadow-[0_0_8px_rgba(0,210,255,0.85)]"
+                  className="absolute bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-[#C85CFF] shadow-[0_0_10px_rgba(200,92,255,0.75)]"
                   aria-hidden
                 />
               ) : null}

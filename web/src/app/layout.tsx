@@ -40,7 +40,7 @@ export default async function RootLayout({
   return (
     <html lang="en" className="h-full antialiased">
       <body
-        className={`${montserrat.className} min-h-full overflow-x-hidden font-sans selection:bg-[#00D2FF]/25 selection:text-white`}
+        className={`${montserrat.className} min-h-full overflow-x-hidden font-sans selection:bg-[#6A5CFF]/28 selection:text-white`}
       >
         <SiteBrandProvider brandName={brandName}>
           <Providers>{children}</Providers>

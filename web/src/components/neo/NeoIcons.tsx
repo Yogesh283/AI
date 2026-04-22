@@ -1,5 +1,5 @@
 export function IconHome({ active }: { active?: boolean }) {
-  const c = active ? "#00D2FF" : "rgba(255,255,255,0.4)";
+  const c = active ? "#00D4FF" : "rgba(255,255,255,0.4)";
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
@@ -13,7 +13,7 @@ export function IconHome({ active }: { active?: boolean }) {
 }
 
 export function IconChat({ active }: { active?: boolean }) {
-  const c = active ? "#00D2FF" : "rgba(255,255,255,0.4)";
+  const c = active ? "#00D4FF" : "rgba(255,255,255,0.4)";
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
@@ -27,7 +27,7 @@ export function IconChat({ active }: { active?: boolean }) {
 }
 
 export function IconMemory({ active }: { active?: boolean }) {
-  const c = active ? "#00D2FF" : "rgba(255,255,255,0.4)";
+  const c = active ? "#00D4FF" : "rgba(255,255,255,0.4)";
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
@@ -41,7 +41,7 @@ export function IconMemory({ active }: { active?: boolean }) {
 }
 
 export function IconUser({ active }: { active?: boolean }) {
-  const c = active ? "#00D2FF" : "rgba(255,255,255,0.4)";
+  const c = active ? "#00D4FF" : "rgba(255,255,255,0.4)";
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
       <circle cx="12" cy="8" r="3.5" stroke={c} strokeWidth="1.6" />
@@ -68,7 +68,7 @@ export function IconMicCenter() {
 
 /** Sidebar: 3D avatar + chat + TTS demo */
 export function IconCube3D({ active }: { active?: boolean }) {
-  const c = active ? "#00D2FF" : "rgba(255,255,255,0.4)";
+  const c = active ? "#00D4FF" : "rgba(255,255,255,0.4)";
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
@@ -152,8 +152,8 @@ export function IconGrid() {
 
 /** Reference UI: robot + Voice hub (center dock item). */
 export function IconPersonalAssistantDock({ active }: { active?: boolean }) {
-  const c = active ? "#00D2FF" : "rgba(255,255,255,0.38)";
-  const dim = active ? "rgba(0,210,255,0.35)" : "rgba(255,255,255,0.22)";
+  const c = active ? "#00D4FF" : "rgba(255,255,255,0.38)";
+  const dim = active ? "rgba(106,92,255,0.45)" : "rgba(255,255,255,0.22)";
   return (
     <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
@@ -193,8 +193,8 @@ export function IconPersonalAssistantDock({ active }: { active?: boolean }) {
 
 /** Picture frame + landscape + sparkle (Image & Graphics). */
 export function IconImageGraphics({ active }: { active?: boolean }) {
-  const c = active ? "#00D2FF" : "rgba(255,255,255,0.4)";
-  const fillM = active ? "rgba(157,80,187,0.35)" : "rgba(255,255,255,0.08)";
+  const c = active ? "#00D4FF" : "rgba(255,255,255,0.4)";
+  const fillM = active ? "rgba(106,92,255,0.32)" : "rgba(255,255,255,0.08)";
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
       <rect x="4" y="5" width="16" height="14" rx="2" stroke={c} strokeWidth="1.6" />
