@@ -545,7 +545,6 @@ export default function VoicePage() {
             send({
               type: "response.create",
               response: {
-                modalities: ["audio", "text"],
                 max_output_tokens: REALTIME_MAX_OUTPUT_TOKENS,
               },
             });
