@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # Always load backend/.env even if uvicorn is started from repo root or another cwd
 _BACKEND_DIR = Path(__file__).resolve().parent.parent
 
-# Windows env can have OPENAI_API_KEY="" which overrides pydantic's .env — force file values
+# Windows env can have OPENAI_API_KEY="" which overrides pydantic's .env â€” force file values
 load_dotenv(_BACKEND_DIR / ".env", override=True)
 
 
@@ -39,7 +39,7 @@ class Settings(BaseSettings):
         env_file=_BACKEND_DIR / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
-        # Windows often has OPENAI_API_KEY="" in user env — ignore empty, use .env file
+        # Windows often has OPENAI_API_KEY="" in user env â€” ignore empty, use .env file
         env_ignore_empty=True,
     )
 
@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     jwt_expire_hours: int = 168
     # Comma-separated OAuth 2.0 Client IDs (Web, Android, iOS) from Google Cloud Console
     google_client_ids: str = ""
-    # Single Web client ID (optional). Used if GOOGLE_CLIENT_IDS is empty — easier for small deploys.
+    # Single Web client ID (optional). Used if GOOGLE_CLIENT_IDS is empty â€” easier for small deploys.
     google_client_id: str = ""
     # MySQL (XAMPP): leave host empty to disable DB persistence
     mysql_host: str = ""
@@ -64,6 +64,10 @@ class Settings(BaseSettings):
     # Optional: Google Programmable Search (Custom Search JSON API) for live web context
     google_cse_api_key: str = ""
     google_cse_cx: str = ""
+    # Optional: Brave Web Search API (https://api.search.brave.com) - works when Google CSE JSON is unavailable
+    brave_search_api_key: str = ""
+    # Optional: SerpAPI (Google/Bing wrappers) for live web snippets
+    serpapi_api_key: str = ""
 
     @model_validator(mode="after")
     def _merge_google_client_id(self):
@@ -79,3 +83,4 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+

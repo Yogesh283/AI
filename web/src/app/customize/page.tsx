@@ -108,7 +108,7 @@ export default function CustomizePage() {
         <div>
           <div className="mb-2 flex justify-between text-sm">
             <span className="text-white/70">Response Detail</span>
-            <span className="text-[#BD00FF]">{detail}%</span>
+            <span className="text-[#C85CFF]">{detail}%</span>
           </div>
           <div className="mb-1 flex justify-between text-[10px] uppercase text-white/35">
             <span>Concise</span>
@@ -120,7 +120,7 @@ export default function CustomizePage() {
             max={100}
             value={detail}
             onChange={(e) => setDetail(+e.target.value)}
-            className="h-2 w-full accent-[#BD00FF]"
+            className="h-2 w-full accent-[#C85CFF]"
           />
         </div>
       </section>

@@ -1,4 +1,4 @@
-"""Live context from Google only: Programmable Search (JSON) + Google News RSS."""
+"""Live web context: Brave Web Search (optional), Google CSE (optional), Google News RSS."""
 
 from __future__ import annotations
 
@@ -20,6 +20,18 @@ MAX_GOOGLE_QUERY_CHARS = 450
 
 GOOGLE_CSE_URL = "https://www.googleapis.com/customsearch/v1"
 GOOGLE_NEWS_RSS_URL = "https://news.google.com/rss/search"
+BRAVE_WEB_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search"
+SERPAPI_URL = "https://serpapi.com/search.json"
+IPL_TRUSTED_STANDINGS_HOSTS: tuple[str, ...] = (
+    "iplt20.com",
+    "www.iplt20.com",
+    "espncricinfo.com",
+    "www.espncricinfo.com",
+    "cricbuzz.com",
+    "www.cricbuzz.com",
+    "sports.ndtv.com",
+    "www.sports.ndtv.com",
+)
 
 # Broad industry / sector vocabulary → live Google bias (EN + HI). Avoid very short tokens (false positives).
 INDUSTRY_LIVE_QUERY_TERMS_EN: tuple[str, ...] = (
@@ -119,6 +131,21 @@ INDUSTRY_LIVE_QUERY_TERMS_HI: tuple[str, ...] = (
 )
 
 
+def _looks_like_ipl_points_query(text: str) -> bool:
+    s = (text or "").lower()
+    return "ipl" in s and any(k in s for k in ("points table", "point table", "standings", "ranking", "ranks"))
+
+
+def _is_trusted_ipl_standings_entry(query: str, title: str, snippet: str, link: str) -> bool:
+    if not _looks_like_ipl_points_query(query):
+        return True
+    host = urlparse(link).netloc.lower().strip()
+    if host not in IPL_TRUSTED_STANDINGS_HOSTS:
+        return False
+    merged = f"{title} {snippet}".lower()
+    return any(k in merged for k in ("points table", "standings", "point table", "pts", "nrr"))
+
+
 def _strip_xml_tags(text: str) -> str:
     t = re.sub(r"<[^>]+>", " ", text or "")
     t = unescape(t)
@@ -163,6 +190,158 @@ async def _fetch_google_news_rss_snippets(query: str, *, limit: int = 5) -> str:
         src = f" (source: {host})" if host else ""
         lines.append(f"{i}. {title}\n   {snippet}{src}")
     return "\n".join(lines)
+
+
+async def _fetch_brave_web_snippets(query: str, *, limit: int) -> str:
+    """Brave Web Search API — JSON results, no Google CSE required."""
+    token = (settings.brave_search_api_key or "").strip()
+    if not token:
+        return ""
+    q = augment_search_query((query or "").strip()[:MAX_GOOGLE_QUERY_CHARS])
+    if not q:
+        return ""
+    count = min(max(limit, 1), 20)
+    headers = {
+        "Accept": "application/json",
+        "X-Subscription-Token": token,
+    }
+    params = {"q": q, "count": count}
+    backoff_seconds = (0.8, 1.6)
+
+    for attempt in range(3):
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                r = await client.get(BRAVE_WEB_SEARCH_URL, headers=headers, params=params)
+
+            if r.status_code in (429, 503):
+                logger.warning(
+                    "Brave Search HTTP %s (attempt %s/3 — quota or overload; retrying)",
+                    r.status_code,
+                    attempt + 1,
+                )
+                if attempt < 2:
+                    await asyncio.sleep(backoff_seconds[attempt])
+                    continue
+                return ""
+
+            try:
+                r.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                sc = e.response.status_code if e.response else 0
+                logger.warning("Brave Search failed: HTTP %s", sc)
+                return ""
+
+            data = r.json()
+        except httpx.HTTPStatusError as e:
+            sc = e.response.status_code if e.response else 0
+            if sc in (429, 503) and attempt < 2:
+                await asyncio.sleep(backoff_seconds[attempt])
+                continue
+            logger.warning("Brave Search failed: HTTP %s", sc)
+            return ""
+        except Exception as e:
+            logger.warning("Brave Search failed: %s", e)
+            return ""
+
+        web = data.get("web") if isinstance(data, dict) else None
+        results = web.get("results") if isinstance(web, dict) else None
+        if not isinstance(results, list) or not results:
+            return ""
+        lines: list[str] = []
+        for i, it in enumerate(results[:limit], 1):
+            if not isinstance(it, dict):
+                continue
+            title = str(it.get("title") or "").strip()
+            snippet = str(it.get("description") or "").strip()
+            link = str(it.get("url") or "").strip()
+            host = urlparse(link).netloc if link else ""
+            src = f"\n   (source: {host})" if host else ""
+            lines.append(f"{i}. {title}\n   {snippet}{src}")
+        return "\n".join(lines)
+
+    return ""
+
+
+async def _fetch_serpapi_web_snippets(query: str, *, limit: int) -> str:
+    """SerpAPI Google engine results — fallback/alternative to Brave and Google CSE."""
+    token = (settings.serpapi_api_key or "").strip()
+    if not token:
+        return ""
+    q = augment_search_query((query or "").strip()[:MAX_GOOGLE_QUERY_CHARS])
+    if not q:
+        return ""
+    count = min(max(limit, 1), 10)
+    params = {
+        "engine": "google",
+        "q": q,
+        "api_key": token,
+        "num": count,
+        "hl": "en",
+        "gl": "in",
+    }
+    backoff_seconds = (0.8, 1.6)
+
+    for attempt in range(3):
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                r = await client.get(SERPAPI_URL, params=params)
+
+            if r.status_code in (429, 503):
+                logger.warning(
+                    "SerpAPI HTTP %s (attempt %s/3 — quota or overload; retrying)",
+                    r.status_code,
+                    attempt + 1,
+                )
+                if attempt < 2:
+                    await asyncio.sleep(backoff_seconds[attempt])
+                    continue
+                return ""
+
+            try:
+                r.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                sc = e.response.status_code if e.response else 0
+                logger.warning("SerpAPI failed: HTTP %s", sc)
+                return ""
+
+            data = r.json()
+        except httpx.HTTPStatusError as e:
+            sc = e.response.status_code if e.response else 0
+            if sc in (429, 503) and attempt < 2:
+                await asyncio.sleep(backoff_seconds[attempt])
+                continue
+            logger.warning("SerpAPI failed: HTTP %s", sc)
+            return ""
+        except Exception as e:
+            logger.warning("SerpAPI failed: %s", e)
+            return ""
+
+        items = data.get("organic_results") if isinstance(data, dict) else None
+        if not isinstance(items, list) or not items:
+            return ""
+        filtered: list[dict] = []
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            title = str(it.get("title") or "").strip()
+            snippet = str(it.get("snippet") or "").strip()
+            link = str(it.get("link") or "").strip()
+            if _is_trusted_ipl_standings_entry(query, title, snippet, link):
+                filtered.append(it)
+        chosen = filtered if filtered else [it for it in items if isinstance(it, dict)]
+        lines: list[str] = []
+        for i, it in enumerate(chosen[:count], 1):
+            if not isinstance(it, dict):
+                continue
+            title = str(it.get("title") or "").strip()
+            snippet = str(it.get("snippet") or "").strip()
+            link = str(it.get("link") or "").strip()
+            host = urlparse(link).netloc if link else ""
+            src = f"\n   (source: {host})" if host else ""
+            lines.append(f"{i}. {title}\n   {snippet}{src}")
+        return "\n".join(lines)
+
+    return ""
 
 
 async def _fetch_google_cse_snippets(query: str, *, limit: int) -> tuple[str, bool]:
@@ -245,52 +424,73 @@ async def _fetch_google_cse_snippets(query: str, *, limit: int) -> tuple[str, bo
 
 async def fetch_google_snippets(query: str, *, limit: int = 8) -> str:
     """
-    Live Google-only bundle for the model: **Custom Search (web)** when `GOOGLE_CSE_*` is set,
-    plus **Google News RSS** in parallel so sports/news/market-style questions get broader coverage.
-    If CSE is not configured, returns News RSS only (still Google).
+    Live web bundle for the model: **SerpAPI** (if `SERPAPI_API_KEY`),
+    **Brave Search** (if `BRAVE_SEARCH_API_KEY`), **Google CSE** (if `GOOGLE_CSE_*`),
+    and **Google News RSS** in parallel.
+    If no web-search key is configured, returns News RSS only when available.
     """
     raw = (query or "").strip()[:MAX_GOOGLE_QUERY_CHARS]
     if not augment_search_query(raw):
         return ""
 
-    key = (settings.google_cse_api_key or "").strip()
-    cx = (settings.google_cse_cx or "").strip()
+    serpapi_key = (settings.serpapi_api_key or "").strip()
+    brave_key = (settings.brave_search_api_key or "").strip()
+    cse_key = (settings.google_cse_api_key or "").strip()
+    cse_cx = (settings.google_cse_cx or "").strip()
     rss_limit = min(8, max(5, limit))
+    cse_limit = min(max(limit, 1), 10)
+    brave_limit = min(max(limit, 1), 20)
 
     async def rss_part() -> str:
         return await _fetch_google_news_rss_snippets(query, limit=rss_limit)
 
-    if not key or not cx:
+    async def serpapi_part() -> str:
+        if not serpapi_key:
+            return ""
+        return await _fetch_serpapi_web_snippets(query, limit=cse_limit)
+
+    async def brave_part() -> str:
+        if not brave_key:
+            return ""
+        return await _fetch_brave_web_snippets(query, limit=brave_limit)
+
+    async def cse_part() -> tuple[str, bool]:
+        if not cse_key or not cse_cx:
+            return "", False
+        return await _fetch_google_cse_snippets(query, limit=cse_limit)
+
+    if not serpapi_key and not brave_key and not (cse_key and cse_cx):
         rss = await rss_part()
         if rss.strip():
             return "## News (Google News RSS)\n" + rss.strip()
         return ""
 
-    cse_limit = min(max(limit, 1), 10)
-
-    async def cse_part() -> tuple[str, bool]:
-        return await _fetch_google_cse_snippets(query, limit=cse_limit)
-
-    (cse, cse_rate_limited), rss = await asyncio.gather(cse_part(), rss_part())
+    serpapi, brave, (cse, cse_rate_limited), rss = await asyncio.gather(
+        serpapi_part(), brave_part(), cse_part(), rss_part()
+    )
     parts: list[str] = []
+    if serpapi.strip():
+        parts.append("## Web (SerpAPI)\n" + serpapi.strip())
+    if brave.strip():
+        parts.append("## Web (Brave Search)\n" + brave.strip())
     if cse.strip():
         parts.append("## Web (Google Programmable Search)\n" + cse.strip())
     if rss.strip():
         parts.append("## News (Google News RSS)\n" + rss.strip())
     if parts:
         bundle = "\n\n".join(parts)
-        if cse_rate_limited and not cse.strip() and rss.strip():
+        if cse_rate_limited and not cse.strip() and rss.strip() and not brave.strip() and not serpapi.strip():
             bundle = (
                 "__IMPORTANT: Custom Search (web) API hit rate limits—only News RSS lines appear below. "
                 "Headlines may be incomplete; state only facts visible in these lines—do not invent scores or tables.__\n\n"
                 + bundle
             )
         return bundle
-    return "(No live Google results for this query.)"
+    return "(No live web results for this query.)"
 
 
 def should_auto_fetch_web(user_text: str) -> bool:
-    """Time-sensitive / market / news / sports / cross-industry sector queries → live Google bundle."""
+    """Time-sensitive / market / news / sports / cross-industry sector queries → live web bundle (Brave/CSE/RSS)."""
     s = (user_text or "").lower()
     keys = (
         "today",

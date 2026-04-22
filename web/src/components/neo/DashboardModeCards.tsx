@@ -76,11 +76,11 @@ export function DashboardModeCards() {
             aria-hidden
           />
           <div
-            className="pointer-events-none absolute -bottom-20 -left-20 h-64 w-64 rounded-full bg-[#8A2BE2]/[0.12] blur-3xl"
+            className="pointer-events-none absolute -bottom-20 -left-20 h-64 w-64 rounded-full bg-[#6A5CFF]/[0.14] blur-3xl"
             aria-hidden
           />
           <div
-            className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#00D4FF]/35 to-transparent"
+            className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#6A5CFF]/40 to-transparent"
             aria-hidden
           />
 
@@ -102,7 +102,7 @@ export function DashboardModeCards() {
           <div className="relative mt-9 grid gap-4 sm:grid-cols-2 sm:gap-6">
             <Link
               href="/voice"
-              className="group relative flex flex-col overflow-hidden rounded-2xl border border-white/[0.09] bg-gradient-to-br from-[#00D4FF]/[0.14] via-[#00D4FF]/[0.04] to-transparent p-5 transition duration-200 hover:-translate-y-0.5 hover:border-[#00D4FF]/45 hover:shadow-[0_0_48px_rgba(0,212,255,0.16),0_16px_40px_rgba(0,0,0,0.25)] active:translate-y-0 sm:p-6"
+              className="group relative flex flex-col overflow-hidden rounded-2xl border border-white/[0.09] bg-gradient-to-br from-[#00D4FF]/[0.14] via-[#6A5CFF]/[0.08] to-[#C85CFF]/[0.1] p-5 transition duration-200 hover:-translate-y-0.5 hover:border-[#6A5CFF]/45 hover:shadow-[0_0_48px_rgba(106,92,255,0.18),0_0_56px_rgba(200,92,255,0.1),0_16px_40px_rgba(0,0,0,0.25)] active:translate-y-0 sm:p-6"
             >
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-white/[0.12] bg-black/50 shadow-inner">
@@ -130,7 +130,7 @@ export function DashboardModeCards() {
 
             <Link
               href="/chat"
-              className="group relative flex flex-col overflow-hidden rounded-2xl border border-white/[0.09] bg-gradient-to-br from-white/[0.07] via-white/[0.02] to-transparent p-5 transition duration-200 hover:-translate-y-0.5 hover:border-[#00D4FF]/38 hover:bg-white/[0.05] hover:shadow-[0_0_40px_rgba(0,212,255,0.1),0_16px_40px_rgba(0,0,0,0.2)] active:translate-y-0 sm:p-6"
+              className="group relative flex flex-col overflow-hidden rounded-2xl border border-white/[0.09] bg-gradient-to-br from-white/[0.07] via-white/[0.02] to-transparent p-5 transition duration-200 hover:-translate-y-0.5 hover:border-[#6A5CFF]/38 hover:bg-white/[0.05] hover:shadow-[0_0_40px_rgba(106,92,255,0.12),0_16px_40px_rgba(0,0,0,0.2)] active:translate-y-0 sm:p-6"
             >
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[#00D4FF]/22 bg-[#0a1018]">

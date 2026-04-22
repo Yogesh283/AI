@@ -1,8 +1,8 @@
 """
 Sports / match-style query detection for chat routing.
 
-Live facts themselves come only from Google in {@link app.services.web_search.fetch_google_snippets}
-(Custom Search + News RSS) — see `build_live_web_context_block` below.
+Live facts come from {@link app.services.web_search.fetch_google_snippets}
+(Brave Web Search, optional Google CSE, Google News RSS) — see `build_live_web_context_block` below.
 """
 
 from __future__ import annotations
@@ -88,7 +88,7 @@ def google_fetch_query(user_text: str) -> str:
 
 async def build_live_web_context_block(last_user: str, *, now_ist: datetime) -> str:
     """
-    Single live-data pipeline: **Google only** (Programmable Search + Google News RSS in parallel).
+    Single live-data pipeline: Brave (optional) + Google CSE (optional) + Google News RSS in parallel.
     `now_ist` stamps the block so the model can align 'current season' headlines with real time.
     """
     from app.services.web_search import fetch_google_snippets
@@ -111,4 +111,4 @@ async def build_live_web_context_block(last_user: str, *, now_ist: datetime) -> 
         f"Retrieved {stamp}. Use this clock when judging whether a headline's 'current' or 'latest' table matches "
         "what the user asked; if snippets conflict or are stale, say so—do not guess.\n\n"
     )
-    return anchor + "### Live data (Google — web search + news)\n" + g.strip()
+    return anchor + "### Live data (web search + news)\n" + g.strip()

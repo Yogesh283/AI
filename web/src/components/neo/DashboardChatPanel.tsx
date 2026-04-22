@@ -473,7 +473,7 @@ export function DashboardChatPanel() {
                   <div
                     className={
                       m.role === "user"
-                        ? "inline-block max-w-[min(100%,92%)] rounded-2xl bg-gradient-to-br from-cyan-500/12 to-indigo-500/10 px-4 py-2.5 text-right shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] sm:max-w-[85%]"
+                        ? "inline-block max-w-[min(100%,92%)] rounded-2xl bg-gradient-to-br from-[#00D4FF]/12 via-[#6A5CFF]/10 to-[#C85CFF]/08 px-4 py-2.5 text-right shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] sm:max-w-[85%]"
                         : "rounded-2xl bg-white/[0.045] px-4 py-2.5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] sm:px-5 sm:py-3"
                     }
                   >
@@ -544,7 +544,7 @@ export function DashboardChatPanel() {
               type="button"
               onClick={() => void send()}
               disabled={loading || voiceListening || !input.trim()}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#22d3ee] to-[#6366f1] text-white shadow-[0_4px_20px_rgba(34,211,238,0.35)] transition hover:brightness-110 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-35"
+              className="neo-gradient-fill flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white shadow-[0_4px_20px_rgba(0,212,255,0.3),0_4px_36px_rgba(106,92,255,0.22)] transition hover:brightness-110 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-35"
               aria-label="Send message"
               title="Send (Enter)"
             >

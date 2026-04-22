@@ -14,7 +14,7 @@ export function NeoRing({ className = "" }: { className?: string }) {
       <div
         className="absolute h-52 w-52 rounded-full opacity-90 blur-3xl"
         style={{
-          background: "conic-gradient(from 0deg, #00D4FF, #BD00FF, #9D50BB, #00D4FF)",
+          background: "conic-gradient(from 0deg, #00D4FF, #6A5CFF, #C85CFF, #00D4FF)",
         }}
       />
       <div className="absolute h-44 w-44 rounded-full border border-white/10 opacity-80" />

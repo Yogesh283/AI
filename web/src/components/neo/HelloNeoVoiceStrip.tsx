@@ -438,7 +438,7 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
             className={`flex w-full shrink-0 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-bold transition disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto ${
               listening
                 ? "bg-rose-500/25 text-rose-100 ring-2 ring-rose-400/50"
-                : "bg-gradient-to-r from-[#00D4FF] to-[#6366f1] text-[#050912] shadow-[0_4px_24px_rgba(0,212,255,0.35)] hover:brightness-105"
+                : "neo-gradient-fill text-[#050912] shadow-[0_4px_24px_rgba(0,212,255,0.28),0_4px_40px_rgba(106,92,255,0.2)] hover:brightness-105"
             }`}
             aria-pressed={listening}
           >
@@ -512,7 +512,7 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
               className={`flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-bold transition disabled:cursor-not-allowed disabled:opacity-40 ${
                 listening
                   ? "bg-rose-500/25 text-rose-100 ring-2 ring-rose-400/50"
-                  : "bg-gradient-to-r from-[#00D4FF] to-[#6366f1] text-[#050912] shadow-[0_4px_24px_rgba(0,212,255,0.35)] hover:brightness-105"
+                  : "neo-gradient-fill text-[#050912] shadow-[0_4px_24px_rgba(0,212,255,0.28),0_4px_40px_rgba(106,92,255,0.2)] hover:brightness-105"
               }`}
               aria-pressed={listening}
             >

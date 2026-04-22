@@ -13,9 +13,9 @@ function SplashRingGradients({ uid }: { uid: string }) {
   return (
     <defs>
       <linearGradient id={`splashRing-${uid}`} x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stopColor="#00f2ff" />
-        <stop offset="50%" stopColor="#9d50bb" />
-        <stop offset="100%" stopColor="#bc00ff" />
+        <stop offset="0%" stopColor="#00D4FF" />
+        <stop offset="50%" stopColor="#6A5CFF" />
+        <stop offset="100%" stopColor="#C85CFF" />
       </linearGradient>
     </defs>
   );
@@ -168,7 +168,7 @@ export default function SplashPage() {
           </div>
 
           <div
-            className="pointer-events-none absolute bottom-0 left-0 right-0 h-28 text-[#bc00ff]/25"
+            className="pointer-events-none absolute bottom-0 left-0 right-0 h-28 text-[#C85CFF]/25"
             aria-hidden
           >
             <svg
@@ -188,8 +188,9 @@ export default function SplashPage() {
               />
               <defs>
                 <linearGradient id="splashWaveGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="#00f2ff" stopOpacity={0.15} />
-                  <stop offset="100%" stopColor="#bc00ff" stopOpacity={0.35} />
+                  <stop offset="0%" stopColor="#00D4FF" stopOpacity={0.18} />
+                  <stop offset="55%" stopColor="#6A5CFF" stopOpacity={0.22} />
+                  <stop offset="100%" stopColor="#C85CFF" stopOpacity={0.32} />
                 </linearGradient>
               </defs>
             </svg>

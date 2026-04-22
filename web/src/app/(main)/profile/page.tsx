@@ -168,7 +168,7 @@ export default function ProfilePage() {
             <p className="text-white/80">Sign in to view and edit your profile.</p>
             <Link
               href="/login"
-              className="mt-6 inline-flex rounded-xl bg-gradient-to-r from-[#00c8f0] to-[#a855f7] px-6 py-3 text-sm font-semibold text-white"
+              className="neo-gradient-fill mt-6 inline-flex rounded-xl px-6 py-3 text-sm font-semibold text-[#050912]"
             >
               Sign in
             </Link>
@@ -210,7 +210,7 @@ export default function ProfilePage() {
             {user.display_name?.trim() || "Add your display name below"}
           </h1>
           <p className="mt-1 max-w-sm truncate text-sm text-white/45">{user.email}</p>
-          <p className="mt-2 rounded-full border border-[#BD00FF]/35 bg-[#BD00FF]/10 px-4 py-1.5 text-xs font-semibold text-[#e9c2ff]">
+          <p className="mt-2 rounded-full border border-[#C85CFF]/35 bg-[#C85CFF]/10 px-4 py-1.5 text-xs font-semibold text-[#e9c2ff]">
             {user.auth_provider === "google" ? "Google account" : "Email account"}
           </p>
         </div>
@@ -268,7 +268,7 @@ export default function ProfilePage() {
                     !nameDraft.trim() ||
                     nameDraft.trim() === (user.display_name ?? "").trim()
                   }
-                  className="rounded-xl bg-gradient-to-r from-[#00c8f0] to-[#7c3aed] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_4px_20px_rgba(0,200,240,0.25)] transition hover:brightness-110 disabled:opacity-40"
+                  className="neo-gradient-fill rounded-xl px-5 py-2.5 text-sm font-semibold text-[#050912] shadow-[0_4px_20px_rgba(106,92,255,0.25)] transition hover:brightness-110 disabled:opacity-40"
                 >
                   {savingProfile ? "Saving…" : "Save name"}
                 </button>

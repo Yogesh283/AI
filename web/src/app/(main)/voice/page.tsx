@@ -747,7 +747,7 @@ export default function VoicePage() {
 
   const micButtonClass = useMemo(() => {
     if (!sessionOn) {
-      return "bg-gradient-to-br from-[#22d3ee] via-[#6366f1] to-[#a855f7] shadow-[0_0_56px_rgba(34,211,238,0.35),0_0_72px_rgba(168,85,247,0.18)] ring-[3px] ring-cyan-300/50 hover:brightness-110";
+      return "bg-gradient-to-br from-[#00D4FF] via-[#6A5CFF] to-[#C85CFF] shadow-[0_0_48px_rgba(0,212,255,0.32),0_0_72px_rgba(106,92,255,0.22),0_0_88px_rgba(200,92,255,0.14)] ring-[3px] ring-[#6A5CFF]/45 hover:brightness-110";
     }
     if (speaking) {
       return "bg-gradient-to-br from-violet-600 via-teal-700 to-emerald-900 shadow-[0_0_40px_rgba(139,92,246,0.35)] ring-[4px] ring-violet-400/50";
@@ -756,7 +756,7 @@ export default function VoicePage() {
       return "bg-gradient-to-br from-slate-700 via-indigo-800 to-slate-900 shadow-[0_0_32px_rgba(99,102,241,0.25)] ring-[3px] ring-indigo-400/35";
     }
     if (userSpeaking && listening) {
-      return "bg-gradient-to-br from-cyan-400 via-fuchsia-500 to-indigo-700 shadow-[0_0_44px_rgba(236,72,153,0.4)] ring-[4px] ring-fuchsia-300/55 neo-voice-mic-user-talk";
+      return "bg-gradient-to-br from-[#00D4FF] via-[#C85CFF] to-[#6A5CFF] shadow-[0_0_44px_rgba(200,92,255,0.35),0_0_56px_rgba(106,92,255,0.25)] ring-[4px] ring-[#C85CFF]/45 neo-voice-mic-user-talk";
     }
     return "bg-gradient-to-br from-emerald-500 to-teal-800 shadow-[0_0_36px_rgba(16,185,129,0.22)] ring-[3px] ring-emerald-300/45 neo-voice-mic-session-start neo-voice-mic-idle-live";
   }, [sessionOn, speaking, liveConnecting, liveWebFetching, userSpeaking, listening]);
@@ -764,7 +764,7 @@ export default function VoicePage() {
   return (
     <div className="relative z-[1] flex min-h-0 flex-1 flex-col bg-[#080a0f] md:min-h-0">
       <div
-        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_85%_55%_at_50%_18%,rgba(0,180,220,0.14),transparent_55%),radial-gradient(ellipse_70%_50%_at_80%_70%,rgba(124,58,237,0.12),transparent_50%),linear-gradient(180deg,#080a0f_0%,#070b12_45%,#080a0f_100%)]"
+        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_85%_55%_at_50%_18%,rgba(0,212,255,0.12),transparent_55%),radial-gradient(ellipse_70%_50%_at_80%_70%,rgba(106,92,255,0.14),transparent_50%),radial-gradient(ellipse_55%_40%_at_20%_80%,rgba(200,92,255,0.06),transparent_50%),linear-gradient(180deg,#080a0f_0%,#070b12_45%,#080a0f_100%)]"
         aria-hidden
       />
       <MainTopNav

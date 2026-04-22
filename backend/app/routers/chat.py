@@ -155,7 +155,8 @@ _STANDINGS_TABLE_FORMAT_FIX = (
 _FULL_RANKING_LIST_FIX = (
     "\n\n--- MANDATORY RANKING FIX\n"
     "Your numbered IPL team list matched generic training patterns (often wrong vs real standings). "
-    "Regenerate in the user's language: NO complete 1–10 or 1–8 numbered lists of all franchises. "
+    "Regenerate in the user's language: NO complete 1–10 or 1–8 ordered lists of all franchises "
+    "(numbered OR bullet). "
     "Use short sentences quoting ONLY ranks/teams/points that literally appear in LIVE DATA snippets. "
     "Say clearly if snippets lack a full official table—invent nothing from memory.\n"
 )
@@ -265,6 +266,57 @@ def _reply_looks_like_full_numbered_ipl_ranking(reply: str) -> bool:
     return hits >= 4 or len(numbered) >= 7
 
 
+def _reply_looks_like_full_bulleted_ipl_ranking(reply: str) -> bool:
+    """
+    Detects ordered IPL ladders written as bullets instead of numbers, e.g.:
+    - Sunrisers Hyderabad
+    - Delhi Capitals
+    ...
+    """
+    raw_lines = [ln.strip() for ln in (reply or "").splitlines() if ln.strip()]
+    if len(raw_lines) < 6:
+        return False
+    bullet_lines = [
+        ln
+        for ln in raw_lines
+        if re.match(r"^[-*•]\s+\S", ln) and not ln.lower().startswith(("- note", "- source", "- key"))
+    ]
+    if len(bullet_lines) < 6:
+        return False
+
+    blob = "\n".join(bullet_lines).lower()
+    hi_blob = "\n".join(bullet_lines)
+    markers_en = (
+        "mumbai",
+        "chennai",
+        "bangalore",
+        "kolkata",
+        "punjab",
+        "rajasthan",
+        "hyderabad",
+        "gujarat",
+        "lucknow",
+        "delhi",
+        " mi",
+        "(mi)",
+        "(csk)",
+        "kkr",
+        "rcb",
+        "srh",
+        "pbks",
+        " gt",
+        "lsg",
+        " rr",
+        " dc",
+    )
+    markers_hi = ("मुंबई", "चेन्नई", "बैंगलोर", "कोलकाता", "पंजाब", "राजस्थान", "हैदराबाद", "गुजरात", "लखनऊ", "दिल्ली")
+    hits = sum(1 for m in markers_en if m in blob)
+    hits += sum(1 for m in markers_hi if m in hi_blob)
+
+    # Require enough bullet rows + enough IPL team markers to avoid false positives.
+    return len(bullet_lines) >= 7 and hits >= 5
+
+
 def _user_might_want_ipl_ranking(text: str) -> bool:
     if _user_asks_standings_or_table(text):
         return True
@@ -288,7 +340,7 @@ def _needs_full_ranking_list_retry(last_user: str, reply: str, web_block: str) -
         return False
     if not _user_might_want_ipl_ranking(last_user):
         return False
-    return _reply_looks_like_full_numbered_ipl_ranking(reply)
+    return _reply_looks_like_full_numbered_ipl_ranking(reply) or _reply_looks_like_full_bulleted_ipl_ranking(reply)
 
 
 def _is_precious_metal_rate_query(text: str) -> bool:

@@ -6,7 +6,7 @@
   --neo-bg: #0b0e14;
   --neo-bg-deep: #05070c;
   --neo-surface: rgba(16, 22, 38, 0.78);
-  /* Brand gradient: linear-gradient(135deg, #00D4FF, #6A5CFF, #C85CFF) */
+  /* Brand: linear-gradient(135deg, #00D4FF, #6A5CFF, #C85CFF) — use var(--neo-gradient-brand) everywhere */
   --neo-accent-1: #00d4ff;
   --neo-accent-2: #6a5cff;
   --neo-accent-3: #c85cff;
@@ -71,9 +71,19 @@ body {
   color: transparent;
 }
 
-/** Solid fills (CTAs, chips) — same stops as text gradient */
+/** Solid fills (CTAs, chips) — same 135° stops as text */
 .neo-gradient-fill {
   background: var(--neo-gradient-brand);
+}
+
+/** Soft panel wash (cards, strips) — same three stops, low alpha */
+.neo-gradient-wash {
+  background: linear-gradient(
+    135deg,
+    rgba(0, 212, 255, 0.14),
+    rgba(106, 92, 255, 0.1),
+    rgba(200, 92, 255, 0.12)
+  );
 }
 
 /* Slow drifting colour “waves” behind content (cyan ↔ purple ↔ magenta) */
@@ -426,7 +436,7 @@ body {
     24px 18px 0 rgba(255, 255, 255, 0.2),
     -14px 32px 0 rgba(255, 255, 255, 0.15),
     40px 44px 0 rgba(0, 242, 255, 0.25),
-    18px -12px 0 rgba(188, 0, 255, 0.2);
+    18px -12px 0 rgba(200, 92, 255, 0.22);
   animation: neo-twinkle 5s ease-in-out infinite;
 }
 
@@ -442,8 +452,10 @@ body {
 .neo-splash-progress-fill {
   height: 100%;
   border-radius: 9999px;
-  background: linear-gradient(90deg, #00d4ff, #6a5cff, #c85cff);
-  box-shadow: 0 0 14px rgba(0, 212, 255, 0.5);
+  background: var(--neo-gradient-brand);
+  box-shadow:
+    0 0 14px rgba(0, 212, 255, 0.45),
+    0 0 28px rgba(106, 92, 255, 0.25);
 }
 
 .neo-safe-pb {
