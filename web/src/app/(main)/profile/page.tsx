@@ -206,7 +206,7 @@ export default function ProfilePage() {
               unoptimized={avatar.imageSrc.endsWith(".svg")}
             />
           </div>
-          <h1 className="text-xl font-bold text-white">
+          <h1 className="neo-gradient-text text-xl font-bold">
             {user.display_name?.trim() || "Add your display name below"}
           </h1>
           <p className="mt-1 max-w-sm truncate text-sm text-white/45">{user.email}</p>

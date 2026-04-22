@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { AppSidebar } from "@/components/neo/AppSidebar";
+import { NeoBottomDock } from "@/components/neo/NeoBottomDock";
 import { NeoBackground } from "@/components/neo/NeoBackground";
 import { NeoWakeNativeSync } from "@/components/neo/NeoWakeNativeSync";
 import { SessionExpiryBridge } from "@/components/neo/SessionExpiryBridge";
@@ -27,7 +28,7 @@ export default function MainLayout({
       >
         <AppSidebar />
         <main
-          className={`relative flex min-h-0 min-w-0 flex-1 flex-col bg-[#0b0f16]/75 pt-[env(safe-area-inset-top,0px)] md:pt-0 ${
+          className={`relative flex min-h-0 min-w-0 flex-1 flex-col bg-[#0b0f16]/75 pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))] pt-[env(safe-area-inset-top,0px)] md:pb-0 md:pt-0 ${
             isChat
               ? "h-full max-h-full overflow-hidden overscroll-none"
               : "overflow-y-auto"
@@ -36,6 +37,7 @@ export default function MainLayout({
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
         </main>
       </div>
+      <NeoBottomDock />
     </div>
   );
 }

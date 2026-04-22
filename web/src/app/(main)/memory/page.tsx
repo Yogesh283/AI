@@ -55,7 +55,9 @@ export default function MemoryPage() {
   return (
     <div className="relative z-[1] px-4 pb-10 pt-6 md:px-8 md:pt-8">
       <div className="mx-auto max-w-3xl">
-        <h1 className="mb-1 text-2xl font-bold tracking-tight">NeoXAI Memory</h1>
+        <h1 className="neo-gradient-text mb-1 text-2xl font-bold tracking-tight">
+          NeoXAI Memory
+        </h1>
         <p className="mb-8 text-sm text-white/45">
           Saved conversation history from Chat and Voice.
         </p>

@@ -6,7 +6,7 @@
   --neo-bg: #0b0e14;
   --neo-bg-deep: #05070c;
   --neo-surface: rgba(16, 22, 38, 0.78);
-  --neo-cyan: #00d4ff;
+  --neo-cyan: #00d2ff;
   --neo-cyan-dim: #00a8cc;
   --neo-purple: #9d50bb;
   --neo-magenta: #bd00ff;
@@ -64,6 +64,375 @@ body {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+}
+
+/* Slow drifting colour “waves” behind content (cyan ↔ purple ↔ magenta) */
+.neo-aurora-waves {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.neo-aurora-wave {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(72px);
+  opacity: 0.42;
+  mix-blend-mode: screen;
+  will-change: transform;
+}
+
+.neo-aurora-wave--a {
+  width: min(120vw, 900px);
+  height: min(120vw, 900px);
+  left: -25%;
+  top: 15%;
+  background: radial-gradient(
+    circle at 40% 40%,
+    rgba(0, 212, 255, 0.55) 0%,
+    rgba(0, 212, 255, 0.08) 45%,
+    transparent 70%
+  );
+  animation: neo-sky-breathe-a 56s ease-in-out infinite;
+}
+
+.neo-aurora-wave--b {
+  width: min(110vw, 820px);
+  height: min(110vw, 820px);
+  right: -20%;
+  top: 35%;
+  background: radial-gradient(
+    circle at 55% 45%,
+    rgba(157, 80, 187, 0.5) 0%,
+    rgba(189, 0, 255, 0.12) 50%,
+    transparent 72%
+  );
+  animation: neo-sky-breathe-b 68s ease-in-out infinite;
+}
+
+.neo-aurora-wave--c {
+  width: min(140vw, 1000px);
+  height: min(140vw, 1000px);
+  left: 10%;
+  bottom: -35%;
+  background: radial-gradient(
+    circle at 50% 35%,
+    rgba(189, 0, 255, 0.38) 0%,
+    rgba(0, 212, 255, 0.14) 48%,
+    transparent 68%
+  );
+  animation: neo-sky-breathe-c 72s ease-in-out infinite;
+}
+
+/* Sky only: glow breathes in place — no drifting (water uses different motion below) */
+@keyframes neo-sky-breathe-a {
+  0%,
+  100% {
+    opacity: 0.34;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.52;
+    transform: scale(1.07);
+  }
+}
+
+@keyframes neo-sky-breathe-b {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(1.02);
+  }
+  50% {
+    opacity: 0.48;
+    transform: scale(1.09);
+  }
+}
+
+@keyframes neo-sky-breathe-c {
+  0%,
+  100% {
+    opacity: 0.28;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.42;
+    transform: scale(1.05);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .neo-aurora-wave {
+    animation: none !important;
+    opacity: 0.28;
+  }
+}
+
+/* Horizon — soft pulse only (still not “water flow”) */
+.neo-horizon-glow {
+  pointer-events: none;
+  position: fixed;
+  bottom: min(28vh, 220px);
+  left: 50%;
+  z-index: 0;
+  width: min(140vw, 960px);
+  height: min(38vh, 280px);
+  transform: translateX(-50%);
+  background: radial-gradient(
+    ellipse 85% 60% at 50% 100%,
+    rgba(0, 210, 255, 0.42) 0%,
+    rgba(157, 80, 187, 0.22) 35%,
+    transparent 72%
+  );
+  filter: blur(48px);
+  opacity: 0.82;
+  animation: neo-horizon-pulse 44s ease-in-out infinite;
+}
+
+@keyframes neo-horizon-pulse {
+  0%,
+  100% {
+    opacity: 0.72;
+  }
+  50% {
+    opacity: 0.92;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .neo-horizon-glow {
+    animation: none !important;
+    opacity: 0.78;
+  }
+}
+
+/* Bottom water band: SVG waves + dot mesh — horizontal motion only */
+.neo-water-zone {
+  pointer-events: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 0;
+  height: min(46vh, 380px);
+  overflow: hidden;
+}
+
+.neo-water-surface {
+  position: absolute;
+  inset: 0;
+  bottom: 0;
+}
+
+.neo-water-wave-layer {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  bottom: 0;
+  overflow: hidden;
+  height: min(34vh, 260px);
+}
+
+.neo-water-wave-layer--back {
+  opacity: 0.88;
+}
+
+.neo-water-wave-layer--mid {
+  opacity: 0.58;
+  height: min(26vh, 200px);
+}
+
+.neo-water-wave-layer--front {
+  opacity: 0.48;
+  height: min(18vh, 140px);
+}
+
+/* Endless sideways scroll — lahar ki choti left→right flow */
+.neo-lahar-roll {
+  display: flex;
+  width: 200%;
+  height: 100%;
+  will-change: transform;
+}
+
+.neo-water-wave-chunk {
+  flex: 0 0 50%;
+  width: 50%;
+  height: 100%;
+  display: block;
+}
+
+.neo-lahar-roll--back {
+  animation: neo-lahar-scroll 21s linear infinite;
+}
+
+.neo-lahar-roll--mid {
+  animation: neo-lahar-scroll 14s linear infinite reverse;
+}
+
+.neo-lahar-roll--front {
+  animation: neo-lahar-scroll 10s linear infinite;
+}
+
+@keyframes neo-lahar-scroll {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* Crest highlight — tip par running shimmer */
+.neo-wave-crest-line {
+  filter: drop-shadow(0 0 5px rgba(0, 242, 255, 0.65));
+  stroke-dasharray: 14 26;
+  animation: neo-crest-shimmer 5.5s linear infinite;
+}
+
+@keyframes neo-crest-shimmer {
+  to {
+    stroke-dashoffset: -160;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .neo-lahar-roll {
+    animation: none !important;
+    transform: none !important;
+  }
+
+  .neo-wave-crest-line {
+    animation: none !important;
+  }
+}
+
+/* Dot mesh: slides horizontally only (not diagonal / not same as old aurora drift) */
+.neo-mesh-terrain {
+  pointer-events: none;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: min(38vh, 320px);
+  opacity: 0.48;
+  mix-blend-mode: screen;
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(0, 210, 255, 0.45) 1px, transparent 1.5px),
+    radial-gradient(circle at 1px 1px, rgba(157, 80, 187, 0.35) 1px, transparent 1.5px);
+  background-size:
+    22px 22px,
+    22px 22px;
+  background-position:
+    0 0,
+    11px 11px;
+  mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.95) 14%, transparent 76%);
+  animation: neo-water-mesh-x 24s linear infinite;
+}
+
+@keyframes neo-water-mesh-x {
+  to {
+    background-position:
+      -220px 0,
+      -209px 11px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .neo-mesh-terrain {
+    animation: none !important;
+    opacity: 0.3;
+  }
+}
+
+/* Dashboard main column — three ribbon waves (reference layout) */
+.neo-dash-ribbon-banner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  min-height: 7.25rem;
+  background: #050505;
+  overflow: hidden;
+}
+
+.neo-dash-ribbon-banner::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.11;
+  mix-blend-mode: overlay;
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    rgba(255, 255, 255, 0.12) 0.45px,
+    transparent 1px
+  );
+  background-size: 2.5px 2.5px;
+}
+
+.neo-dash-ribbon-row {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-height: 2.2rem;
+  overflow: hidden;
+}
+
+.neo-dash-ribbon-roll {
+  display: flex;
+  width: 200%;
+  height: 100%;
+  will-change: transform;
+}
+
+.neo-dash-ribbon-chunk {
+  flex: 0 0 50%;
+  width: 50%;
+  height: 100%;
+  display: block;
+}
+
+.neo-dash-ribbon-roll--teal {
+  animation: neo-dash-ribbon-scroll 27s linear infinite;
+}
+
+.neo-dash-ribbon-roll--purp {
+  animation: neo-dash-ribbon-scroll 16s linear infinite reverse;
+}
+
+.neo-dash-ribbon-roll--mag {
+  animation: neo-dash-ribbon-scroll 20s linear infinite;
+}
+
+@keyframes neo-dash-ribbon-scroll {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.neo-dash-ribbon-crest {
+  stroke-dasharray: 18 22;
+  animation: neo-dash-crest-flow 7s linear infinite;
+  filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.2));
+}
+
+@keyframes neo-dash-crest-flow {
+  to {
+    stroke-dashoffset: -140;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .neo-dash-ribbon-roll--teal,
+  .neo-dash-ribbon-roll--purp,
+  .neo-dash-ribbon-roll--mag {
+    animation: none !important;
+    transform: none !important;
+  }
+
+  .neo-dash-ribbon-crest {
+    animation: none !important;
+  }
 }
 
 .neo-starfield {

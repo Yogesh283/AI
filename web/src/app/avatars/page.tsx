@@ -48,7 +48,9 @@ export default function AvatarsPage() {
   return (
     <NeoPublicShell maxWidth="max-w-3xl">
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Choose Your NeoXAI</h1>
+        <h1 className="neo-gradient-text text-2xl font-semibold tracking-tight">
+          Choose Your NeoXAI
+        </h1>
         <p className="mt-1 text-sm text-white/45">
           Select your personal AI assistant style.
         </p>

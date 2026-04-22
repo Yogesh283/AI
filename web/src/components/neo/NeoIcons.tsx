@@ -1,5 +1,5 @@
 export function IconHome({ active }: { active?: boolean }) {
-  const c = active ? "#00D4FF" : "rgba(255,255,255,0.4)";
+  const c = active ? "#00D2FF" : "rgba(255,255,255,0.4)";
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
@@ -13,7 +13,7 @@ export function IconHome({ active }: { active?: boolean }) {
 }
 
 export function IconChat({ active }: { active?: boolean }) {
-  const c = active ? "#00D4FF" : "rgba(255,255,255,0.4)";
+  const c = active ? "#00D2FF" : "rgba(255,255,255,0.4)";
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
@@ -27,7 +27,7 @@ export function IconChat({ active }: { active?: boolean }) {
 }
 
 export function IconMemory({ active }: { active?: boolean }) {
-  const c = active ? "#00D4FF" : "rgba(255,255,255,0.4)";
+  const c = active ? "#00D2FF" : "rgba(255,255,255,0.4)";
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
@@ -41,7 +41,7 @@ export function IconMemory({ active }: { active?: boolean }) {
 }
 
 export function IconUser({ active }: { active?: boolean }) {
-  const c = active ? "#00D4FF" : "rgba(255,255,255,0.4)";
+  const c = active ? "#00D2FF" : "rgba(255,255,255,0.4)";
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
       <circle cx="12" cy="8" r="3.5" stroke={c} strokeWidth="1.6" />
@@ -68,7 +68,7 @@ export function IconMicCenter() {
 
 /** Sidebar: 3D avatar + chat + TTS demo */
 export function IconCube3D({ active }: { active?: boolean }) {
-  const c = active ? "#00D4FF" : "rgba(255,255,255,0.4)";
+  const c = active ? "#00D2FF" : "rgba(255,255,255,0.4)";
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
@@ -146,6 +146,60 @@ export function IconGrid() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path fill="rgba(255,255,255,0.55)" d="M4 4h6v6H4V4Zm10 0h6v6h-6V4ZM4 14h6v6H4v-6Zm10 0h6v6h-6v-6Z" />
+    </svg>
+  );
+}
+
+/** Reference UI: robot + Voice hub (center dock item). */
+export function IconPersonalAssistantDock({ active }: { active?: boolean }) {
+  const c = active ? "#00D2FF" : "rgba(255,255,255,0.38)";
+  const dim = active ? "rgba(0,210,255,0.35)" : "rgba(255,255,255,0.22)";
+  return (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M3.5 10v5M5.5 8v9M7.5 11v3"
+        stroke={dim}
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+      <path
+        d="M16.5 10v5M18.5 8v9M20.5 11v3"
+        stroke={dim}
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+      <circle cx="12" cy="6.5" r="1.2" fill={c} />
+      <path d="M12 7.8v1.2" stroke={c} strokeWidth="1.4" strokeLinecap="round" />
+      <rect
+        x="8"
+        y="10"
+        width="8"
+        height="8"
+        rx="2.2"
+        stroke={c}
+        strokeWidth="1.6"
+      />
+      <circle cx="10.2" cy="13.2" r="0.9" fill={c} fillOpacity={active ? 0.95 : 0.45} />
+      <circle cx="13.8" cy="13.2" r="0.9" fill={c} fillOpacity={active ? 0.95 : 0.45} />
+      <path
+        d="M9.8 16.3c.8.6 1.8.9 2.9.8 1-.1 1.9-.6 2.5-1.3"
+        stroke={c}
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+/** Picture frame + landscape + sparkle (Image & Graphics). */
+export function IconImageGraphics({ active }: { active?: boolean }) {
+  const c = active ? "#00D2FF" : "rgba(255,255,255,0.4)";
+  const fillM = active ? "rgba(157,80,187,0.35)" : "rgba(255,255,255,0.08)";
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="4" y="5" width="16" height="14" rx="2" stroke={c} strokeWidth="1.6" />
+      <path d="M6 17l4.2-5 3 3.2L17 11l2 6H6z" fill={fillM} stroke={c} strokeWidth="1" strokeLinejoin="round" />
+      <path d="M18 7.5l.9 1.7 1.9.3-1.4 1.4.3 2-1.8-.9-1.8.9.3-2-1.4-1.4 1.9-.3z" fill={c} fillOpacity={active ? 0.95 : 0.45} />
     </svg>
   );
 }

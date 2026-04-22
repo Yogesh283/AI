@@ -14,9 +14,12 @@ import { getStoredToken } from "@/lib/auth";
 export function NeoPublicShell({
   children,
   maxWidth = "max-w-lg",
+  leadingBack,
 }: {
   children: React.ReactNode;
-  maxWidth?: "max-w-lg" | "max-w-2xl" | "max-w-3xl" | "max-w-4xl";
+  maxWidth?: "max-w-lg" | "max-w-2xl" | "max-w-3xl" | "max-w-4xl" | "max-w-6xl";
+  /** Optional “← Label” before the logo — keeps one chrome for flows like `/avatars/metaperson`. */
+  leadingBack?: { href: string; label: string };
 }) {
   const { brandName } = useSiteBrand();
   const pathname = usePathname();
@@ -36,12 +39,27 @@ export function NeoPublicShell({
     <div className="relative z-[1] flex min-h-screen flex-col">
       <NeoBackground stars={20} />
       <header className="sticky top-0 z-50 flex h-auto min-h-14 shrink-0 items-center justify-between gap-2 border-b border-white/[0.08] bg-[#0b0e14]/92 px-3 pt-[max(0.35rem,env(safe-area-inset-top,0px))] pb-2 backdrop-blur-xl sm:gap-3 sm:px-4 md:h-14 md:min-h-0 md:px-8 md:py-0 md:pt-0">
-        <Link href="/" className="flex min-w-0 max-w-[58%] items-center gap-2 sm:max-w-[65%] sm:gap-2.5 md:max-w-none">
-          <NeoLogoMark className="h-8 w-8 shrink-0 drop-shadow-[0_0_12px_rgba(0,212,255,0.25)] sm:h-9 sm:w-9" />
-          <span className="truncate bg-gradient-to-r from-[#00D4FF] to-[#BD00FF] bg-clip-text text-base font-semibold tracking-tight text-transparent sm:text-lg">
-            {brandName}
-          </span>
-        </Link>
+        <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3 md:gap-4">
+          {leadingBack ? (
+            <Link
+              href={leadingBack.href}
+              className="shrink-0 whitespace-nowrap rounded-lg px-1 py-1 text-xs font-medium text-white/55 transition hover:bg-white/[0.06] hover:text-white/90 sm:text-sm"
+            >
+              ← {leadingBack.label}
+            </Link>
+          ) : null}
+          <Link
+            href="/"
+            className={`flex min-w-0 items-center gap-2 sm:gap-2.5 ${
+              leadingBack ? "max-w-[min(100%,14rem)] sm:max-w-[min(100%,18rem)]" : "max-w-[58%] sm:max-w-[65%] md:max-w-none"
+            }`}
+          >
+            <NeoLogoMark className="h-8 w-8 shrink-0 drop-shadow-[0_0_12px_rgba(0,212,255,0.25)] sm:h-9 sm:w-9" />
+            <span className="truncate bg-gradient-to-r from-[#00D2FF] to-[#9D50BB] bg-clip-text text-base font-semibold tracking-tight text-transparent sm:text-lg">
+              {brandName}
+            </span>
+          </Link>
+        </div>
         <nav className="flex shrink-0 items-center gap-2 text-xs sm:gap-3 sm:text-sm">
           {authed ? (
             <Link

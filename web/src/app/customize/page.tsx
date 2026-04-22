@@ -34,7 +34,9 @@ export default function CustomizePage() {
         >
           ← Back
         </Link>
-        <h1 className="text-2xl font-semibold">Voice &amp; Personality</h1>
+        <h1 className="neo-gradient-text text-2xl font-semibold tracking-tight">
+          Voice &amp; Personality
+        </h1>
         <p className="mt-1 text-sm text-white/45">
           Tune how NeoXAI sounds and responds.
         </p>

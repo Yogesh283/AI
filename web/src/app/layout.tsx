@@ -1,9 +1,16 @@
 import type { Metadata } from "next";
+import { Montserrat } from "next/font/google";
 import { headers } from "next/headers";
 import { SiteBrandProvider } from "@/components/SiteBrandProvider";
 import { Providers } from "./providers";
 import { resolveSiteDisplayName } from "@/lib/siteBranding";
 import "./globals.css";
+
+const montserrat = Montserrat({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
+});
 
 async function requestHost(): Promise<string> {
   const h = await headers();
@@ -32,7 +39,9 @@ export default async function RootLayout({
 
   return (
     <html lang="en" className="h-full antialiased">
-      <body className="min-h-full overflow-x-hidden font-sans selection:bg-[#00D4FF]/25 selection:text-white">
+      <body
+        className={`${montserrat.className} min-h-full overflow-x-hidden font-sans selection:bg-[#00D2FF]/25 selection:text-white`}
+      >
         <SiteBrandProvider brandName={brandName}>
           <Providers>{children}</Providers>
         </SiteBrandProvider>
