@@ -43,8 +43,8 @@ export function AppSidebar() {
   const { brandName } = useSiteBrand();
 
   return (
-    <aside className="relative z-[2] hidden w-[260px] shrink-0 flex-col border-r border-white/[0.08] bg-[#0c0f14]/98 backdrop-blur-xl md:flex">
-      <div className="flex h-14 items-center border-b border-white/[0.06] px-4">
+    <aside className="neo-shell-surface relative z-[2] hidden w-[260px] shrink-0 flex-col border-r-0 rounded-r-2xl md:flex">
+      <div className="flex h-14 items-center border-b border-white/[0.07] px-4">
         <Link
           href="/dashboard"
           className="flex min-w-0 items-center gap-2.5"
@@ -66,7 +66,7 @@ export function AppSidebar() {
                 href={item.href}
                 className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${
                   active
-                    ? "bg-[#0d1a28] text-[#00D4FF] shadow-[inset_0_0_0_1px_rgba(0,212,255,0.22)]"
+                    ? "bg-[#0f223f] text-[#79D8FF] shadow-[inset_0_0_0_1px_rgba(59,130,246,0.28)]"
                     : "text-white/55 hover:bg-white/[0.06] hover:text-white/90"
                 }`}
               >
@@ -90,7 +90,7 @@ export function AppSidebar() {
                 href={item.href}
                 className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${
                   chatActive && !nestedOnly
-                    ? "bg-[#0d1a28] text-[#00D4FF] shadow-[inset_0_0_0_1px_rgba(0,212,255,0.18)]"
+                    ? "bg-[#0f223f] text-[#79D8FF] shadow-[inset_0_0_0_1px_rgba(59,130,246,0.24)]"
                     : chatActive
                       ? "bg-white/[0.04] text-white/80"
                       : "text-white/55 hover:bg-white/[0.06] hover:text-white/90"
@@ -103,7 +103,7 @@ export function AppSidebar() {
                 href={item.nested.href}
                 className={`ml-6 flex items-center gap-2 rounded-lg py-2 pl-3 pr-2 text-[12px] transition ${
                   nestedOnly
-                    ? "bg-[#0d1a28] font-medium text-[#00D4FF] shadow-[inset_0_0_0_1px_rgba(0,212,255,0.18)]"
+                    ? "bg-[#0f223f] font-medium text-[#79D8FF] shadow-[inset_0_0_0_1px_rgba(59,130,246,0.24)]"
                     : "text-white/45 hover:bg-white/[0.05] hover:text-white/75"
                 }`}
               >

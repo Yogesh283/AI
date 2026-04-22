@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { clearSession, getStoredUser } from "@/lib/auth";
+import { useSiteBrand } from "@/components/SiteBrandProvider";
 
 /** Single character for the profile chip — first character of display name. */
 function firstCharFromProfileName(name: string) {
@@ -32,6 +33,7 @@ type Props = {
 export function MainTopNav({ center, trailingBeforeProfile }: Props) {
   const pathname = usePathname();
   const router = useRouter();
+  const { brandName } = useSiteBrand();
   const [displayName, setDisplayName] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -51,7 +53,7 @@ export function MainTopNav({ center, trailingBeforeProfile }: Props) {
   const profileLetter = firstCharFromProfileName(displayName);
 
   return (
-    <header className="sticky top-0 z-40 flex h-[52px] shrink-0 items-center justify-between gap-2 border-b border-white/[0.07] bg-[#080a0f]/95 px-4 backdrop-blur-md sm:h-14 sm:gap-3 sm:px-5 md:px-6">
+    <header className="neo-topbar sticky top-0 z-40 flex h-[52px] shrink-0 items-center justify-between gap-2 px-4 sm:h-14 sm:gap-3 sm:px-5 md:px-6">
       <div className="relative shrink-0">
         <button
           type="button"
@@ -76,7 +78,7 @@ export function MainTopNav({ center, trailingBeforeProfile }: Props) {
             />
             <nav
               id="main-nav-menu"
-              className="absolute left-0 top-[calc(100%+8px)] z-50 min-w-[13.5rem] rounded-xl border border-white/[0.1] bg-[#121820] py-2 shadow-[0_12px_40px_rgba(0,0,0,0.45)]"
+              className="neo-shell-surface absolute left-0 top-[calc(100%+8px)] z-50 min-w-[13.5rem] rounded-xl py-2"
               role="navigation"
               aria-label="Main menu"
             >
@@ -98,7 +100,7 @@ export function MainTopNav({ center, trailingBeforeProfile }: Props) {
                         href={item.href}
                         className={`block rounded-lg px-3 py-2.5 text-sm font-medium transition ${
                           active
-                            ? "border-l-2 border-[#00D4FF] bg-[#00D4FF]/10 pl-[10px] text-white"
+                            ? "border-l-2 border-[#3B82F6] bg-[#3B82F6]/16 pl-[10px] text-white"
                             : "border-l-2 border-transparent pl-[10px] text-white/85 hover:bg-white/[0.06]"
                         }`}
                         onClick={() => setMenuOpen(false)}
@@ -132,7 +134,9 @@ export function MainTopNav({ center, trailingBeforeProfile }: Props) {
           {center}
         </div>
       ) : (
-        <div className="min-w-0 flex-1" aria-hidden />
+        <div className="min-w-0 flex-1 truncate text-center text-[13px] font-semibold tracking-tight text-white/92 sm:text-[15px]">
+          {brandName}
+        </div>
       )}
 
       <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">

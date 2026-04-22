@@ -720,7 +720,8 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
         "news.google.com/rss/articles/CBM…), no scraper junk. Rewrite as a clean, readable short analysis—lead with "
         "the takeaway, then key facts in plain words. If snippets disagree or are too thin, say that clearly. "
         "Before you send: every number or rank you state must be traceable to a specific phrase in the snippet lines; "
-        "if you cannot trace it, omit it."
+        "if you cannot trace it, omit it. For volatile queries (prices, rates, standings), include source context in "
+        "plain language and explicitly call out conflicts when snippets disagree."
     )
     sports_standings_rule = ""
     if is_sports_live_query(last_user):

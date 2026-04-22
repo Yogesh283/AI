@@ -19,8 +19,8 @@ export function GradientButton({
   type = "button",
   disabled = false,
 }: Props) {
-  const solid = `neo-gradient-fill inline-flex items-center justify-center rounded-2xl px-8 py-3.5 text-sm font-semibold text-[#050912] shadow-[0_0_32px_rgba(0,212,255,0.28),0_0_52px_rgba(106,92,255,0.22),0_0_64px_rgba(200,92,255,0.12)] transition hover:brightness-110 active:scale-[0.98] ${className}`;
-  const outline = `inline-flex items-center justify-center rounded-2xl border border-white/20 bg-white/5 px-8 py-3.5 text-sm font-medium text-white/85 backdrop-blur-sm transition hover:border-[#00D4FF]/50 hover:bg-white/10 active:scale-[0.98] ${className}`;
+  const solid = `neo-gradient-fill inline-flex items-center justify-center rounded-2xl px-8 py-3.5 text-sm font-semibold text-[#041120] shadow-[0_0_30px_rgba(0,212,255,0.24),0_0_54px_rgba(59,130,246,0.2),0_0_72px_rgba(106,92,255,0.14)] transition hover:brightness-110 active:scale-[0.98] ${className}`;
+  const outline = `inline-flex items-center justify-center rounded-2xl border border-white/20 bg-white/5 px-8 py-3.5 text-sm font-medium text-white/85 backdrop-blur-sm transition hover:border-[#3B82F6]/50 hover:bg-white/10 active:scale-[0.98] ${className}`;
   const cls = variant === "solid" ? solid : outline;
   if (href) {
     return (

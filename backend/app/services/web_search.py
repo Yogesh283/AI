@@ -32,6 +32,16 @@ IPL_TRUSTED_STANDINGS_HOSTS: tuple[str, ...] = (
     "sports.ndtv.com",
     "www.sports.ndtv.com",
 )
+IPL_STANDINGS_HOST_PRIORITY: dict[str, int] = {
+    "www.iplt20.com": 0,
+    "iplt20.com": 0,
+    "www.espncricinfo.com": 1,
+    "espncricinfo.com": 1,
+    "www.cricbuzz.com": 2,
+    "cricbuzz.com": 2,
+    "www.sports.ndtv.com": 3,
+    "sports.ndtv.com": 3,
+}
 
 # Broad industry / sector vocabulary → live Google bias (EN + HI). Avoid very short tokens (false positives).
 INDUSTRY_LIVE_QUERY_TERMS_EN: tuple[str, ...] = (
@@ -134,6 +144,41 @@ INDUSTRY_LIVE_QUERY_TERMS_HI: tuple[str, ...] = (
 def _looks_like_ipl_points_query(text: str) -> bool:
     s = (text or "").lower()
     return "ipl" in s and any(k in s for k in ("points table", "point table", "standings", "ranking", "ranks"))
+
+
+def _is_volatile_live_query(text: str) -> bool:
+    s = (text or "").lower()
+    return any(
+        k in s
+        for k in (
+            "gold",
+            "silver",
+            "bullion",
+            "price",
+            "rate",
+            "24k",
+            "22k",
+            "18k",
+            "ipl",
+            "points table",
+            "standings",
+            "ranking",
+        )
+    )
+
+
+def _prepend_reality_guard(bundle: str, *, query: str, has_web: bool, has_rss: bool) -> str:
+    if not _is_volatile_live_query(query):
+        return bundle
+    note = (
+        "__IMPORTANT: Live report mode for volatile facts (prices/standings): state only numbers that appear in the "
+        "snippet lines, include source context, and if sources disagree say values are conflicting instead of picking "
+        "a single 'final' number from memory.__\n\n"
+    )
+    # Still keep response usable even when only one source family is available.
+    if has_web or has_rss:
+        return note + bundle
+    return bundle
 
 
 def _is_trusted_ipl_standings_entry(query: str, title: str, snippet: str, link: str) -> bool:
@@ -329,6 +374,13 @@ async def _fetch_serpapi_web_snippets(query: str, *, limit: int) -> str:
             if _is_trusted_ipl_standings_entry(query, title, snippet, link):
                 filtered.append(it)
         chosen = filtered if filtered else [it for it in items if isinstance(it, dict)]
+        if _looks_like_ipl_points_query(query):
+            chosen.sort(
+                key=lambda it: IPL_STANDINGS_HOST_PRIORITY.get(
+                    urlparse(str(it.get("link") or "")).netloc.lower().strip(),
+                    99,
+                )
+            )
         lines: list[str] = []
         for i, it in enumerate(chosen[:count], 1):
             if not isinstance(it, dict):
@@ -407,6 +459,17 @@ async def _fetch_google_cse_snippets(query: str, *, limit: int) -> tuple[str, bo
         items = data.get("items") or []
         if not isinstance(items, list) or not items:
             return "", False
+        if _looks_like_ipl_points_query(query):
+            filtered_items: list[dict] = []
+            for it in items:
+                if not isinstance(it, dict):
+                    continue
+                title = str(it.get("title") or "").strip()
+                snippet = str(it.get("snippet") or "").strip()
+                link = str(it.get("link") or "").strip()
+                if _is_trusted_ipl_standings_entry(query, title, snippet, link):
+                    filtered_items.append(it)
+            items = filtered_items if filtered_items else items
         lines: list[str] = []
         for i, it in enumerate(items[:limit], 1):
             if not isinstance(it, dict):
@@ -479,6 +542,12 @@ async def fetch_google_snippets(query: str, *, limit: int = 8) -> str:
         parts.append("## News (Google News RSS)\n" + rss.strip())
     if parts:
         bundle = "\n\n".join(parts)
+        bundle = _prepend_reality_guard(
+            bundle,
+            query=query,
+            has_web=bool(serpapi.strip() or brave.strip() or cse.strip()),
+            has_rss=bool(rss.strip()),
+        )
         if cse_rate_limited and not cse.strip() and rss.strip() and not brave.strip() and not serpapi.strip():
             bundle = (
                 "__IMPORTANT: Custom Search (web) API hit rate limits—only News RSS lines appear below. "

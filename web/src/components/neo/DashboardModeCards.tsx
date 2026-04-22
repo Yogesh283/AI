@@ -65,12 +65,12 @@ export function DashboardModeCards() {
   const voiceThumb = getNeoAvatar(avatarId);
   const voiceThumbUnoptimized = voiceThumb.imageSrc.endsWith(".svg");
 
-  const title = greetName ? `Welcome back, ${greetName}` : "You're in";
+  const title = greetName ? `Your Intelligent AI Assistant, ${greetName}` : "Your Intelligent AI Assistant";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col justify-center px-4 pb-12 pt-5 sm:px-6 md:px-10 md:pb-16 md:pt-8">
-      <div className="mx-auto w-full max-w-3xl">
-        <div className="relative overflow-hidden rounded-[1.85rem] border border-white/[0.1] bg-gradient-to-b from-white/[0.09] via-[#0a0e16]/95 to-[#060910] p-6 shadow-[0_0_0_1px_rgba(0,212,255,0.12),0_8px_32px_rgba(0,0,0,0.35),0_32px_96px_rgba(0,0,0,0.4)] backdrop-blur-sm sm:p-8 md:p-11">
+      <div className="mx-auto w-full max-w-5xl">
+        <div className="neo-screen-card relative overflow-hidden rounded-[1.85rem] p-5 sm:p-8 md:p-10">
           <div
             className="pointer-events-none absolute -right-24 -top-28 h-72 w-72 rounded-full bg-[#00D4FF]/[0.1] blur-3xl"
             aria-hidden
@@ -84,27 +84,47 @@ export function DashboardModeCards() {
             aria-hidden
           />
 
-          <header className="relative text-center">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#00D4FF]/85">
-              {brandName} · Home
-            </p>
-            <h1 className="mt-3.5 bg-gradient-to-r from-white via-[#e8fbff] to-white/65 bg-clip-text text-2xl font-extrabold tracking-tight text-transparent sm:text-3xl md:text-[2.125rem] md:leading-tight">
-              {title}
-            </h1>
-            <p className="mx-auto mt-4 max-w-lg text-[14px] leading-relaxed text-white/58 sm:text-[15px]">
-              Voice, chat, and memory — one assistant, all connected. Pick a mode below or use the quick links.
-            </p>
-            <p className="mx-auto mt-2.5 max-w-md text-[12px] leading-relaxed text-white/40">
-              Same account everywhere: browser or app — settings and memory stay in sync.
-            </p>
-          </header>
+          <div className="relative grid gap-6 md:grid-cols-[1.15fr_0.85fr] md:items-center">
+            <header className="relative">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[#6dd5ff]">
+                {brandName}
+              </p>
+              <h1 className="mt-3 bg-gradient-to-r from-white via-[#d8ecff] to-white/70 bg-clip-text text-3xl font-extrabold tracking-tight text-transparent sm:text-4xl">
+                {title}
+              </h1>
+              <p className="mt-3 max-w-md text-[14px] leading-relaxed text-white/62">
+                Chat, search, write, analyze and automate your everyday tasks in one place.
+              </p>
+              <div className="mt-5 flex flex-wrap gap-3">
+                <Link
+                  href="/chat?new=1"
+                  className="neo-blue-button inline-flex rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition hover:brightness-110"
+                >
+                  Start Chatting
+                </Link>
+                <Link
+                  href="/customize"
+                  className="inline-flex rounded-xl border border-white/20 bg-white/5 px-5 py-2.5 text-sm font-semibold text-white/90 transition hover:bg-white/10"
+                >
+                  Explore Features
+                </Link>
+              </div>
+            </header>
+            <div className="relative flex items-center justify-center py-2">
+              <div className="absolute h-52 w-52 rounded-full bg-[#1c7dff]/25 blur-3xl" aria-hidden />
+              <div className="relative flex h-44 w-44 items-center justify-center rounded-full border border-[#9ec4ff]/35 bg-[radial-gradient(circle_at_35%_30%,rgba(148,215,255,0.44),rgba(23,84,208,0.58)_55%,rgba(9,29,74,0.92)_100%)] shadow-[0_0_55px_rgba(35,136,255,0.45)]">
+                <span className="absolute h-24 w-24 rounded-full border border-white/25" />
+                <span className="absolute h-4 w-4 rounded-full bg-[#9ee6ff] shadow-[0_0_18px_rgba(158,230,255,0.95)]" />
+              </div>
+            </div>
+          </div>
 
-          <div className="relative mt-9 grid gap-4 sm:grid-cols-2 sm:gap-6">
+          <div className="relative mt-8 grid gap-3 grid-cols-2 lg:grid-cols-4">
             <Link
               href="/voice"
-              className="group relative flex flex-col overflow-hidden rounded-2xl border border-white/[0.09] bg-gradient-to-br from-[#00D4FF]/[0.14] via-[#6A5CFF]/[0.08] to-[#C85CFF]/[0.1] p-5 transition duration-200 hover:-translate-y-0.5 hover:border-[#6A5CFF]/45 hover:shadow-[0_0_48px_rgba(106,92,255,0.18),0_0_56px_rgba(200,92,255,0.1),0_16px_40px_rgba(0,0,0,0.25)] active:translate-y-0 sm:p-6"
+              className="neo-list-row group relative flex flex-col overflow-hidden rounded-xl p-4 transition duration-200 hover:-translate-y-0.5 hover:border-[#3B82F6]/45"
             >
-              <div className="mb-4 flex items-start justify-between gap-3">
+              <div className="mb-3 flex items-start justify-between gap-3">
                 <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-white/[0.12] bg-black/50 shadow-inner">
                   <Image
                     src={voiceThumb.imageSrc}
@@ -119,18 +139,18 @@ export function DashboardModeCards() {
                   <IconMicCenter />
                 </span>
               </div>
-              <h2 className="text-lg font-bold tracking-tight text-white">Voice chat</h2>
-              <p className="mt-1.5 flex-1 text-[13px] leading-relaxed text-white/52">
-                Hands-free — speak into the mic and the 3D assistant replies.
+              <h2 className="text-base font-bold tracking-tight text-white">Voice Chat</h2>
+              <p className="mt-1.5 flex-1 text-xs leading-relaxed text-white/55">
+                Talk naturally and get instant spoken responses.
               </p>
-              <span className="mt-4 flex items-center gap-1.5 text-xs font-semibold text-[#7ee8ea]">
-                Start session <Chevron />
+              <span className="mt-3 flex items-center gap-1.5 text-[11px] font-semibold text-[#8dd6ff]">
+                Open <Chevron />
               </span>
             </Link>
 
             <Link
               href="/chat"
-              className="group relative flex flex-col overflow-hidden rounded-2xl border border-white/[0.09] bg-gradient-to-br from-white/[0.07] via-white/[0.02] to-transparent p-5 transition duration-200 hover:-translate-y-0.5 hover:border-[#6A5CFF]/38 hover:bg-white/[0.05] hover:shadow-[0_0_40px_rgba(106,92,255,0.12),0_16px_40px_rgba(0,0,0,0.2)] active:translate-y-0 sm:p-6"
+              className="neo-list-row group relative flex flex-col overflow-hidden rounded-xl p-4 transition duration-200 hover:-translate-y-0.5 hover:border-[#3B82F6]/42"
             >
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[#00D4FF]/22 bg-[#0a1018]">
@@ -140,32 +160,29 @@ export function DashboardModeCards() {
                   <IconChat />
                 </span>
               </div>
-              <h2 className="text-lg font-bold tracking-tight text-white">Open chat</h2>
-              <p className="mt-1.5 flex-1 text-[13px] leading-relaxed text-white/52">
-                Type away — best for long threads, code, and detailed answers.
+              <h2 className="text-base font-bold tracking-tight text-white">Smart Chat</h2>
+              <p className="mt-1.5 flex-1 text-xs leading-relaxed text-white/55">
+                Get clean answers, drafts, ideas and planning help.
               </p>
-              <span className="mt-4 flex items-center gap-1.5 text-xs font-semibold text-[#00D4FF]/95">
-                Open thread <Chevron />
+              <span className="mt-3 flex items-center gap-1.5 text-[11px] font-semibold text-[#8dd6ff]">
+                Open <Chevron />
               </span>
             </Link>
-          </div>
-
-          <div className="relative mt-9 rounded-2xl border border-white/[0.06] bg-black/20 px-4 py-5 sm:px-5">
-            <p className="mb-3.5 text-center text-[10px] font-semibold uppercase tracking-[0.2em] text-white/40">
-              Quick connect
-            </p>
-            <div className="flex flex-wrap justify-center gap-2 sm:gap-3">
-              {quickLinks.map(({ href, label, Icon }) => (
-                <Link
-                  key={href}
-                  href={href}
-                  className="inline-flex items-center gap-2 rounded-full border border-white/[0.1] bg-white/[0.04] px-4 py-2.5 text-[12px] font-medium text-white/80 shadow-sm transition hover:border-[#00D4FF]/42 hover:bg-[#00D4FF]/[0.08] hover:text-white hover:shadow-[0_0_20px_rgba(0,212,255,0.14)]"
-                >
+            {quickLinks.map(({ href, label, Icon }) => (
+              <Link
+                key={href}
+                href={href}
+                className="neo-list-row group relative flex min-h-[148px] flex-col overflow-hidden rounded-xl p-4 transition duration-200 hover:-translate-y-0.5 hover:border-[#3B82F6]/42"
+              >
+                <span className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.06] text-white/80">
                   <Icon />
-                  {label}
-                </Link>
-              ))}
-            </div>
+                </span>
+                <h2 className="text-base font-bold tracking-tight text-white">{label}</h2>
+                <p className="mt-1.5 flex-1 text-xs leading-relaxed text-white/55">
+                  Manage your {label.toLowerCase()} settings quickly.
+                </p>
+              </Link>
+            ))}
           </div>
         </div>
       </div>

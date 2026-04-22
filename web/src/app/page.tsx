@@ -1,221 +1,55 @@
 "use client";
 
-import { motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { SPLASH } from "@/shared/neoContent";
 import { useSiteBrand } from "@/components/SiteBrandProvider";
 import { NeoPublicShell } from "@/components/neo/NeoPublicShell";
 import { NeoLogoHead } from "@/components/neo/NeoLogoHead";
 import { getStoredToken } from "@/lib/auth";
 
-function SplashRingGradients({ uid }: { uid: string }) {
-  return (
-    <defs>
-      <linearGradient id={`splashRing-${uid}`} x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stopColor="#00D4FF" />
-        <stop offset="50%" stopColor="#6A5CFF" />
-        <stop offset="100%" stopColor="#C85CFF" />
-      </linearGradient>
-    </defs>
-  );
-}
-
-export default function SplashPage() {
+export default function LandingPage() {
   const router = useRouter();
   const { brandName } = useSiteBrand();
-  const [p, setP] = useState(0);
-  /** `checking`: token probe; `guest`: show splash; `redirect` — logged-in, avoid animating splash repeatedly */
-  const [gate, setGate] = useState<"checking" | "guest" | "redirect">("checking");
 
   useEffect(() => {
-    if (getStoredToken()) {
-      setGate("redirect");
-      router.replace("/dashboard");
-      return;
-    }
-    setGate("guest");
-    const splashMs = 2000;
-    const tickMs = 50;
-    const steps = Math.ceil(splashMs / tickMs);
-    const inc = 100 / steps;
-    const t = setInterval(() => {
-      setP((x) => (x >= 100 ? 100 : Math.min(100, x + inc)));
-    }, tickMs);
-    const goLogin = setTimeout(() => {
-      router.replace("/login");
-    }, splashMs);
-    return () => {
-      clearInterval(t);
-      clearTimeout(goLogin);
-    };
+    if (getStoredToken()) router.replace("/dashboard");
   }, [router]);
 
-  if (gate === "checking" || gate === "redirect") {
-    return (
-      <NeoPublicShell maxWidth="max-w-lg">
-        <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 px-4 py-16">
-          <NeoLogoHead className="h-16 w-16 opacity-90" priority />
-          <p className="text-center text-sm text-white/50">{gate === "redirect" ? "Opening app…" : "Loading…"}</p>
-        </div>
-      </NeoPublicShell>
-    );
-  }
-
   return (
-    <NeoPublicShell maxWidth="max-w-lg">
-      <div className="relative flex flex-1 flex-col gap-8 pb-12 pt-2 md:gap-10 md:pb-16">
-        <motion.section
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-          className="neo-splash-hero relative border border-white/[0.07]"
-        >
-          <div
-            className="neo-splash-star-cluster left-[10%] top-[14%] opacity-80"
-            aria-hidden
-          />
-          <div
-            className="neo-splash-star-cluster right-[12%] top-[22%] opacity-60"
-            style={{ animationDelay: "1.2s" }}
-            aria-hidden
-          />
-
-          <div className="relative mx-auto flex min-h-[min(68vh,420px)] flex-col items-center justify-center px-4 pb-28 pt-16 md:min-h-[440px] md:pb-32 md:pt-20">
-            <div className="relative flex h-[min(72vw,280px)] w-[min(72vw,280px)] items-center justify-center md:h-[280px] md:w-[280px]">
-              <motion.div
-                className="absolute inset-0 flex items-center justify-center"
-                animate={{ rotate: 360 }}
-                transition={{ duration: 28, repeat: Infinity, ease: "linear" }}
-              >
-                <svg
-                  viewBox="0 0 200 200"
-                  className="h-full w-full"
-                  aria-hidden
-                >
-                  <SplashRingGradients uid="a" />
-                  <circle
-                    cx="100"
-                    cy="100"
-                    r="92"
-                    fill="none"
-                    stroke={`url(#splashRing-a)`}
-                    strokeWidth="2.5"
-                    strokeDasharray="120 460"
-                    strokeLinecap="round"
-                  />
-                  <circle
-                    cx="100"
-                    cy="100"
-                    r="82"
-                    fill="none"
-                    stroke={`url(#splashRing-a)`}
-                    strokeWidth="1.5"
-                    strokeOpacity={0.4}
-                    strokeDasharray="95 420"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </motion.div>
-              <motion.div
-                className="absolute inset-2 flex items-center justify-center opacity-80"
-                animate={{ rotate: -360 }}
-                transition={{ duration: 38, repeat: Infinity, ease: "linear" }}
-              >
-                <svg
-                  viewBox="0 0 200 200"
-                  className="h-full w-full"
-                  aria-hidden
-                >
-                  <SplashRingGradients uid="b" />
-                  <circle
-                    cx="100"
-                    cy="100"
-                    r="72"
-                    fill="none"
-                    stroke={`url(#splashRing-b)`}
-                    strokeWidth="2"
-                    strokeDasharray="70 450"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </motion.div>
-
-              <motion.div
-                className="relative z-[2] flex flex-col items-center justify-center"
-                animate={{
-                  filter: [
-                    "drop-shadow(0 0 20px rgba(0,242,255,0.35))",
-                    "drop-shadow(0 0 32px rgba(188,0,255,0.45))",
-                    "drop-shadow(0 0 20px rgba(0,242,255,0.35))",
-                  ],
-                }}
-                transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-              >
-                <NeoLogoHead
-                  priority
-                  className="h-[min(28vw,7.5rem)] w-[min(28vw,7.5rem)] shrink-0 sm:h-32 sm:w-32"
-                />
-                <p className="mt-4 text-center text-[11px] font-semibold uppercase tracking-[0.35em] text-white/40">
-                  {brandName}
-                </p>
-              </motion.div>
-            </div>
-
-            <p className="relative z-[2] mt-2 max-w-xs text-center text-sm font-medium text-white/50">
-              {SPLASH.tagline}
+    <NeoPublicShell maxWidth="max-w-6xl">
+      <section className="neo-screen-card relative mx-auto mt-3 w-full overflow-hidden rounded-[26px] px-6 py-8 sm:px-8 md:px-10 md:py-10">
+        <div className="pointer-events-none absolute -right-20 top-12 h-72 w-72 rounded-full bg-[#1f86ff]/25 blur-3xl" aria-hidden />
+        <div className="grid items-center gap-8 md:grid-cols-[1.1fr_0.9fr]">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#84d6ff]">
+              {brandName}
             </p>
+            <h1 className="mt-3 text-4xl font-extrabold leading-tight text-white sm:text-5xl">
+              Your Intelligent
+              <br />
+              AI Assistant
+            </h1>
+            <p className="mt-4 max-w-lg text-sm leading-relaxed text-white/62 sm:text-base">
+              Chat, search, write, analyze and automate tasks with one assistant for notes, meetings, reminders and daily workflows.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Link href="/login" className="neo-blue-button rounded-xl px-6 py-3 text-sm font-semibold text-white transition hover:brightness-110">
+                Get Started
+              </Link>
+              <Link href="/register" className="rounded-xl border border-white/20 bg-white/5 px-6 py-3 text-sm font-semibold text-white/90 transition hover:bg-white/10">
+                Create Account
+              </Link>
+            </div>
           </div>
-
-          <div
-            className="pointer-events-none absolute bottom-0 left-0 right-0 h-28 text-[#C85CFF]/25"
-            aria-hidden
-          >
-            <svg
-              viewBox="0 0 1440 120"
-              preserveAspectRatio="none"
-              className="h-full w-full"
-            >
-              <path
-                fill="currentColor"
-                d="M0,96 C240,32 480,112 720,72 C960,32 1200,96 1440,56 L1440,120 L0,120 Z"
-                opacity={0.45}
-              />
-              <path
-                fill="url(#splashWaveGrad)"
-                d="M0,108 C320,48 560,100 720,84 C960,64 1180,108 1440,72 L1440,120 L0,120 Z"
-                opacity={0.35}
-              />
-              <defs>
-                <linearGradient id="splashWaveGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="#00D4FF" stopOpacity={0.18} />
-                  <stop offset="55%" stopColor="#6A5CFF" stopOpacity={0.22} />
-                  <stop offset="100%" stopColor="#C85CFF" stopOpacity={0.32} />
-                </linearGradient>
-              </defs>
-            </svg>
+          <div className="relative flex items-center justify-center py-2">
+            <div className="absolute h-56 w-56 rounded-full bg-[#2591ff]/30 blur-3xl" />
+            <div className="relative flex h-52 w-52 items-center justify-center rounded-full border border-[#a8cbff]/40 bg-[radial-gradient(circle_at_30%_30%,rgba(182,229,255,0.45),rgba(34,120,255,0.58)_56%,rgba(10,29,76,0.95)_100%)] shadow-[0_0_70px_rgba(33,128,255,0.55)]">
+              <NeoLogoHead className="h-20 w-20" priority />
+            </div>
           </div>
-        </motion.section>
-
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2, duration: 0.45 }}
-          className="space-y-3 px-1"
-        >
-          <p className="text-center text-[11px] font-medium tracking-[0.2em] text-white/55">
-            {SPLASH.loadingLabel}
-          </p>
-          <div className="neo-splash-progress-track">
-            <motion.div
-              className="neo-splash-progress-fill"
-              initial={{ width: 0 }}
-              animate={{ width: `${p}%` }}
-              transition={{ type: "spring", stiffness: 38, damping: 18 }}
-            />
-          </div>
-        </motion.div>
-      </div>
+        </div>
+      </section>
     </NeoPublicShell>
   );
 }

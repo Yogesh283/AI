@@ -1,5 +1,5 @@
 export function IconHome({ active }: { active?: boolean }) {
-  const c = active ? "#00D4FF" : "rgba(255,255,255,0.4)";
+  const c = active ? "#00D4FF" : "rgba(167,176,214,0.72)";
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
@@ -13,7 +13,7 @@ export function IconHome({ active }: { active?: boolean }) {
 }
 
 export function IconChat({ active }: { active?: boolean }) {
-  const c = active ? "#00D4FF" : "rgba(255,255,255,0.4)";
+  const c = active ? "#00D4FF" : "rgba(167,176,214,0.72)";
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
@@ -41,7 +41,7 @@ export function IconMemory({ active }: { active?: boolean }) {
 }
 
 export function IconUser({ active }: { active?: boolean }) {
-  const c = active ? "#00D4FF" : "rgba(255,255,255,0.4)";
+  const c = active ? "#00D4FF" : "rgba(167,176,214,0.72)";
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
       <circle cx="12" cy="8" r="3.5" stroke={c} strokeWidth="1.6" />
@@ -152,8 +152,8 @@ export function IconGrid() {
 
 /** Reference UI: robot + Voice hub (center dock item). */
 export function IconPersonalAssistantDock({ active }: { active?: boolean }) {
-  const c = active ? "#00D4FF" : "rgba(255,255,255,0.38)";
-  const dim = active ? "rgba(106,92,255,0.45)" : "rgba(255,255,255,0.22)";
+  const c = active ? "#00D4FF" : "rgba(167,176,214,0.74)";
+  const dim = active ? "rgba(106,92,255,0.45)" : "rgba(167,176,214,0.35)";
   return (
     <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
@@ -193,7 +193,7 @@ export function IconPersonalAssistantDock({ active }: { active?: boolean }) {
 
 /** Picture frame + landscape + sparkle (Image & Graphics). */
 export function IconImageGraphics({ active }: { active?: boolean }) {
-  const c = active ? "#00D4FF" : "rgba(255,255,255,0.4)";
+  const c = active ? "#00D4FF" : "rgba(167,176,214,0.72)";
   const fillM = active ? "rgba(106,92,255,0.32)" : "rgba(255,255,255,0.08)";
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>

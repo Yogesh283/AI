@@ -52,7 +52,7 @@ export default function CustomizePage() {
               key={v.id}
               type="button"
               onClick={() => setVoice(v.id)}
-              className={`neo-glass rounded-2xl px-2 py-4 text-center transition ${
+              className={`neo-card-soft rounded-2xl px-2 py-4 text-center transition ${
                 voice === v.id
                   ? "ring-2 ring-[#00D4FF] shadow-[0_0_24px_rgba(0,212,255,0.2)]"
                   : ""
@@ -90,7 +90,7 @@ export default function CustomizePage() {
         </div>
       </section>
 
-      <section className="neo-glass mb-10 space-y-6 rounded-[28px] p-6">
+      <section className="neo-panel mb-10 space-y-6 rounded-[28px] p-6">
         <div>
           <div className="mb-2 flex justify-between text-sm">
             <span className="text-white/70">Speaking Speed</span>

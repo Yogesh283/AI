@@ -144,13 +144,13 @@ def _realtime_model() -> str:
 
 
 def _realtime_max_output_tokens() -> int:
-    """Spoken long answers need a high cap so the model does not truncate mid-explanation."""
-    raw = (os.getenv("OPENAI_REALTIME_MAX_OUTPUT_TOKENS") or "8192").strip()
+    """Realtime models reject very large caps; keep this inside safe cross-model limits."""
+    raw = (os.getenv("OPENAI_REALTIME_MAX_OUTPUT_TOKENS") or "1024").strip()
     try:
         v = int(raw)
     except ValueError:
-        return 8192
-    return max(2048, min(v, 16384))
+        return 1024
+    return max(256, min(v, 2048))
 
 
 def _realtime_input_transcription(speech_lang: str) -> dict[str, object]:

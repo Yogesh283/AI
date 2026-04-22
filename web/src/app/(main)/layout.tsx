@@ -28,7 +28,7 @@ export default function MainLayout({
       >
         <AppSidebar />
         <main
-          className={`relative flex min-h-0 min-w-0 flex-1 flex-col bg-[#0b0f16]/75 pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))] pt-[env(safe-area-inset-top,0px)] md:pb-0 md:pt-0 ${
+          className={`relative flex min-h-0 min-w-0 flex-1 flex-col bg-[#0b0f16]/75 pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))] pt-[env(safe-area-inset-top,0px)] md:pb-0 md:pt-0 ${
             isChat
               ? "h-full max-h-full overflow-hidden overscroll-none"
               : "overflow-y-auto"

@@ -75,23 +75,23 @@ export default function RegisterPage() {
 
   return (
     <NeoPublicShell>
-      <div className="pt-2">
+      <div className="neo-screen-card mx-auto w-full max-w-[28rem] rounded-[22px] px-5 py-6 pt-5 sm:px-7 sm:py-7">
           <Link
             href="/"
-            className="mb-8 inline-block text-sm text-[#00D4FF]/90 hover:underline"
+            className="neo-link-accent mb-7 inline-block text-sm hover:underline"
           >
             ← Back
           </Link>
-          <h1 className="neo-gradient-text text-2xl font-bold tracking-tight">
-            Create account
+          <h1 className="text-3xl font-bold tracking-tight text-white">
+            Create Account
           </h1>
-          <p className="mt-2 text-sm text-white/45">
-            Join {brandName} — your personal AI assistant
+          <p className="mt-2 text-sm text-white/55">
+            Start your AI journey with {brandName}
           </p>
 
-          <form onSubmit={onSubmit} className="mt-10 flex flex-col gap-5">
+          <form onSubmit={onSubmit} className="mt-8 flex flex-col gap-4">
             <div>
-              <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/40">
+              <label className="mb-2 block text-xs font-semibold tracking-wide text-white/55">
                 Display name
               </label>
               <input
@@ -99,12 +99,12 @@ export default function RegisterPage() {
                 autoComplete="name"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                className="neo-glass w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3.5 text-sm text-white outline-none ring-1 ring-white/[0.06] placeholder:text-white/30 focus:border-[#00D4FF]/40"
+                className="neo-input text-sm"
                 placeholder="Your name"
               />
             </div>
             <div>
-              <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/40">
+              <label className="mb-2 block text-xs font-semibold tracking-wide text-white/55">
                 Email
               </label>
               <input
@@ -113,12 +113,12 @@ export default function RegisterPage() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="neo-glass w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3.5 text-sm text-white outline-none ring-1 ring-white/[0.06] placeholder:text-white/30 focus:border-[#00D4FF]/40"
+                className="neo-input text-sm"
                 placeholder="you@example.com"
               />
             </div>
             <div>
-              <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/40">
+              <label className="mb-2 block text-xs font-semibold tracking-wide text-white/55">
                 Password
               </label>
               <input
@@ -127,12 +127,12 @@ export default function RegisterPage() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="neo-glass w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3.5 text-sm text-white outline-none ring-1 ring-white/[0.06] placeholder:text-white/30 focus:border-[#00D4FF]/40"
+                className="neo-input text-sm"
                 placeholder="At least 6 characters"
               />
             </div>
             <div>
-              <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/40">
+              <label className="mb-2 block text-xs font-semibold tracking-wide text-white/55">
                 Confirm password
               </label>
               <input
@@ -141,7 +141,7 @@ export default function RegisterPage() {
                 required
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
-                className="neo-glass w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3.5 text-sm text-white outline-none ring-1 ring-white/[0.06] placeholder:text-white/30 focus:border-[#00D4FF]/40"
+                className="neo-input text-sm"
                 placeholder="Repeat password"
               />
               <label className="mt-2 inline-flex cursor-pointer items-center gap-2 text-xs text-white/55">
@@ -159,11 +159,7 @@ export default function RegisterPage() {
                 {err}
               </p>
             ) : null}
-            <GradientButton
-              type="submit"
-              disabled={loading}
-              className="!mt-2 w-full !py-4 disabled:opacity-60"
-            >
+            <GradientButton type="submit" disabled={loading} className="!mt-1 w-full !rounded-xl !py-3.5 disabled:opacity-60">
               {loading ? "Creating account…" : "Register"}
             </GradientButton>
           </form>

@@ -38,6 +38,7 @@ import {
 } from "@/lib/openaiRealtimeVoice";
 
 const VOICE_HISTORY_PREFIX = "neo-voice-history-";
+const REALTIME_MAX_OUTPUT_TOKENS = 1024;
 
 /**
  * OpenAI Realtime noise: harmless or self-inflicted; do not flash yellow on APK.
@@ -545,7 +546,7 @@ export default function VoicePage() {
               type: "response.create",
               response: {
                 modalities: ["audio", "text"],
-                max_output_tokens: 8192,
+                max_output_tokens: REALTIME_MAX_OUTPUT_TOKENS,
               },
             });
             /* Single re-arm after new response starts — no per-turn spam (reduces APK mic focus noise). */
@@ -802,13 +803,21 @@ export default function VoicePage() {
       />
 
       <div className="mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col px-4 py-6 md:max-w-xl">
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center">
+        <div className="neo-screen-card flex min-h-0 flex-1 flex-col items-center justify-center rounded-[24px] px-4 py-5">
           {!isOpenAiRealtimeVoiceSupported() ? (
             <p className="mb-6 max-w-sm text-center text-[11px] leading-relaxed text-amber-400/90">
               Live needs HTTPS and WebRTC. Update Android System WebView / Chrome on this device.
             </p>
           ) : null}
-          <div className="relative flex flex-col items-center">
+            <div className="relative flex flex-col items-center">
+              <div
+                className="pointer-events-none absolute -left-20 top-1/2 h-[2px] w-16 bg-gradient-to-r from-transparent via-[#58adff]/90 to-transparent"
+                aria-hidden
+              />
+              <div
+                className="pointer-events-none absolute -right-20 top-1/2 h-[2px] w-16 bg-gradient-to-r from-transparent via-[#58adff]/90 to-transparent"
+                aria-hidden
+              />
             <VoiceSessionWaveform
               sessionOn={sessionOn}
               speaking={speaking}
@@ -846,7 +855,7 @@ export default function VoicePage() {
               key={sessionOn ? `live-${micSessionKey}` : "idle-mic"}
               type="button"
               onClick={toggleMic}
-              className={`relative z-[1] mt-4 flex h-[88px] w-[88px] shrink-0 items-center justify-center rounded-full text-white transition-transform duration-200 active:scale-[0.97] ${micButtonClass}`}
+              className={`relative z-[1] mt-4 flex h-[106px] w-[106px] shrink-0 items-center justify-center rounded-full text-white transition-transform duration-200 active:scale-[0.97] ${micButtonClass}`}
               aria-pressed={sessionOn}
               aria-label={sessionOn ? "End voice session" : "Start voice session"}
             >
@@ -860,6 +869,12 @@ export default function VoicePage() {
             </button>
           </div>
 
+          <p className="mt-4 text-sm font-medium text-white/75">
+            {sessionOn ? "Listening..." : "Voice Chat"}
+          </p>
+          <p className="mt-1 text-xs text-white/55">
+            {sessionOn ? "Tap the button to stop" : "Speak with AI naturally"}
+          </p>
           {err && !sessionOn ? (
             <p className="mt-6 max-w-md text-center text-xs leading-relaxed text-amber-400/95" role="alert">
               {err}

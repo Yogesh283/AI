@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useLayoutEffect, useState } from "react";
 import { useSiteBrand } from "@/components/SiteBrandProvider";
 import { NeoBackground } from "@/components/neo/NeoBackground";
+import { NeoBottomDock } from "@/components/neo/NeoBottomDock";
 import { NeoLogoMark } from "@/components/neo/NeoLogoHead";
 import { getStoredToken } from "@/lib/auth";
 
@@ -38,7 +39,7 @@ export function NeoPublicShell({
   return (
     <div className="relative z-[1] flex min-h-screen flex-col">
       <NeoBackground stars={20} />
-      <header className="sticky top-0 z-50 flex h-auto min-h-14 shrink-0 items-center justify-between gap-2 border-b border-white/[0.08] bg-[#0b0e14]/92 px-3 pt-[max(0.35rem,env(safe-area-inset-top,0px))] pb-2 backdrop-blur-xl sm:gap-3 sm:px-4 md:h-14 md:min-h-0 md:px-8 md:py-0 md:pt-0">
+      <header className="neo-topbar sticky top-0 z-50 flex h-auto min-h-14 shrink-0 items-center justify-between gap-2 px-3 pt-[max(0.35rem,env(safe-area-inset-top,0px))] pb-2 sm:gap-3 sm:px-4 md:h-14 md:min-h-0 md:px-8 md:py-0 md:pt-0">
         <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3 md:gap-4">
           {leadingBack ? (
             <Link
@@ -54,7 +55,7 @@ export function NeoPublicShell({
               leadingBack ? "max-w-[min(100%,14rem)] sm:max-w-[min(100%,18rem)]" : "max-w-[58%] sm:max-w-[65%] md:max-w-none"
             }`}
           >
-            <NeoLogoMark className="h-8 w-8 shrink-0 drop-shadow-[0_0_12px_rgba(0,212,255,0.25)] sm:h-9 sm:w-9" />
+            <NeoLogoMark className="h-8 w-8 shrink-0 drop-shadow-[0_0_14px_rgba(0,212,255,0.3)] sm:h-9 sm:w-9" />
             <span className="neo-gradient-text truncate text-base font-semibold tracking-tight sm:text-lg">
               {brandName}
             </span>
@@ -87,10 +88,11 @@ export function NeoPublicShell({
         </nav>
       </header>
       <div
-        className={`relative z-[1] mx-auto flex w-full flex-1 flex-col px-4 py-8 pb-28 sm:px-5 sm:py-10 md:px-8 ${maxWidth}`}
+        className={`relative z-[1] mx-auto flex w-full flex-1 flex-col px-4 py-8 pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))] sm:px-5 sm:py-10 md:px-8 md:pb-10 ${maxWidth}`}
       >
         {children}
       </div>
+      <NeoBottomDock />
     </div>
   );
 }

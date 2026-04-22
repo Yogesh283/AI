@@ -183,7 +183,7 @@ export default function ProfilePage() {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#080a0f]">
       <MainTopNav center={navCenter} />
-      <div className="flex shrink-0 items-center border-b border-white/[0.07] bg-[#080a0f]/95 px-4 py-2 md:px-8">
+      <div className="neo-topbar flex shrink-0 items-center px-4 py-2 md:px-8">
         <button
           type="button"
           onClick={goBackFromProfile}
@@ -194,8 +194,8 @@ export default function ProfilePage() {
       </div>
       <div className="relative z-[1] min-h-0 flex-1 overflow-y-auto px-4 pb-10 pt-4 md:px-8">
       <div className="mx-auto max-w-3xl space-y-6">
-        <div className="flex flex-col items-center text-center">
-          <div className="relative mb-3 h-24 w-24 overflow-hidden rounded-full border-2 border-[#00D4FF]/35 bg-[#0a0f18] shadow-[0_0_36px_rgba(0,212,255,0.2)] ring-2 ring-black/20">
+        <div className="neo-screen-card flex flex-col items-center rounded-[22px] px-5 py-6 text-center">
+          <div className="relative mb-3 h-24 w-24 overflow-hidden rounded-full border-2 border-[#64bdff]/45 bg-[#0a0f18] shadow-[0_0_36px_rgba(35,136,255,0.35)] ring-2 ring-black/20">
             <Image
               src={avatar.imageSrc}
               alt=""
@@ -210,7 +210,7 @@ export default function ProfilePage() {
             {user.display_name?.trim() || "Add your display name below"}
           </h1>
           <p className="mt-1 max-w-sm truncate text-sm text-white/45">{user.email}</p>
-          <p className="mt-2 rounded-full border border-[#C85CFF]/35 bg-[#C85CFF]/10 px-4 py-1.5 text-xs font-semibold text-[#e9c2ff]">
+          <p className="mt-2 rounded-full border border-[#3B82F6]/40 bg-[#3B82F6]/12 px-4 py-1.5 text-xs font-semibold text-[#b5deff]">
             {user.auth_provider === "google" ? "Google account" : "Email account"}
           </p>
         </div>
@@ -227,7 +227,7 @@ export default function ProfilePage() {
         )}
 
         {/* Account */}
-        <section className="neo-glass overflow-hidden rounded-[22px] ring-1 ring-white/[0.06]">
+        <section className="neo-screen-card overflow-hidden rounded-[22px]">
           <div className="border-b border-white/[0.07] px-5 py-3.5">
             <h2 className="text-sm font-semibold text-white/90">Account</h2>
             <p className="mt-0.5 text-xs text-white/40">Email, display name &amp; password</p>
@@ -240,7 +240,7 @@ export default function ProfilePage() {
               <input
                 readOnly
                 value={user.email}
-                className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2.5 text-sm text-white/55 outline-none"
+                className="neo-input text-sm text-white/60"
               />
               <p className="mt-1 text-[11px] text-white/30">Email change — coming soon.</p>
             </div>
@@ -252,7 +252,7 @@ export default function ProfilePage() {
                 <input
                   value={nameDraft}
                   onChange={(e) => setNameDraft(e.target.value)}
-                  className="min-w-0 flex-1 rounded-xl border border-white/[0.12] bg-[#0c1018] px-3 py-2.5 text-sm text-white outline-none ring-1 ring-transparent focus:border-[#00D4FF]/40 focus:ring-[#00D4FF]/20"
+                  className="neo-input min-w-0 flex-1 text-sm"
                   maxLength={80}
                   minLength={1}
                   required
@@ -287,7 +287,7 @@ export default function ProfilePage() {
                     value={curPw}
                     onChange={(e) => setCurPw(e.target.value)}
                     placeholder="Current password"
-                    className="w-full rounded-xl border border-white/[0.12] bg-[#0c1018] px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/25"
+                    className="neo-input text-sm"
                     autoComplete="current-password"
                   />
                   <input
@@ -295,7 +295,7 @@ export default function ProfilePage() {
                     value={newPw}
                     onChange={(e) => setNewPw(e.target.value)}
                     placeholder="New password (min 6)"
-                    className="w-full rounded-xl border border-white/[0.12] bg-[#0c1018] px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/25"
+                    className="neo-input text-sm"
                     autoComplete="new-password"
                   />
                   <input
@@ -303,7 +303,7 @@ export default function ProfilePage() {
                     value={confirmPw}
                     onChange={(e) => setConfirmPw(e.target.value)}
                     placeholder="Confirm new password"
-                    className="w-full rounded-xl border border-white/[0.12] bg-[#0c1018] px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/25"
+                    className="neo-input text-sm"
                     autoComplete="new-password"
                   />
                   <button
