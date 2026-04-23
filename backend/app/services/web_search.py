@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 import httpx
 
 from app.config import settings
+from app.db_mysql import pool_ready, reserve_daily_api_call
 from app.services.newsapi_search import fetch_newsapi_everything_snippets
 
 logger = logging.getLogger(__name__)
@@ -313,6 +314,12 @@ async def _fetch_serpapi_web_snippets(query: str, *, limit: int) -> str:
     token = (settings.serpapi_api_key or "").strip()
     if not token:
         return ""
+    # Daily hard cap to control SerpAPI usage (cron + on-demand together).
+    if pool_ready():
+        allowed = await reserve_daily_api_call("serpapi", daily_limit=settings.serpapi_daily_limit)
+        if not allowed:
+            logger.info("SerpAPI daily cap reached (%s/day); skipping", settings.serpapi_daily_limit)
+            return ""
     q = augment_search_query((query or "").strip()[:MAX_GOOGLE_QUERY_CHARS])
     if not q:
         return ""

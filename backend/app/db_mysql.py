@@ -52,8 +52,9 @@ async def init_pool() -> None:
         try:
             await ensure_live_data_table()
             await ensure_new_data_table()
+            await ensure_api_daily_usage_table()
         except Exception as e:
-            logger.warning("ensure_live_data_table / ensure_new_data_table failed: %s", e)
+            logger.warning("ensure_*_table failed during pool init: %s", e)
     except Exception as e:
         logger.warning("MySQL pool failed: %s", e)
         _pool = None
@@ -503,6 +504,61 @@ async def ensure_new_data_table() -> None:
             await cur.execute(_NEW_DATA_DDL)
 
 
+_API_DAILY_USAGE_DDL = """
+CREATE TABLE IF NOT EXISTS api_daily_usage (
+  api_name VARCHAR(64) NOT NULL,
+  usage_date DATE NOT NULL,
+  used_count INT NOT NULL DEFAULT 0,
+  updated_at DATETIME(6) NOT NULL,
+  PRIMARY KEY (api_name, usage_date),
+  KEY idx_api_daily_usage_updated (updated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+COMMENT='Daily API quota counters (e.g., SerpAPI) shared by cron + on-demand fetch'
+"""
+
+
+async def ensure_api_daily_usage_table() -> None:
+    if _pool is None:
+        return
+    if await _mysql_table_exists("api_daily_usage"):
+        return
+    async with _pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(_API_DAILY_USAGE_DDL)
+
+
+async def reserve_daily_api_call(api_name: str, *, daily_limit: int) -> bool:
+    """
+    Atomically reserve one API call token for current UTC date.
+    Returns True when reservation succeeded; False when limit reached/unavailable.
+    """
+    if _pool is None:
+        return False
+    name = (api_name or "").strip().lower()[:64]
+    if not name:
+        return False
+    lim = max(1, int(daily_limit))
+    now_ts = datetime.now(timezone.utc).replace(tzinfo=None)
+    try:
+        async with _pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "INSERT IGNORE INTO api_daily_usage (api_name, usage_date, used_count, updated_at) "
+                    "VALUES (%s, UTC_DATE(), 0, %s)",
+                    (name, now_ts),
+                )
+                await cur.execute(
+                    "UPDATE api_daily_usage "
+                    "SET used_count = used_count + 1, updated_at = %s "
+                    "WHERE api_name = %s AND usage_date = UTC_DATE() AND used_count < %s",
+                    (now_ts, name, lim),
+                )
+                return cur.rowcount > 0
+    except Exception as e:
+        logger.warning("reserve_daily_api_call failed (%s): %s", name, e)
+        return False
+
+
 def _normalize_new_data_section(section: str) -> str:
     s = " ".join((section or "").strip().split())
     return s[:500]
@@ -605,6 +661,40 @@ async def new_data_insert_if_changed(*, section: str, snippet_body: str, api_sou
     except Exception as e:
         logger.warning("new_data_insert_if_changed failed: %s", e)
         return False
+
+
+async def new_data_list_since_id(*, after_id: int = 0, limit: int = 200) -> list[dict[str, Any]]:
+    """Rows from `new_data` after a watermark id (ascending)."""
+    if _pool is None:
+        return []
+    aid = max(0, int(after_id))
+    lim = max(1, min(int(limit), 1000))
+    try:
+        async with _pool.acquire() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cur:
+                await cur.execute(
+                    "SELECT id, section, api_source, snippet_body, created_at "
+                    "FROM new_data WHERE id > %s ORDER BY id ASC LIMIT %s",
+                    (aid, lim),
+                )
+                rows = await cur.fetchall() or []
+    except Exception as e:
+        logger.warning("new_data_list_since_id failed: %s", e)
+        return []
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        out.append(
+            {
+                "id": int(r.get("id") or 0),
+                "section": str(r.get("section") or ""),
+                "api_source": str(r.get("api_source") or ""),
+                "snippet_body": str(r.get("snippet_body") or ""),
+                "created_at": r.get("created_at"),
+            }
+        )
+    return out
 
 
 async def live_data_list_stale(*, ttl_minutes: int, limit: int = 30) -> list[dict[str, Any]]:

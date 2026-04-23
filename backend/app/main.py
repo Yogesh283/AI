@@ -16,6 +16,7 @@ from app.services.ai import _openai_api_key
 logger = logging.getLogger(__name__)
 _live_data_refresh_task: asyncio.Task[None] | None = None
 _live_cron_startup_task: asyncio.Task[None] | None = None
+_new_data_training_export_task: asyncio.Task[None] | None = None
 
 
 async def _live_cron_startup_once() -> None:
@@ -47,12 +48,32 @@ async def _live_data_refresh_loop() -> None:
         await asyncio.sleep(interval)
 
 
+async def _new_data_training_export_loop() -> None:
+    """Every N seconds: append new MySQL `new_data` rows to JSONL training corpus."""
+    from app.jobs.new_data_training_export import run_new_data_training_export_once
+
+    out = (settings.new_data_training_export_path or "").strip()
+    if not out:
+        return
+    interval = max(120, int(getattr(settings, "new_data_training_export_interval_seconds", 1800)))
+    await asyncio.sleep(min(60, interval))
+    while True:
+        try:
+            await run_new_data_training_export_once(batch_size=250)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("new_data training export loop failed")
+        await asyncio.sleep(interval)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _live_data_refresh_task, _live_cron_startup_task
+    global _live_data_refresh_task, _live_cron_startup_task, _new_data_training_export_task
     await init_pool()
     _live_cron_startup_task = asyncio.create_task(_live_cron_startup_once())
     _live_data_refresh_task = asyncio.create_task(_live_data_refresh_loop())
+    _new_data_training_export_task = asyncio.create_task(_new_data_training_export_loop())
     yield
     if _live_cron_startup_task is not None:
         _live_cron_startup_task.cancel()
@@ -68,6 +89,13 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
         _live_data_refresh_task = None
+    if _new_data_training_export_task is not None:
+        _new_data_training_export_task.cancel()
+        try:
+            await _new_data_training_export_task
+        except asyncio.CancelledError:
+            pass
+        _new_data_training_export_task = None
     await close_pool()
 
 

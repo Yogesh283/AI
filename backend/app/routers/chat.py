@@ -945,7 +945,10 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
         "the takeaway, then key facts in plain words. If snippets disagree or are too thin, say that clearly. "
         "Before you send: every number or rank you state must be traceable to a specific phrase in the snippet lines; "
         "if you cannot trace it, omit it. For volatile queries (prices, rates, standings), include source context in "
-        "plain language and explicitly call out conflicts when snippets disagree."
+        "plain language and explicitly call out conflicts when snippets disagree. "
+        "Recency tolerance rule: snippet data up to about 2 hours old is acceptable as 'latest available' if marked as such. "
+        "Do not present speculative, unconfirmed, or likely/future-only claims as facts. "
+        "Only state an event/result/schedule line when it is explicitly present in retrieved snippets; otherwise say not confirmed."
     )
     sports_standings_rule = ""
     if is_sports_live_query(last_user):

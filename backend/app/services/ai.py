@@ -103,12 +103,20 @@ def _openai_max_retries() -> int:
 def _openai_httpx_timeout() -> httpx.Timeout:
     """
     Tuned for interactive chat speed.
-    Use env overrides when network is slow:
-      - OPENAI_HTTP_TIMEOUT_SECONDS (default 45)
-      - OPENAI_HTTP_CONNECT_TIMEOUT_SECONDS (default 12)
+    Supports both *_SECONDS and legacy non-suffixed env names:
+      - OPENAI_HTTP_TIMEOUT_SECONDS or OPENAI_HTTP_TIMEOUT (default 45)
+      - OPENAI_HTTP_CONNECT_TIMEOUT_SECONDS or OPENAI_HTTP_CONNECT_TIMEOUT (default 12)
     """
-    raw_total = (os.getenv("OPENAI_HTTP_TIMEOUT_SECONDS") or "45").strip()
-    raw_connect = (os.getenv("OPENAI_HTTP_CONNECT_TIMEOUT_SECONDS") or "12").strip()
+    raw_total = (
+        os.getenv("OPENAI_HTTP_TIMEOUT_SECONDS")
+        or os.getenv("OPENAI_HTTP_TIMEOUT")
+        or "45"
+    ).strip()
+    raw_connect = (
+        os.getenv("OPENAI_HTTP_CONNECT_TIMEOUT_SECONDS")
+        or os.getenv("OPENAI_HTTP_CONNECT_TIMEOUT")
+        or "12"
+    ).strip()
     try:
         total = float(raw_total)
     except ValueError:
@@ -330,6 +338,7 @@ async def stream_openai_chat_deltas(
                 yield piece
 
     temp = 0.76 if temperature is None else float(temperature)
+    attempts = _openai_max_retries()
     async with _openai_async_client() as client:
         for use_usage in (True, False):
             payload: dict[str, Any] = {
@@ -340,34 +349,48 @@ async def stream_openai_chat_deltas(
             }
             if use_usage:
                 payload["stream_options"] = {"include_usage": True}
-            try:
-                async with client.stream(
-                    "POST",
-                    "https://api.openai.com/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json=payload,
-                ) as response:
-                    if response.status_code == 400 and use_usage:
-                        await response.aread()
-                        continue
-                    try:
-                        response.raise_for_status()
-                    except httpx.HTTPStatusError as e:
+            last_req_err: httpx.RequestError | None = None
+            for i in range(attempts):
+                try:
+                    async with client.stream(
+                        "POST",
+                        "https://api.openai.com/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {api_key}",
+                            "Content-Type": "application/json",
+                        },
+                        json=payload,
+                    ) as response:
+                        if response.status_code == 400 and use_usage:
+                            await response.aread()
+                            break
                         try:
-                            err = e.response.json().get("error", {})
-                            msg = err.get("message", e.response.text)
-                        except Exception:
-                            msg = e.response.text or str(e)
-                        raise RuntimeError(f"[OpenAI {e.response.status_code}] {msg}") from e
-                    async for piece in _read_stream(response):
-                        yield piece
-                return
-            except httpx.RequestError as e:
-                logger.warning("OpenAI stream network: %s", e)
-                raise RuntimeError(f"[OpenAI network] {type(e).__name__}: {e}") from e
+                            response.raise_for_status()
+                        except httpx.HTTPStatusError as e:
+                            try:
+                                err = e.response.json().get("error", {})
+                                msg = err.get("message", e.response.text)
+                            except Exception:
+                                msg = e.response.text or str(e)
+                            raise RuntimeError(f"[OpenAI {e.response.status_code}] {msg}") from e
+                        async for piece in _read_stream(response):
+                            yield piece
+                    return
+                except httpx.RequestError as e:
+                    last_req_err = e
+                    logger.warning(
+                        "OpenAI stream network attempt %s/%s: %s: %s",
+                        i + 1,
+                        attempts,
+                        type(e).__name__,
+                        str(e) or repr(e),
+                    )
+                    if i + 1 < attempts:
+                        await asyncio.sleep(0.35 * (i + 1))
+            if last_req_err is not None:
+                raise RuntimeError(
+                    f"[OpenAI network] {type(last_req_err).__name__}: {str(last_req_err) or repr(last_req_err)}"
+                ) from last_req_err
 
 
 async def transcribe_audio_whisper(

@@ -77,6 +77,8 @@ class Settings(BaseSettings):
     serpapi_google_domain: str = ""
     serpapi_hl: str = "en"
     serpapi_gl: str = "in"
+    # Hard cap per UTC day for SerpAPI requests (cron + on-demand live fetch combined).
+    serpapi_daily_limit: int = 33
     # Optional: Azure Bing Web Search v7 — cached in MySQL `live_data` (see live_data_cache + cron)
     bing_search_api_key: str = ""
     bing_search_endpoint: str = ""
@@ -86,6 +88,11 @@ class Settings(BaseSettings):
     # Prefer LIVE_CRON_QUERIES; if empty, BING_CRON_QUERIES is used (backward compatible).
     live_cron_queries: str = ""
     bing_cron_queries: str = ""
+    # Optional: export `new_data` snapshots into JSONL training rows for offline fine-tuning/distillation.
+    # Example: ./data/new_data_training.jsonl
+    new_data_training_export_path: str = ""
+    # How often to append new rows from MySQL `new_data` into export JSONL.
+    new_data_training_export_interval_seconds: int = 1800
 
     @model_validator(mode="after")
     def _merge_google_client_id(self):
