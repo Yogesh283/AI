@@ -418,6 +418,39 @@ def _is_current_numeric_query(text: str) -> bool:
     return any(k in s for k in keys_en) or any(k in hi for k in keys_hi)
 
 
+def _is_volatile_live_query(text: str) -> bool:
+    """
+    Queries where a wrong current number is worse than a partial answer.
+    These must stay strictly grounded in retrieved live lines.
+    """
+    s = (text or "").strip().lower()
+    hi = text or ""
+    if not s:
+        return False
+    keys_en = (
+        "today",
+        "latest",
+        "current",
+        "live",
+        "now",
+        "price",
+        "rate",
+        "gold",
+        "silver",
+        "points table",
+        "standings",
+        "ranking",
+        "score",
+        "who won",
+        "result",
+        "release date",
+        "election",
+        "seats",
+    )
+    keys_hi = ("आज", "अभी", "ताज़ा", "वर्तमान", "कीमत", "भाव", "रैंक", "स्कोर", "रिजल्ट", "सीट", "रिलीज")
+    return any(k in s for k in keys_en) or any(k in hi for k in keys_hi)
+
+
 def _extract_numeric_tokens(text: str) -> set[str]:
     """
     Extract concrete numeric tokens (rates/counts/percent/date-like). Ignore short 1-2 digit noise.
@@ -441,8 +474,37 @@ def _needs_current_fact_verbatim_retry(last_user: str, reply: str, web_block: st
         return False
     wb = re.sub(r"[\s,]", "", web_block or "")
     missing = [t for t in tokens if t not in wb]
-    # Trigger only when enough concrete numeric claims are unsupported.
+    # For volatile/current queries even one unsupported concrete numeric claim is risky.
+    if _is_volatile_live_query(last_user):
+        return len(missing) >= 1
     return len(missing) >= 2
+
+
+def _hard_live_uncertainty_reply(last_user: str) -> str:
+    hi = bool(re.search(r"[\u0900-\u097f]", last_user or ""))
+    if hi:
+        return (
+            "इस सवाल के लिए अभी लाइव खोज से भरोसेमंद संख्या/रैंक की पक्की लाइनें नहीं मिलीं। "
+            "मैं बिना पुष्टि के गलत डेटा नहीं दूंगा/दूंगी।\n\n"
+            "आप चाहें तो मैं अभी दोबारा लाइव री-चेक करके केवल पुष्टि वाली वैल्यू ही बताऊं।"
+        )
+    return (
+        "I could not confirm reliable live lines for the exact current numbers/ranks in this query. "
+        "I won't guess and risk wrong data.\n\n"
+        "If you want, I can re-check live now and return only verified values."
+    )
+
+
+def _should_force_live_uncertainty(last_user: str, reply: str, web_block: str) -> bool:
+    """
+    Hard safety: for volatile/current asks, never return specific numbers when live lines are missing.
+    """
+    if not _is_volatile_live_query(last_user):
+        return False
+    if (web_block or "").strip():
+        return False
+    # If the draft still contains concrete numeric claims, force uncertainty reply.
+    return bool(_extract_numeric_tokens(reply))
 
 
 def _append_system_suffix(msgs: list[dict[str, Any]], suffix: str) -> list[dict[str, Any]]:
@@ -1100,6 +1162,8 @@ async def post_chat(
             )
             result = retry
             reply = retry.text
+        if _should_force_live_uncertainty(last_user, reply, web_block):
+            reply = _hard_live_uncertainty_reply(last_user)
     except HTTPException:
         raise
     except Exception as e:
@@ -1279,6 +1343,8 @@ async def post_chat_stream(
                         full = full6
                         usage_h.clear()
                         usage_h.extend(usage_h6)
+                if _should_force_live_uncertainty(ctx.last_user, full, ctx.web_block):
+                    full = _hard_live_uncertainty_reply(ctx.last_user)
                 for i in range(0, len(full), 120):
                     yield _sse({"d": full[i : i + 120]})
             else:
