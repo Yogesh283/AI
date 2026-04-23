@@ -688,6 +688,24 @@ export default function VoicePage() {
     };
   }, [stopBargeInRecognition, stopRecognitionOnly, stopVoiceOutput]);
 
+  useEffect(() => {
+    const hardStop = () => {
+      if (!sessionOnRef.current) return;
+      stopSession();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState !== "visible") hardStop();
+    };
+    window.addEventListener("pagehide", hardStop);
+    window.addEventListener("beforeunload", hardStop);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", hardStop);
+      window.removeEventListener("beforeunload", hardStop);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [stopSession]);
+
   const applyPersona = useCallback(
     async (id: "arjun" | "sara") => {
       const pid = normalizeVoicePersonaId(id);

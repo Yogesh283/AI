@@ -103,6 +103,8 @@ export function DashboardChatPanel() {
   const hydratedRef = useRef(false);
   const [historyReady, setHistoryReady] = useState(false);
   const [loading, setLoading] = useState(false);
+  const loadingRef = useRef(false);
+  loadingRef.current = loading;
   const [voiceListening, setVoiceListening] = useState(false);
   const [voiceHint, setVoiceHint] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -315,7 +317,19 @@ export function DashboardChatPanel() {
     };
   }, []);
 
+  useEffect(() => {
+    return () => {
+      streamAbortRef.current?.abort();
+      streamAbortRef.current = null;
+      if (liveSearchTimerRef.current) {
+        clearTimeout(liveSearchTimerRef.current);
+        liveSearchTimerRef.current = null;
+      }
+    };
+  }, []);
+
   const sendMessage = useCallback(async (text: string) => {
+    if (loadingRef.current) return;
     const trimmed = text.trim();
     const attach = pendingAttachmentRef.current;
     if (!trimmed && !attach) return;
@@ -519,6 +533,7 @@ export function DashboardChatPanel() {
   }, [historyReady, searchParams, router, resetConversation, sendMessage]);
 
   function send() {
+    if (loadingRef.current) return;
     void sendMessage(input);
   }
 
