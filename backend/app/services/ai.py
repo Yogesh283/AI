@@ -158,8 +158,21 @@ class ChatCompletionResult:
     total_tokens: int | None = None
 
 
+def _last_message_text_for_demo(messages: list[dict[str, Any]]) -> str:
+    if not messages:
+        return ""
+    c = messages[-1].get("content")
+    if isinstance(c, list):
+        parts: list[str] = []
+        for p in c:
+            if isinstance(p, dict) and p.get("type") == "text":
+                parts.append(str(p.get("text") or ""))
+        return "\n".join(parts).strip()
+    return str(c or "").strip()
+
+
 async def chat_completion(
-    messages: list[dict[str, str]],
+    messages: list[dict[str, Any]],
     *,
     user_id: str | None = None,
     openai_request_overrides: dict[str, Any] | None = None,
@@ -168,7 +181,7 @@ async def chat_completion(
     if key:
         return await _openai_chat(messages, key, openai_request_overrides=openai_request_overrides)
 
-    last = messages[-1]["content"] if messages else ""
+    last = _last_message_text_for_demo(messages)
     return ChatCompletionResult(
         text=(
             "Hi — NeoXAI is running in demo mode (no OpenAI API key is set).\n\n"
@@ -180,7 +193,7 @@ async def chat_completion(
 
 
 async def _openai_chat(
-    messages: list[dict[str, str]],
+    messages: list[dict[str, Any]],
     api_key: str,
     *,
     openai_request_overrides: dict[str, Any] | None = None,
@@ -266,7 +279,7 @@ async def _openai_chat(
 
 
 async def stream_openai_chat_deltas(
-    messages: list[dict[str, str]],
+    messages: list[dict[str, Any]],
     api_key: str,
     *,
     usage_holder: list[dict[str, Any]] | None = None,

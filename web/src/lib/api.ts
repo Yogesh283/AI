@@ -7,15 +7,23 @@ function chatUrl(): string {
 }
 
 export type ChatSource = "chat" | "voice";
+
+/** Chat POST body: optional `image_url` data URL for OpenAI vision (dashboard). */
+export type ChatApiMessage = {
+  role: "user" | "assistant" | "system";
+  content: string;
+  image_url?: string;
+};
+
 const MAX_CHAT_CONTEXT_MESSAGES = 12;
 
-function trimChatContext(messages: { role: "user" | "assistant" | "system"; content: string }[]) {
+function trimChatContext(messages: ChatApiMessage[]) {
   if (messages.length <= MAX_CHAT_CONTEXT_MESSAGES) return messages;
   return messages.slice(-MAX_CHAT_CONTEXT_MESSAGES);
 }
 
 export async function postChat(
-  messages: { role: "user" | "assistant" | "system"; content: string }[],
+  messages: ChatApiMessage[],
   userId = "default",
   opts?: { source?: ChatSource; useWeb?: boolean; speechLang?: string }
 ) {
@@ -86,7 +94,7 @@ export async function postLiveWebContext(query: string): Promise<{ block: string
  * then `data: {"done":true}`; errors: `{"e":"..."}`.
  */
 export async function postChatStream(
-  messages: { role: "user" | "assistant" | "system"; content: string }[],
+  messages: ChatApiMessage[],
   userId: string,
   opts: {
     useWeb?: boolean;

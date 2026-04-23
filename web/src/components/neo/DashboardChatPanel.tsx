@@ -344,9 +344,6 @@ export function DashboardChatPanel() {
     const signal = streamAbortRef.current.signal;
 
     const displayUserText = trimmed || (attach ? "📷" : "");
-    const apiUserText = attach
-      ? `${displayUserText}\n\n[User attached an image file "${attach.name}". You have no vision: you cannot see image pixels. Reply ONLY in English. Briefly state you cannot see the image and ask in English what it contains, or answer only from any description the user already typed.]`
-      : displayUserText;
 
     const userMsg: Msg = {
       role: "user",
@@ -390,10 +387,10 @@ export function DashboardChatPanel() {
     };
 
     try {
-      const apiMsgs = next.slice(0, -1).map((m, i, arr) => {
-        const isLast = i === arr.length - 1;
-        if (isLast && m.role === "user" && attach) {
-          return { role: "user" as const, content: apiUserText };
+      const apiMsgs = next.slice(0, -1).map((m) => {
+        if (m.role === "user" && m.imageDataUrl) {
+          const c = m.content.trim() === "📷" ? "" : m.content;
+          return { role: "user" as const, content: c, image_url: m.imageDataUrl };
         }
         return { role: m.role as "user" | "assistant", content: m.content };
       });

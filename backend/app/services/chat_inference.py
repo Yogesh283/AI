@@ -36,6 +36,53 @@ from app.services.ai import (
 logger = logging.getLogger(__name__)
 
 
+def _flatten_messages_for_local(messages: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """OpenAI-compatible local servers usually expect string `content` only — drop image parts."""
+    out: list[dict[str, str]] = []
+    for m in messages:
+        role = str(m.get("role") or "")
+        c = m.get("content")
+        if isinstance(c, list):
+            text_chunks: list[str] = []
+            has_image = False
+            for part in c:
+                if not isinstance(part, dict):
+                    continue
+                if part.get("type") == "text":
+                    text_chunks.append(str(part.get("text") or ""))
+                elif part.get("type") == "image_url":
+                    has_image = True
+            joined = "\n".join(text_chunks).strip()
+            if has_image:
+                joined = (
+                    (joined + "\n\n") if joined else ""
+                ) + (
+                    "[User attached an image. This server uses NEO_CHAT_BACKEND=local, which has no vision. "
+                    "Set NEO_CHAT_BACKEND=openai and use a vision-capable model path to analyze images.]"
+                )
+            out.append({"role": role, "content": joined or "(empty)"})
+        else:
+            out.append({"role": role, "content": str(c if c is not None else "")})
+    return out
+
+
+def _sanitize_messages_for_training_log(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for m in messages:
+        mc = dict(m)
+        c = mc.get("content")
+        if isinstance(c, list):
+            new_parts: list[dict[str, Any]] = []
+            for p in c:
+                if isinstance(p, dict) and p.get("type") == "image_url":
+                    new_parts.append({"type": "image_url", "image_url": {"url": "[omitted]"}})
+                elif isinstance(p, dict):
+                    new_parts.append(dict(p))
+            mc["content"] = new_parts
+        out.append(mc)
+    return out
+
+
 def chat_inference_backend() -> str:
     """`openai` | `local` — controlled by NEO_CHAT_BACKEND."""
     v = (os.getenv("NEO_CHAT_BACKEND") or "openai").strip().lower()
@@ -240,13 +287,14 @@ async def local_chat_completion(
 
 
 async def unified_chat_completion(
-    messages: list[dict[str, str]],
+    messages: list[dict[str, Any]],
     *,
     user_id: str | None = None,
     openai_request_overrides: dict[str, Any] | None = None,
 ) -> ChatCompletionResult:
     if chat_inference_backend() == "local":
-        return await local_chat_completion(messages, openai_request_overrides=openai_request_overrides)
+        flat = _flatten_messages_for_local(messages)
+        return await local_chat_completion(flat, openai_request_overrides=openai_request_overrides)
     return await chat_completion(
         messages,
         user_id=user_id,
@@ -255,13 +303,14 @@ async def unified_chat_completion(
 
 
 async def unified_stream_chat_deltas(
-    messages: list[dict[str, str]],
+    messages: list[dict[str, Any]],
     *,
     usage_holder: list[dict[str, Any]] | None = None,
     temperature: float | None = None,
 ) -> AsyncIterator[str]:
     if chat_inference_backend() == "local":
-        async for piece in stream_local_chat_deltas(messages, usage_holder=usage_holder, temperature=temperature):
+        flat = _flatten_messages_for_local(messages)
+        async for piece in stream_local_chat_deltas(flat, usage_holder=usage_holder, temperature=temperature):
             yield piece
         return
     key = _openai_api_key()
@@ -280,7 +329,7 @@ def effective_stream_model_id() -> str:
 def maybe_append_training_log(
     uid: str,
     source: str,
-    messages: list[dict[str, str]],
+    messages: list[dict[str, Any]],
     assistant_reply: str,
 ) -> None:
     """
@@ -297,7 +346,7 @@ def maybe_append_training_log(
             "uid": uid,
             "source": source,
             "backend": chat_inference_backend(),
-            "messages": messages[-12:],
+            "messages": _sanitize_messages_for_training_log(messages[-12:]),
             "assistant": assistant_reply,
         }
         line = json.dumps(row, ensure_ascii=False) + "\n"

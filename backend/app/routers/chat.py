@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.db_mysql import (
     fetch_recent_chat_context,
@@ -445,10 +445,10 @@ def _needs_current_fact_verbatim_retry(last_user: str, reply: str, web_block: st
     return len(missing) >= 2
 
 
-def _append_system_suffix(msgs: list[dict[str, str]], suffix: str) -> list[dict[str, str]]:
+def _append_system_suffix(msgs: list[dict[str, Any]], suffix: str) -> list[dict[str, Any]]:
     if not msgs or not suffix.strip():
         return msgs
-    out: list[dict[str, str]] = []
+    out: list[dict[str, Any]] = []
     for i, m in enumerate(msgs):
         if i == 0 and m.get("role") == "system":
             out.append({"role": "system", "content": (m.get("content") or "") + suffix})
@@ -554,8 +554,68 @@ def _recall_reply_from_timeline(rows: list[dict[str, str]]) -> str:
 
 
 class ChatMessage(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=False)
     role: str = Field(..., pattern="^(user|assistant|system)$")
-    content: str
+    content: str = ""
+    # Optional data URL (e.g. JPEG from dashboard) — OpenAI vision; not stored raw in MySQL.
+    image_url: str | None = Field(default=None, max_length=700_000)
+
+    @field_validator("image_url")
+    @classmethod
+    def _validate_image_data_url(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        s = v.strip()
+        if not s:
+            return None
+        if not (s.startswith("data:image/jpeg") or s.startswith("data:image/png") or s.startswith("data:image/webp")):
+            raise ValueError("image_url must be a data:image/jpeg, data:image/png, or data:image/webp URL")
+        if len(s) > 650_000:
+            raise ValueError("image_url exceeds maximum length")
+        return s
+
+
+def _parse_last_user_turn(messages: list[ChatMessage]) -> tuple[str, bool]:
+    """Latest user line text and whether that turn includes an image."""
+    for m in reversed(messages):
+        if m.role == "user":
+            img = bool(m.image_url and str(m.image_url).strip().startswith("data:image/"))
+            return (m.content or "").strip(), img
+    return "", False
+
+
+def _persist_user_message_label(last_user: str, *, has_image: bool) -> str:
+    """Text persisted to memory/DB — never raw base64."""
+    t = (last_user or "").strip()
+    if has_image:
+        return f"{t}\n[Image attached]" if t else "[Image attached]"
+    return t if t else ""
+
+
+def _openai_dict_for_chat_message(m: ChatMessage) -> dict[str, Any]:
+    if m.role == "assistant":
+        return {"role": "assistant", "content": m.content or ""}
+    if m.role == "system":
+        return {"role": "system", "content": m.content or ""}
+    url = (m.image_url or "").strip()
+    if url.startswith("data:image/"):
+        parts: list[dict[str, Any]] = []
+        utext = (m.content or "").strip()
+        if utext:
+            parts.append({"type": "text", "text": utext})
+        else:
+            parts.append(
+                {
+                    "type": "text",
+                    "text": (
+                        "Analyze this image carefully. Describe what you see (objects, people, text, UI, charts, "
+                        "errors, documents). Answer any question implied by the image or the user's message."
+                    ),
+                }
+            )
+        parts.append({"type": "image_url", "image_url": {"url": url, "detail": "auto"}})
+        return {"role": "user", "content": parts}
+    return {"role": "user", "content": m.content or ""}
 
 
 class ChatRequest(BaseModel):
@@ -619,19 +679,20 @@ def _is_movie_release_query(text: str) -> bool:
 class ChatRouteContext:
     uid: str
     last_user: str
+    last_has_image: bool
     source: Literal["chat", "voice", "tools"]
     mem: list[Any]
     web_block: str
     system_extra: str
     early_reply: str | None
-    openai_messages: list[dict[str, str]] | None
+    openai_messages: list[dict[str, Any]] | None
 
 
 async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> ChatRouteContext:
     uid = str(user["id"]) if user else body.user_id
     profile = get_profile(uid)
     mem = get_memory(uid)
-    last_user = next((m.content for m in reversed(body.messages) if m.role == "user"), "")
+    last_user, last_has_image = _parse_last_user_turn(body.messages)
     now_utc = datetime.now(timezone.utc)
     now_ist = now_utc.astimezone(IST)
     timeline_rows: list[dict[str, str]] = []
@@ -645,6 +706,7 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
         return ChatRouteContext(
             uid=uid,
             last_user=last_user,
+            last_has_image=last_has_image,
             source=body.source,
             mem=mem,
             web_block="",
@@ -658,6 +720,7 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
         return ChatRouteContext(
             uid=uid,
             last_user=last_user,
+            last_has_image=last_has_image,
             source=body.source,
             mem=mem,
             web_block="",
@@ -779,6 +842,15 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
                 "(warm professional woman vs steady professional man) without being loud or domineering."
             )
 
+    vision_policy = ""
+    if last_has_image:
+        vision_policy = (
+            " Vision / images: the user's latest turn includes an image you can see in the multimodal message. "
+            "Use it properly—read on-screen text, diagrams, charts, errors, homework, products, or photos; "
+            "ground answers in what is actually visible. If the image is unclear or cropped, say so. "
+            "Do not invent details not supported by the pixels."
+        )
+
     hinglish_line = "" if hindi_only else " Hinglish is welcome when they mix Hindi and English."
     conversation_style = (
         "Conversation feel: this is a real back-and-forth with one human. Be warm, direct, and natural—"
@@ -788,6 +860,7 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
         "Do not label yourself as an AI or model unless they explicitly ask. "
         "Match their energy: casual if they are casual, brief if they are brief, more detail only when they want it."
         f"{hinglish_line}"
+        f"{vision_policy}"
     )
 
     lang_priority = (
@@ -850,13 +923,14 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
             "Use this timeline for continuity and recall questions like 'kal kya baat hui thi?' or "
             "'hum kab baat kiye the?'."
         )
-    msgs: list[dict[str, str]] = [{"role": "system", "content": system_extra}]
+    msgs: list[dict[str, Any]] = [{"role": "system", "content": system_extra}]
     for m in body.messages:
-        msgs.append({"role": m.role, "content": m.content})
+        msgs.append(_openai_dict_for_chat_message(m))
 
     return ChatRouteContext(
         uid=uid,
         last_user=last_user,
+        last_has_image=last_has_image,
         source=body.source,
         mem=mem,
         web_block=web_block,
@@ -927,7 +1001,14 @@ async def post_chat(
     ctx = await _build_chat_route_context(body, user)
     mem = ctx.mem
     if ctx.early_reply is not None:
-        await _persist_chat_exchange(ctx.uid, ctx.last_user, ctx.early_reply, ctx.source, user, None)
+        await _persist_chat_exchange(
+            ctx.uid,
+            _persist_user_message_label(ctx.last_user, has_image=ctx.last_has_image),
+            ctx.early_reply,
+            ctx.source,
+            user,
+            None,
+        )
         snippets = [f"{x['key']}: {x['value']}" for x in mem[-3:]]
         return ChatResponse(reply=ctx.early_reply, memory_snippets=snippets)
 
@@ -949,9 +1030,9 @@ async def post_chat(
                 "Google snippets. Answer again using ONLY those lines for ranks, points, teams, and dates—do not say "
                 "you have no points table while that section is non-empty.\n"
             )
-            retry_msgs = [{"role": "system", "content": retry_system}]
+            retry_msgs: list[dict[str, Any]] = [{"role": "system", "content": retry_system}]
             for m in body.messages:
-                retry_msgs.append({"role": m.role, "content": m.content})
+                retry_msgs.append(_openai_dict_for_chat_message(m))
             retry = await unified_chat_completion(
                 retry_msgs,
                 user_id=uid,
@@ -975,7 +1056,7 @@ async def post_chat(
                 )
                 retry_msgs = [{"role": "system", "content": retry_system}]
                 for m in body.messages:
-                    retry_msgs.append({"role": m.role, "content": m.content})
+                    retry_msgs.append(_openai_dict_for_chat_message(m))
                 retry = await unified_chat_completion(
                     retry_msgs,
                     user_id=uid,
@@ -1032,7 +1113,14 @@ async def post_chat(
             ),
         ) from e
 
-    await _persist_chat_exchange(uid, last_user, reply, ctx.source, user, result)
+    await _persist_chat_exchange(
+        uid,
+        _persist_user_message_label(ctx.last_user, has_image=ctx.last_has_image),
+        reply,
+        ctx.source,
+        user,
+        result,
+    )
     maybe_append_training_log(uid, ctx.source, msgs, reply)
     snippets = [f"{x['key']}: {x['value']}" for x in mem[-3:]]
     return ChatResponse(reply=reply, memory_snippets=snippets)
@@ -1065,7 +1153,7 @@ async def post_chat_stream(
 ) -> StreamingResponse:
     """SSE: optional `{"s":true}` first (live fetch starting), then `{"d":"delta"}` chunks, then `{"done":true}`."""
 
-    last_user_for_ping = next((m.content for m in reversed(body.messages) if m.role == "user"), "")
+    last_user_for_ping, _ = _parse_last_user_turn(body.messages)
     emit_searching_ping = bool((last_user_for_ping or "").strip()) and (
         not _is_live_datetime_query(last_user_for_ping) and not _is_recall_query(last_user_for_ping)
     )
@@ -1079,7 +1167,14 @@ async def post_chat_stream(
             if ctx.early_reply is not None:
                 emitted_any = True
                 yield _sse({"d": ctx.early_reply})
-                await _persist_chat_exchange(ctx.uid, ctx.last_user, ctx.early_reply, ctx.source, user, None)
+                await _persist_chat_exchange(
+                    ctx.uid,
+                    _persist_user_message_label(ctx.last_user, has_image=ctx.last_has_image),
+                    ctx.early_reply,
+                    ctx.source,
+                    user,
+                    None,
+                )
                 yield _sse({"done": True})
                 return
 
@@ -1091,7 +1186,7 @@ async def post_chat_stream(
             stream_temp = CHAT_TEMP_WITH_LIVE_WEB if (ctx.web_block or "").strip() else None
 
             async def _collect_stream(
-                mlist: list[dict[str, str]],
+                mlist: list[dict[str, Any]],
                 uh: list[dict[str, Any]],
                 *,
                 force_live_temp: bool = False,
@@ -1104,7 +1199,7 @@ async def post_chat_stream(
 
             if emit_searching_ping:
                 full = await _collect_stream(msgs, usage_h)
-                retry_msgs: list[dict[str, str]] | None = None
+                retry_msgs: list[dict[str, Any]] | None = None
                 if ctx.last_user.strip() and _reply_claims_no_live_data(full):
                     if ctx.web_block:
                         suffix = (
@@ -1195,7 +1290,14 @@ async def post_chat_stream(
                     yield _sse({"d": delta})
                 full = "".join(parts)
             result = _completion_result_from_stream_usage(full, usage_h, model_id=model_id)
-            await _persist_chat_exchange(ctx.uid, ctx.last_user, full, ctx.source, user, result)
+            await _persist_chat_exchange(
+                ctx.uid,
+                _persist_user_message_label(ctx.last_user, has_image=ctx.last_has_image),
+                full,
+                ctx.source,
+                user,
+                result,
+            )
             maybe_append_training_log(ctx.uid, ctx.source, msgs, full)
             yield _sse({"done": True})
         except Exception as e:
