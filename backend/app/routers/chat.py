@@ -389,6 +389,105 @@ _CURRENT_FACT_VERBATIM_FIX = (
 )
 
 
+_FIXTURE_PAIR_VERBATIM_FIX = (
+    "\n\n--- MANDATORY FIXTURE VERBATIM FIX\n"
+    "Your previous answer listed sports fixtures/match pairs that are not clearly present in LIVE DATA lines. "
+    "Regenerate using ONLY match pairs explicitly present in the snippets for this turn. "
+    "Do not add extra teams, extra matches, or guessed timings/venues from memory. "
+    "If snippets do not clearly confirm the asked date/day fixtures, say they are not confirmed from retrieved live lines.\n"
+)
+
+
+_IPL_TEAM_ALIASES: dict[str, tuple[str, ...]] = {
+    "mi": ("mumbai indians", "mumbai", "mi", "मुंबई इंडियंस", "मुंबई"),
+    "csk": ("chennai super kings", "chennai", "csk", "चेन्नई सुपर किंग्स", "चेन्नई"),
+    "kkr": ("kolkata knight riders", "kolkata", "kkr", "कोलकाता नाइट राइडर्स", "कोलकाता"),
+    "dc": ("delhi capitals", "delhi", "dc", "दिल्ली कैपिटल्स", "दिल्ली"),
+    "rcb": ("royal challengers bengaluru", "royal challengers bangalore", "rcb", "बैंगलोर", "बेंगलुरु"),
+    "gt": ("gujarat titans", "gujarat", "gt", "गुजरात टाइटन्स", "गुजरात"),
+    "rr": ("rajasthan royals", "rajasthan", "rr", "राजस्थान रॉयल्स", "राजस्थान"),
+    "srh": ("sunrisers hyderabad", "hyderabad", "srh", "सनराइजर्स हैदराबाद", "हैदराबाद"),
+    "pbks": ("punjab kings", "punjab", "pbks", "पंजाब किंग्स", "पंजाब"),
+    "lsg": ("lucknow super giants", "lucknow", "lsg", "लखनऊ सुपर जायंट्स", "लखनऊ"),
+}
+
+
+def _is_fixture_schedule_query(text: str) -> bool:
+    s = (text or "").strip().lower()
+    hi = text or ""
+    if not s:
+        return False
+    sports = any(k in s for k in ("ipl", "cricket", "match", "matches", "fixture", "fixtures", "schedule"))
+    sports = sports or any(k in hi for k in ("आईपीएल", "क्रिकेट", "मैच", "फिक्स्चर", "शेड्यूल"))
+    if not sports:
+        return False
+    timing = any(k in s for k in ("today", "date", "today's", "todays", "when", "time", "timing"))
+    timing = timing or any(k in hi for k in ("आज", "तारीख", "समय", "कब", "कौन"))
+    return timing
+
+
+def _extract_ipl_match_pairs(text: str) -> set[tuple[str, str]]:
+    """
+    Canonical IPL match pairs (unordered), e.g. ("csk","mi"), from free text lines.
+    """
+    out: set[tuple[str, str]] = set()
+    if not (text or "").strip():
+        return out
+    vs_markers = (" vs ", " v ", " बनाम ", " मुकाबला ", " against ")
+    for ln in (text or "").splitlines():
+        low = f" {ln.strip().lower()} "
+        if not any(m in low for m in vs_markers):
+            continue
+        hits: list[tuple[int, str]] = []
+        for team, aliases in _IPL_TEAM_ALIASES.items():
+            first_pos = None
+            for a in aliases:
+                p = low.find(f" {a.lower()} ")
+                if p >= 0 and (first_pos is None or p < first_pos):
+                    first_pos = p
+            if first_pos is not None:
+                hits.append((first_pos, team))
+        if len(hits) < 2:
+            continue
+        hits.sort(key=lambda x: x[0])
+        t1, t2 = hits[0][1], hits[1][1]
+        if t1 == t2:
+            continue
+        pair = tuple(sorted((t1, t2)))
+        out.add(pair)
+    return out
+
+
+def _needs_fixture_pair_retry(last_user: str, reply: str, web_block: str) -> bool:
+    if not (web_block or "").strip() or not (reply or "").strip():
+        return False
+    if not _is_fixture_schedule_query(last_user):
+        return False
+    if not is_sports_live_query(last_user):
+        return False
+    reply_pairs = _extract_ipl_match_pairs(reply)
+    if not reply_pairs:
+        return False
+    web_pairs = _extract_ipl_match_pairs(web_block)
+    if not web_pairs:
+        return True
+    return any(p not in web_pairs for p in reply_pairs)
+
+
+def _fixture_uncertainty_reply(last_user: str) -> str:
+    if re.search(r"[\u0900-\u097f]", last_user or ""):
+        return (
+            "इस स्पोर्ट्स/फिक्स्चर सवाल के लिए लाइव स्निपेट लाइनों में सभी मैच-पेयर साफ़ तौर पर कन्फर्म नहीं हुए। "
+            "मैं गलत फिक्स्चर नहीं दूंगा/दूंगी।\n\n"
+            "अभी तक जो लाइव लाइनों से निश्चित है, वही बताऊंगा/बताऊंगी; बाकी को 'not confirmed' रखूंगा/रखूंगी।"
+        )
+    return (
+        "The live snippet lines do not clearly confirm all fixture pairs for this query. "
+        "I won't guess and risk wrong fixtures.\n\n"
+        "I can provide only the pairs explicitly confirmed in the retrieved live lines."
+    )
+
+
 def _is_current_numeric_query(text: str) -> bool:
     s = (text or "").strip().lower()
     hi = text or ""
@@ -1162,6 +1261,17 @@ async def post_chat(
             )
             result = retry
             reply = retry.text
+        if web_block and last_user and _needs_fixture_pair_retry(last_user, reply, web_block):
+            retry_msgs = _append_system_suffix(msgs, _FIXTURE_PAIR_VERBATIM_FIX)
+            retry = await unified_chat_completion(
+                retry_msgs,
+                user_id=uid,
+                openai_request_overrides={"temperature": CHAT_TEMP_WITH_LIVE_WEB},
+            )
+            result = retry
+            reply = retry.text
+            if _needs_fixture_pair_retry(last_user, reply, web_block):
+                reply = _fixture_uncertainty_reply(last_user)
         if _should_force_live_uncertainty(last_user, reply, web_block):
             reply = _hard_live_uncertainty_reply(last_user)
     except HTTPException:
@@ -1343,6 +1453,20 @@ async def post_chat_stream(
                         full = full6
                         usage_h.clear()
                         usage_h.extend(usage_h6)
+                if (
+                    ctx.web_block
+                    and ctx.last_user.strip()
+                    and _needs_fixture_pair_retry(ctx.last_user, full, ctx.web_block)
+                ):
+                    fix_msgs = _append_system_suffix(msgs, _FIXTURE_PAIR_VERBATIM_FIX)
+                    usage_h7: list[dict[str, Any]] = []
+                    full7 = await _collect_stream(fix_msgs, usage_h7, force_live_temp=True)
+                    if len(full7.strip()) >= 40:
+                        full = full7
+                        usage_h.clear()
+                        usage_h.extend(usage_h7)
+                    if _needs_fixture_pair_retry(ctx.last_user, full, ctx.web_block):
+                        full = _fixture_uncertainty_reply(ctx.last_user)
                 if _should_force_live_uncertainty(ctx.last_user, full, ctx.web_block):
                     full = _hard_live_uncertainty_reply(ctx.last_user)
                 for i in range(0, len(full), 120):
