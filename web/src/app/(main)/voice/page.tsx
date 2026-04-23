@@ -456,18 +456,11 @@ export default function VoicePage() {
             let block = "";
             let liveFetchFailed = false;
             try {
-              const j = await postLiveWebContext(line);
+              const j = await postLiveWebContext(line, { timeoutMs: 2500 });
               block = (j.block || "").trim();
-              if (!block && sessionOnRef.current && myTurn === voiceLiveWebTurnRef.current) {
-                await new Promise<void>((r) => setTimeout(r, 120));
-                if (sessionOnRef.current && myTurn === voiceLiveWebTurnRef.current) {
-                  const j2 = await postLiveWebContext(line);
-                  block = (j2.block || "").trim();
-                }
-              }
             } catch {
               liveFetchFailed = true;
-              /* offline / API error — continue without blocking on artificial delay */
+              /* timeout/offline/API error — continue fast; backend falls back to cached DB snapshots when possible */
             }
             /* `postLiveWebContext` is already awaited — do not pad multi-second waits (felt broken / “late”). */
             if (!sessionOnRef.current || myTurn !== voiceLiveWebTurnRef.current) {

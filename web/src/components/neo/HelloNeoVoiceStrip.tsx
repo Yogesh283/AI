@@ -213,8 +213,15 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
           syncFollowUp();
           return;
         }
+        await speakReply("I can only open installed phone apps in APK mode. Please say the exact app name.", lang);
+        clearNeoFollowUpSession();
+        syncFollowUp();
+        return;
       } catch {
-        /* fall through to JS routing */
+        await speakReply("Native app command service is not available right now.", lang);
+        clearNeoFollowUpSession();
+        syncFollowUp();
+        return;
       }
     }
 

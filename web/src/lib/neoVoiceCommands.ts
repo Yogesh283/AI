@@ -53,6 +53,15 @@ export type NeoProcessOptions = {
   speechLang?: VoiceSpeechLangCode;
 };
 
+type PendingConfirmation = {
+  actions: NeoAction[];
+  expiresAt: number;
+  speechLang?: VoiceSpeechLangCode;
+};
+
+const CONFIRM_TTL_MS = 20_000;
+let pendingConfirmation: PendingConfirmation | null = null;
+
 /** True when user text is mostly Hindi script — Shuddh Hindi command replies apply. */
 export function queryLooksHindi(q: string): boolean {
   const t = q.trim();
@@ -64,6 +73,52 @@ export function queryLooksHindi(q: string): boolean {
 /** Product copy is English-only in the app UI; spoken command feedback uses the same. */
 function cmdReply(en: string, _hi: string, _q: string, _speechLang?: VoiceSpeechLangCode): string {
   return en;
+}
+
+function hasActivePendingConfirmation(): boolean {
+  if (!pendingConfirmation) return false;
+  if (Date.now() > pendingConfirmation.expiresAt) {
+    pendingConfirmation = null;
+    return false;
+  }
+  return true;
+}
+
+function isConfirmYes(text: string): boolean {
+  const t = text.trim().toLowerCase();
+  return /^(yes|yep|yeah|ok|okay|confirm|do it|haan|ha|han|h|theek hai|thik hai|करो|हाँ|हां)$/i.test(t);
+}
+
+function isConfirmNo(text: string): boolean {
+  const t = text.trim().toLowerCase();
+  return /^(no|nope|cancel|stop|mat|nahi|nahin|ना|नहीं|रद्द|cancel it)$/i.test(t);
+}
+
+function looksIllegalOrUnsafeCommand(text: string): boolean {
+  const t = text.trim().toLowerCase();
+  if (!t) return false;
+  const illegalPatterns = [
+    /\b(hack|hacking|phish|phishing|scam|fraud|spoof|ddos|malware|virus|ransomware)\b/i,
+    /\b(bomb|explosive|gun|weapon|drugs?|narcotic|counterfeit|fake id|forgery)\b/i,
+    /\b(stalk|spy|blackmail|harass|threat|extort)\b/i,
+    /(हैक|फिशिंग|स्कैम|धोखा|फ्रॉड|बम|हथियार|नशा|जाली|ब्लैकमेल|धमकी)/i,
+  ];
+  return illegalPatterns.some((re) => re.test(t));
+}
+
+function needsActionConfirmation(input: string, actions: NeoAction[]): boolean {
+  if (actions.length === 0) return false;
+  const t = input.toLowerCase();
+  const hasCall = actions.some((a) => a.kind === "tel");
+  if (hasCall) return true;
+  const hasMessageIntent =
+    /\b(send|message|reply|text)\b/i.test(t) || /(भेजो|मैसेज|संदेश|reply|रिप्लाई)/i.test(input);
+  const opensMessenger = actions.some(
+    (a) =>
+      a.kind === "open_url" &&
+      (a.url.toLowerCase().includes("whatsapp") || a.url.toLowerCase().includes("telegram")),
+  );
+  return hasMessageIntent && opensMessenger;
 }
 
 /** After a “busy” line, skip repeating a generic “Opening …” TTS. */
@@ -237,6 +292,38 @@ export function runNeoIntents(
     };
   }
 
+  const micToggleIntent =
+    /\b(mic|microphone)\b.*\b(on|off|start|stop|mute|unmute)\b/i.test(trimmed) ||
+    /\b(on|off|start|stop|mute|unmute)\b.*\b(mic|microphone)\b/i.test(trimmed) ||
+    /(माइक|माइक्रोफोन).*(चालू|बंद|ऑन|ऑफ|शुरू|रोक)/i.test(trimmed);
+  if (micToggleIntent) {
+    return {
+      reply: cmdReply(
+        "Mic on/off voice control is not available from command yet. Please use the mic button.",
+        "माइक ऑन/ऑफ कमांड अभी उपलब्ध नहीं है। कृपया माइक बटन का उपयोग करें।",
+        trimmed,
+        speechLang,
+      ),
+      actions: [],
+    };
+  }
+
+  const micOnOffIntent =
+    /\b(mic|microphone)\b.*\b(on|off|mute|unmute|start|stop)\b/i.test(trimmed) ||
+    /\b(on|off|mute|unmute|start|stop)\b.*\b(mic|microphone)\b/i.test(trimmed) ||
+    /(माइक|माइक्रोफोन).*(चालू|बंद|ऑन|ऑफ|म्यूट|अनम्यूट)/i.test(trimmed);
+  if (micOnOffIntent) {
+    return {
+      reply: cmdReply(
+        "Mic control works from the on-screen mic button or the Profile toggle. Say Neo and then your command after mic is on.",
+        "माइक कंट्रोल स्क्रीन के माइक बटन या प्रोफाइल टॉगल से होता है। माइक ऑन करके नियो बोलें, फिर कमांड दें।",
+        trimmed,
+        speechLang,
+      ),
+      actions: [],
+    };
+  }
+
   if (shouldOpenWhatsAppFromCommand(trimmed)) {
     const url = isNativeCapacitor() ? buildWhatsAppAppUrl(trimmed) : buildWhatsAppWebUrl(trimmed);
     return {
@@ -348,8 +435,65 @@ export function processNeoCommandLine(
     };
   }
 
+  if (looksIllegalOrUnsafeCommand(trimmed)) {
+    pendingConfirmation = null;
+    return {
+      reply: cmdReply(
+        "I can only help with legal and safe commands. Please ask a lawful action like open app, call, or music.",
+        "मैं केवल कानूनी और सुरक्षित कमांड में मदद कर सकता हूँ। कृपया वैध कमांड बोलें।",
+        trimmed,
+        options?.speechLang,
+      ),
+      actions: [],
+    };
+  }
+
+  if (hasActivePendingConfirmation()) {
+    if (isConfirmYes(trimmed)) {
+      const actions = pendingConfirmation?.actions ?? [];
+      pendingConfirmation = null;
+      return {
+        reply: cmdReply("Confirmed. Executing now.", "पुष्टि हो गई, अभी कर रहा हूँ।", trimmed, options?.speechLang),
+        actions,
+      };
+    }
+    if (isConfirmNo(trimmed)) {
+      pendingConfirmation = null;
+      return {
+        reply: cmdReply("Okay, cancelled.", "ठीक है, रद्द कर दिया।", trimmed, options?.speechLang),
+        actions: [],
+      };
+    }
+    return {
+      reply: cmdReply(
+        "Please say yes to confirm or no to cancel.",
+        "कृपया पुष्टि के लिए हाँ बोलें, या रद्द करने के लिए नहीं बोलें।",
+        trimmed,
+        options?.speechLang,
+      ),
+      actions: [],
+    };
+  }
+
   if (mode === "voice-followup") {
-    return runNeoIntents(trimmed, true, options?.speechLang);
+    const r = runNeoIntents(trimmed, true, options?.speechLang);
+    if (needsActionConfirmation(trimmed, r.actions)) {
+      pendingConfirmation = {
+        actions: r.actions,
+        expiresAt: Date.now() + CONFIRM_TTL_MS,
+        speechLang: options?.speechLang,
+      };
+      return {
+        reply: cmdReply(
+          "Please confirm. Should I proceed?",
+          "कृपया पुष्टि करें। क्या मैं आगे बढ़ूं?",
+          trimmed,
+          options?.speechLang,
+        ),
+        actions: [],
+      };
+    }
+    return r;
   }
 
   if (mode === "text") {
@@ -366,12 +510,45 @@ export function processNeoCommandLine(
         actions: [],
       };
     }
-    return runNeoIntents(cmd, false, options?.speechLang);
+    const r = runNeoIntents(cmd, false, options?.speechLang);
+    if (needsActionConfirmation(cmd, r.actions)) {
+      pendingConfirmation = {
+        actions: r.actions,
+        expiresAt: Date.now() + CONFIRM_TTL_MS,
+        speechLang: options?.speechLang,
+      };
+      return {
+        reply: cmdReply(
+          "Please confirm first. Say yes to continue or no to cancel.",
+          "पहले पुष्टि करें। आगे बढ़ने के लिए हाँ, रद्द करने के लिए नहीं कहें।",
+          trimmed,
+          options?.speechLang,
+        ),
+        actions: [],
+      };
+    }
+    return r;
   }
 
   /* voice */
   if (isNeoFollowUpActive()) {
     const r = runNeoIntents(trimmed, true, options?.speechLang);
+    if (needsActionConfirmation(trimmed, r.actions)) {
+      pendingConfirmation = {
+        actions: r.actions,
+        expiresAt: Date.now() + CONFIRM_TTL_MS,
+        speechLang: options?.speechLang,
+      };
+      return {
+        reply: cmdReply(
+          "Please confirm. Should I continue?",
+          "कृपया पुष्टि करें। क्या मैं जारी रखूं?",
+          trimmed,
+          options?.speechLang,
+        ),
+        actions: [],
+      };
+    }
     if (r.actions.length > 0) clearNeoFollowUpSession();
     return r;
   }
@@ -391,6 +568,22 @@ export function processNeoCommandLine(
   }
 
   const r = runNeoIntents(rest, true, options?.speechLang);
+  if (needsActionConfirmation(rest, r.actions)) {
+    pendingConfirmation = {
+      actions: r.actions,
+      expiresAt: Date.now() + CONFIRM_TTL_MS,
+      speechLang: options?.speechLang,
+    };
+    return {
+      reply: cmdReply(
+        "Please confirm this action. Say yes or no.",
+        "इस क्रिया की पुष्टि करें। हाँ या नहीं बोलें।",
+        trimmed,
+        options?.speechLang,
+      ),
+      actions: [],
+    };
+  }
   if (r.actions.length > 0) clearNeoFollowUpSession();
   return r;
 }

@@ -5,6 +5,7 @@ import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
 import android.media.AudioManager;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.provider.ContactsContract;
@@ -13,6 +14,7 @@ import android.os.Looper;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
 import androidx.core.content.ContextCompat;
+import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -99,6 +101,23 @@ public final class NeoCommandRouter {
                             }
                         }
                     });
+                return true;
+            }
+        }
+
+        if (isGenericOpenAppIntent(text)) {
+            String appName = extractOpenAppName(text);
+            if (appName != null && !appName.isEmpty()) {
+                boolean launched = openInstalledAppByLabel(context, appName);
+                if (launched) {
+                    speak(context, preferHindiVoice(raw)
+                        ? "ठीक है, " + appName + " खोल रहे हैं।"
+                        : "Okay, opening " + appName + ".");
+                } else {
+                    speak(context, preferHindiVoice(raw)
+                        ? "यह ऐप इंस्टॉल्ड नहीं मिला। कृपया सही ऐप नाम बोलें।"
+                        : "I could not find that installed app. Please say the exact app name.");
+                }
                 return true;
             }
         }
@@ -505,6 +524,66 @@ public final class NeoCommandRouter {
             || t.contains("संपर्क खोल")
             || t.contains("फोन बुक खोल")
             || t.matches(".*\\b(खोल|open)\\b.*\\b(संपर्क|फोन\\s*बुक)\\b.*");
+    }
+
+    private static boolean isGenericOpenAppIntent(String t) {
+        if (!(t.matches(".*\\b(open|launch|start|show)\\b.*") || t.contains("खोल") || t.contains("ओपन"))) {
+            return false;
+        }
+        if (isWhatsAppIntent(t) || isTelegramIntent(t) || isContactsIntent(t) || isYouTubeMusicLaunchIntent(t)) {
+            return false;
+        }
+        if (t.contains("youtube") || t.contains("you tube") || t.contains("यूट्यूब")) return false;
+        if (t.contains("call") || t.contains("dial") || t.contains("फोन") || t.contains("कॉल")) return false;
+        return true;
+    }
+
+    private static String extractOpenAppName(String t) {
+        String cleaned = t
+            .replaceAll("\\b(hello|hey|hi|neo)\\b", " ")
+            .replaceAll("\\b(open|launch|start|show|my|the|app|application|please|now)\\b", " ")
+            .replaceAll("ओपन|खोलो|खोल|ऐप|एप|मेरा|मेरी|कृपया|अभी", " ")
+            .replaceAll("\\s+", " ")
+            .trim();
+        if (cleaned.isEmpty()) return null;
+        return cleaned;
+    }
+
+    private static boolean openInstalledAppByLabel(Context context, String rawName) {
+        PackageManager pm = context.getPackageManager();
+        String q = rawName.toLowerCase(Locale.ROOT).trim();
+        List<ApplicationInfo> apps = pm.getInstalledApplications(PackageManager.GET_META_DATA);
+        ApplicationInfo best = null;
+        int bestScore = -1;
+        for (ApplicationInfo ai : apps) {
+            Intent li = pm.getLaunchIntentForPackage(ai.packageName);
+            if (li == null) continue;
+            CharSequence labelCs = pm.getApplicationLabel(ai);
+            if (labelCs == null) continue;
+            String label = labelCs.toString().toLowerCase(Locale.ROOT).trim();
+            if (label.isEmpty()) continue;
+            int score = -1;
+            if (label.equals(q)) score = 100;
+            else if (label.startsWith(q)) score = 80;
+            else if (label.contains(q)) score = 60;
+            else if (q.contains(label) && label.length() >= 3) score = 40;
+            if (score > bestScore) {
+                bestScore = score;
+                best = ai;
+            }
+        }
+        if (best == null || bestScore < 40) {
+            return false;
+        }
+        Intent launch = pm.getLaunchIntentForPackage(best.packageName);
+        if (launch == null) return false;
+        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            context.startActivity(launch);
+            return true;
+        } catch (ActivityNotFoundException ignored) {
+            return false;
+        }
     }
 
     private static void openContactsApp(Context context) {

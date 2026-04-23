@@ -71,16 +71,34 @@ export async function postChat(
 }
 
 /** Google live snippet block for voice Realtime injection (same backend pipeline as chat). */
-export async function postLiveWebContext(query: string): Promise<{ block: string }> {
+export async function postLiveWebContext(
+  query: string,
+  opts?: { timeoutMs?: number; signal?: AbortSignal },
+): Promise<{ block: string }> {
   const token = getStoredToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token) headers.Authorization = `Bearer ${token}`;
   const url = `${chatUrl()}/live-context`;
-  const r = await fetch(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ query: query.trim().slice(0, 500) }),
-  });
+  const timeoutMs = Math.max(500, opts?.timeoutMs ?? 2800);
+  const ctrl = new AbortController();
+  const onAbort = () => ctrl.abort();
+  if (opts?.signal) {
+    if (opts.signal.aborted) ctrl.abort();
+    else opts.signal.addEventListener("abort", onAbort, { once: true });
+  }
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  let r: Response;
+  try {
+    r = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ query: query.trim().slice(0, 500) }),
+      signal: ctrl.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+    if (opts?.signal) opts.signal.removeEventListener("abort", onAbort);
+  }
   if (!r.ok) {
     const t = (await r.text()).trim();
     throw new Error(t || `HTTP ${r.status}`);

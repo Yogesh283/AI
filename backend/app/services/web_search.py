@@ -16,6 +16,7 @@ from app.db_mysql import pool_ready, reserve_daily_api_call
 from app.services.newsapi_search import fetch_newsapi_everything_snippets
 
 logger = logging.getLogger(__name__)
+_cse_403_warned = False
 
 # Google Programmable Search allows long `q`; keep below API limits but avoid truncating bilingual queries.
 MAX_GOOGLE_QUERY_CHARS = 450
@@ -418,6 +419,7 @@ async def _fetch_google_cse_snippets(query: str, *, limit: int) -> tuple[str, bo
 
     Retries on HTTP 429 / 503 with backoff so brief quota spikes behave more like a stable “live search”.
     """
+    global _cse_403_warned
     key = (settings.google_cse_api_key or "").strip()
     cx = (settings.google_cse_cx or "").strip()
     q = augment_search_query((query or "").strip()[:MAX_GOOGLE_QUERY_CHARS])
@@ -451,10 +453,18 @@ async def _fetch_google_cse_snippets(query: str, *, limit: int) -> tuple[str, bo
             try:
                 r.raise_for_status()
             except httpx.HTTPStatusError as e:
-                logger.warning(
-                    "Google CSE failed: HTTP %s (check API key / quota / referrer restrictions)",
-                    e.response.status_code if e.response else "?",
-                )
+                sc = e.response.status_code if e.response else "?"
+                if sc == 403:
+                    if not _cse_403_warned:
+                        logger.warning(
+                            "Google CSE disabled after HTTP 403 (key/project has no access). Using SerpAPI/NewsAPI/Brave/RSS fallback."
+                        )
+                        _cse_403_warned = True
+                else:
+                    logger.warning(
+                        "Google CSE failed: HTTP %s (check API key / quota / referrer restrictions)",
+                        sc,
+                    )
                 return "", False
 
             data = r.json()
@@ -463,10 +473,17 @@ async def _fetch_google_cse_snippets(query: str, *, limit: int) -> tuple[str, bo
             if sc in (429, 503) and attempt < 2:
                 await asyncio.sleep(backoff_seconds[attempt])
                 continue
-            logger.warning(
-                "Google CSE failed: HTTP %s (check API key / quota / referrer restrictions)",
-                sc,
-            )
+            if sc == 403:
+                if not _cse_403_warned:
+                    logger.warning(
+                        "Google CSE disabled after HTTP 403 (key/project has no access). Using SerpAPI/NewsAPI/Brave/RSS fallback."
+                    )
+                    _cse_403_warned = True
+            else:
+                logger.warning(
+                    "Google CSE failed: HTTP %s (check API key / quota / referrer restrictions)",
+                    sc,
+                )
             return "", sc in (429, 503)
         except Exception as e:
             logger.warning("Google CSE failed: %s", type(e).__name__)

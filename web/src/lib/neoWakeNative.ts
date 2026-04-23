@@ -16,7 +16,12 @@ const WAKE_SCREEN_OFF_CHANGED = "neo-wake-screen-off-changed";
 export function readWakeListenScreenOffStorage(): boolean {
   if (typeof window === "undefined") return false;
   try {
-    return window.localStorage.getItem(NEO_WAKE_SCREEN_OFF_KEY) === "1";
+    const raw = window.localStorage.getItem(NEO_WAKE_SCREEN_OFF_KEY);
+    if (raw === "1") return true;
+    if (raw === "0") return false;
+    /* APK default: keep wake active with screen off unless user explicitly turned it off. */
+    if (isNativeCapacitor()) return true;
+    return false;
   } catch {
     return false;
   }

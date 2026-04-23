@@ -543,8 +543,9 @@ async def reserve_daily_api_call(api_name: str, *, daily_limit: int) -> bool:
         async with _pool.acquire() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
-                    "INSERT IGNORE INTO api_daily_usage (api_name, usage_date, used_count, updated_at) "
-                    "VALUES (%s, UTC_DATE(), 0, %s)",
+                    "INSERT INTO api_daily_usage (api_name, usage_date, used_count, updated_at) "
+                    "VALUES (%s, UTC_DATE(), 0, %s) "
+                    "ON DUPLICATE KEY UPDATE updated_at = updated_at",
                     (name, now_ts),
                 )
                 await cur.execute(

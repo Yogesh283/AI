@@ -1320,6 +1320,19 @@ async def post_live_context(
     except Exception as e:
         logger.warning("post_live_context Google fetch failed: %s", e)
         block = ""
+    if not (block or "").strip():
+        try:
+            from app.db_mysql import new_data_bundle_for_live_context, pool_ready
+
+            if pool_ready():
+                snap = await new_data_bundle_for_live_context(q, limit=5)
+                if (snap or "").strip():
+                    block = (
+                        "Retrieved from cached live snapshots (MySQL `new_data`) because live web fetch was slow/unavailable.\n\n"
+                        + snap.strip()
+                    )
+        except Exception:
+            pass
     return {"block": block or ""}
 
 
@@ -1494,7 +1507,11 @@ async def post_chat_stream(
             maybe_append_training_log(ctx.uid, ctx.source, msgs, full)
             yield _sse({"done": True})
         except Exception as e:
-            logger.exception("post_chat_stream failed")
+            logger.warning(
+                "post_chat_stream failed: %s: %s",
+                type(e).__name__,
+                str(e) or repr(e),
+            )
             # If stream fails before any assistant text, auto-fallback to non-stream chat so user
             # does not need to tap Send again for transient network/provider issues.
             if not emitted_any:
@@ -1505,7 +1522,7 @@ async def post_chat_stream(
                         yield _sse({"done": True})
                         return
                 except Exception:
-                    logger.exception("post_chat_stream fallback post_chat failed")
+                    logger.warning("post_chat_stream fallback post_chat failed")
             # Send assistant text instead of `{"e":...}` so the web client does not throw and the user
             # still sees a calm message (especially after live-fetch turns).
             yield _sse({"d": _friendly_chat_stream_failure_message(e)})
