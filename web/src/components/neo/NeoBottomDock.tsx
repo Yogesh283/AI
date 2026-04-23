@@ -34,7 +34,7 @@ type Item =
 const ITEMS: Item[] = [
   { kind: "tab", href: "/dashboard", label: "Home", Icon: Home },
   { kind: "tab", href: "/chat", label: "Chat", Icon: MessageCircle },
-  { kind: "fab", href: "/voice", title: "AI Assistant — voice chat" },
+  { kind: "fab", href: "/voice", title: "AI Voice — voice chat" },
   {
     kind: "tab",
     href: "/create",
@@ -86,18 +86,11 @@ export function NeoBottomDock() {
                     </span>
                     <span className="flex flex-col items-center gap-0">
                       <span
-                        className={`text-center text-[8px] font-semibold leading-tight transition-colors duration-300 ease-out ${
+                        className={`max-w-[4.5rem] text-center text-[7.5px] font-semibold leading-tight transition-colors duration-300 ease-out ${
                           active ? "text-[#2563EB]" : "text-[#94A3B8]"
                         }`}
                       >
-                        AI
-                      </span>
-                      <span
-                        className={`text-center text-[8px] font-semibold leading-tight transition-colors duration-300 ease-out ${
-                          active ? "text-[#2563EB]" : "text-[#94A3B8]"
-                        }`}
-                      >
-                        Voice
+                        AI Voice
                       </span>
                     </span>
                   </Link>

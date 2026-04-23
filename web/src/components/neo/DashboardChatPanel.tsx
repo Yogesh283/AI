@@ -345,7 +345,7 @@ export function DashboardChatPanel() {
 
     const displayUserText = trimmed || (attach ? "📷" : "");
     const apiUserText = attach
-      ? `${displayUserText}\n\n[User attached an image file "${attach.name}". You cannot see the image pixels—answer from their text, or ask briefly what the image shows if needed.]`
+      ? `${displayUserText}\n\n[User attached an image file "${attach.name}". You have no vision: you cannot see image pixels. Reply ONLY in English. Briefly state you cannot see the image and ask in English what it contains, or answer only from any description the user already typed.]`
       : displayUserText;
 
     const userMsg: Msg = {
@@ -404,6 +404,8 @@ export function DashboardChatPanel() {
         {
           useWeb: true,
           signal,
+          /** Typed web chat UI is English-first; avoids Hindi replies on short Latin messages (e.g. image + “Hello”). */
+          speechLang: "en-IN",
           onLiveFetchStart: () => {
             liveSearchActiveRef.current = true;
             liveSearchBufRef.current = "";
