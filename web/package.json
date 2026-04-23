@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "eslint",
     "cap:sync:android:local": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/cap-sync-local.ps1",
-    "cap:sync:android:prod": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/cap-sync-production.ps1"
+    "cap:sync:android:prod": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/cap-sync-production.ps1",
+    "apk:release": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-release-apk.ps1"
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "^7.0.1",

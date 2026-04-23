@@ -43,3 +43,17 @@ powershell -ExecutionPolicy Bypass -File .\run_local.ps1
 ```
 
 Ye `run_local.ps1` backend + web alag windows mein khol deta hai.
+
+## Android APK (phone par chalne ke liye)
+
+Capacitor WebView **remote URL** se site load karti hai. `npm run cap:sync:android:local` se bana APK **localhost** use karta hai — real phone par bina `adb reverse` ke **app blank / “not working”** lagega.
+
+**Sahi release APK** (default server `https://myneoxai.com`; apna domain chaho to pehle env set karo):
+
+```powershell
+Set-Location D:\AI\web
+# optional: $env:CAP_SERVER_URL="https://your-domain.com"
+npm run apk:release
+```
+
+Output: `D:\AI\NeoAssistant-release-install.apk` — install se pehle purana **NeoAssistant** uninstall kar lena (signature / version clash se “App not installed” aata hai).

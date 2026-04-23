@@ -6,20 +6,18 @@ android {
     buildFeatures {
         buildConfig true
     }
-    packaging {
-        jniLibs {
-            // Uncompressed + page-aligned native libs — avoids “App not installed” on some OEMs (Porcupine .so).
-            useLegacyPackaging = true
-        }
-    }
     defaultConfig {
         applicationId "com.neo.assistant"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         def pvKey = (project.findProperty("PV_ACCESS_KEY") ?: System.getenv("PV_ACCESS_KEY") ?: "").toString()
         buildConfigField "String", "PV_ACCESS_KEY", "\"${pvKey.replace('"', '\\"')}\""
-        versionCode 12
-        versionName "1.6.5"
+        versionCode 13
+        versionName "1.6.6"
+        // Phone APKs only — drops x86/x86_64 Porcupine libs (smaller, fewer installer edge cases).
+        ndk {
+            abiFilters "arm64-v8a", "armeabi-v7a"
+        }
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -28,12 +26,6 @@ android {
         }
     }
     buildTypes {
-        debug {
-            // Install debug APK side-by-side to avoid "App not installed"
-            // when a differently signed production app is already present.
-            applicationIdSuffix ".debug"
-            versionNameSuffix "-debug"
-        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
