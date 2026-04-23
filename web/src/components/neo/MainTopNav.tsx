@@ -22,6 +22,8 @@ export const MAIN_NAV_MENU: { href: string; label: string }[] = [
   { href: "/voice", label: "Voice" },
   { href: "/profile", label: "Profile" },
   { href: "/customize", label: "Customize" },
+  { href: "/faq", label: "FAQ" },
+  { href: "/terms", label: "Terms & Conditions" },
 ];
 
 type Props = {

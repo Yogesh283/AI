@@ -63,10 +63,30 @@ export function voiceLangLabel(code: VoiceSpeechLangCode): string {
   return VOICE_SPEECH_LANGS.find((x) => x.code === code)?.label ?? code;
 }
 
-/** Short spoken ack when the user switches language by voice (browser TTS). */
 /** Short TTS after wake-only ("Neo" / "Hello Neo" with no command). Opens the follow-up command window. */
-export function neoWakeAckPhrase(_code: VoiceSpeechLangCode): string {
-  return "Yes — what would you like? For example, open WhatsApp, Telegram, or YouTube.";
+export function neoWakeAckPhrase(code: VoiceSpeechLangCode, displayName?: string | null): string {
+  const nm = displayName?.trim();
+  if (code.startsWith("hi")) {
+    return nm
+      ? `नमस्ते ${nm} जी, मैं सुन रहा हूँ। आप क्या चाहेंगे? जैसे YouTube पर गाना चलाना या WhatsApp खोलना।`
+      : `नमस्ते, मैं सुन रहा हूँ। आप क्या चाहेंगे? जैसे YouTube या WhatsApp।`;
+  }
+  return nm
+    ? `Hello ${nm}, I'm listening. What would you like — for example play a song on YouTube or open WhatsApp?`
+    : `Hello, I'm listening. What would you like — for example YouTube or WhatsApp?`;
+}
+
+/** Played when the user taps Try Neo (before one-shot listen). Smooth bilingual by speech locale. */
+export function neoVoiceCommandSessionGreeting(code: VoiceSpeechLangCode, displayName?: string | null): string {
+  const nm = displayName?.trim();
+  if (code.startsWith("hi")) {
+    return nm
+      ? `नमस्ते ${nm} जी, बताइए मैं आपकी क्या मदद करूँ?`
+      : `नमस्ते, बताइए मैं आपकी क्या मदद करूँ?`;
+  }
+  return nm
+    ? `Hello ${nm}, what can I do for you today?`
+    : `Hello, what can I do for you today?`;
 }
 
 /**

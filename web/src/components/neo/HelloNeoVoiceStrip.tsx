@@ -16,7 +16,12 @@ import {
 } from "@/lib/voiceChat";
 import { tryPlayOpenAiTtsPlain, stopAvatarTtsAudio } from "@/lib/voiceAvatarTts";
 import { preferOpenAiTtsForVoiceUi } from "@/lib/voiceTtsPolicy";
-import { neoWorkingAckPhrase, readStoredVoiceSpeechLang } from "@/lib/voiceLanguages";
+import {
+  neoVoiceCommandSessionGreeting,
+  neoWorkingAckPhrase,
+  readStoredVoiceSpeechLang,
+} from "@/lib/voiceLanguages";
+import { getStoredUser } from "@/lib/auth";
 import { isNativeCapacitor } from "@/lib/nativeAppLinks";
 import {
   executeNeoActions,
@@ -36,12 +41,17 @@ import {
 const DEBOUNCE_MS = 260;
 const FLUSH_AFTER_SPEECH_END_MS = 160;
 /**
- * After Web Speech `onend`, wait before `start()` again — long enough that short Neo TTS usually finishes
- * (avoids mic catching the reply), short enough that wake listen feels “always on” in the background.
+ * After Web Speech `onend`, wait before `start()` again. Voice chat stays on one long-lived mic graph; here each
+ * `start()` can trigger OEM “tun” / focus sounds — keep this **high** to avoid rapid restart loops.
  */
-const HELLO_NEO_MIC_RESTART_BASE_MS = 1400;
-/** Tiny delay before `start()` after the base cooldown — fewer OEM “tun” / focus glitches than immediate start. */
-const HELLO_NEO_ONEND_START_JITTER_MS = 52;
+const HELLO_NEO_MIC_RESTART_BASE_MS = 3200;
+/** Never call `start()` again sooner than this after the last successful start (extra guard vs double onend). */
+const HELLO_NEO_MIN_MS_BETWEEN_MIC_STARTS = 2800;
+/** Small delay before `start()` after the outer cooldown — spreads restarts slightly vs the OS scheduler. */
+const HELLO_NEO_ONEND_START_JITTER_MS = 120;
+
+/** Tap-to-talk: if the user says nothing useful within this window, stop the mic (same idea as Voice chat auto-stop). */
+const TAP_TO_TALK_IDLE_MS = 2000;
 
 async function speakReply(text: string, lang: string) {
   primeSpeechVoices();
@@ -94,6 +104,15 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
   const alexaStopRef = useRef(false);
   const alexaModeRef = useRef(false);
   const alexaRestartTimerRef = useRef<number | null>(null);
+  const lastAlexaMicStartMsRef = useRef(0);
+  const tapIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearTapIdle = useCallback(() => {
+    if (tapIdleTimerRef.current !== null) {
+      clearTimeout(tapIdleTimerRef.current);
+      tapIdleTimerRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     alexaModeRef.current = alexaMode;
@@ -125,6 +144,7 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
   }, [assistantActive]);
 
   const stopRec = useCallback(() => {
+    clearTapIdle();
     stopSpeaking();
     stopAvatarTtsAudio();
     try {
@@ -134,7 +154,7 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
     }
     recRef.current = null;
     setListening(false);
-  }, []);
+  }, [clearTapIdle]);
 
   const stopAlexa = useCallback(() => {
     alexaStopRef.current = true;
@@ -183,7 +203,10 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
     }
 
     if (!inFollowUp && hadWake && !rest.trim()) {
-      const { reply, actions } = processNeoCommandLine(trimmed, "voice", { speechLang: lang });
+      const { reply, actions } = processNeoCommandLine(trimmed, "voice", {
+        speechLang: lang,
+        displayName: getStoredUser()?.display_name,
+      });
       if (reply.trim()) {
         await speakReply(reply, lang);
       }
@@ -225,7 +248,10 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
       }
     }
 
-    const { reply, actions } = processNeoCommandLine(trimmed, "voice", { speechLang: lang });
+    const { reply, actions } = processNeoCommandLine(trimmed, "voice", {
+      speechLang: lang,
+      displayName: getStoredUser()?.display_name,
+    });
     const willAct = actions.length > 0;
     if (willAct) {
       await speakReply(neoWorkingAckPhrase(lang, readHelloNeoTtsGender()), lang);
@@ -242,57 +268,74 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
   }, []);
 
   const startListen = useCallback(() => {
-    setHint(null);
-    unlockWebAudioAndSpeechFromUserGesture();
-    if (!isSpeechRecognitionSupported()) {
-      setHint("Voice needs Chrome or Edge on this device.");
-      return;
-    }
-    stopRec();
-    finalBuf.current = "";
-    const lang = readStoredVoiceSpeechLang();
-    const rec = createSpeechRecognition(lang);
-    if (!rec) {
-      setHint("Could not start microphone.");
-      return;
-    }
-    rec.onresult = (ev: SpeechRecognitionEvent) => {
-      for (let i = ev.resultIndex; i < ev.results.length; i++) {
-        if (ev.results[i].isFinal) {
-          finalBuf.current += ev.results[i][0].transcript;
-        }
+    void (async () => {
+      setHint(null);
+      unlockWebAudioAndSpeechFromUserGesture();
+      if (!isSpeechRecognitionSupported()) {
+        setHint("Voice needs Chrome or Edge on this device.");
+        return;
       }
-    };
-    rec.onerror = (ev: SpeechRecognitionErrorEvent) => {
-      const msg = speechRecognitionErrorMessage(ev.error);
-      if (msg) setHint(msg);
       stopRec();
-    };
-    rec.onend = () => {
-      void (async () => {
-        const said = finalBuf.current.trim();
-        recRef.current = null;
-        setListening(false);
-        finalBuf.current = "";
-        if (!said) {
-          setHint("Didn't catch that — tap again and speak.");
-          return;
+      finalBuf.current = "";
+      const lang = readStoredVoiceSpeechLang();
+      const name = getStoredUser()?.display_name;
+      await speakReply(neoVoiceCommandSessionGreeting(lang, name), lang);
+
+      const rec = createSpeechRecognition(lang);
+      if (!rec) {
+        setHint("Could not start microphone.");
+        return;
+      }
+      const armTapIdle = () => {
+        clearTapIdle();
+        tapIdleTimerRef.current = window.setTimeout(() => {
+          tapIdleTimerRef.current = null;
+          if (recRef.current === rec) {
+            stopRec();
+          }
+        }, TAP_TO_TALK_IDLE_MS);
+      };
+      rec.onresult = (ev: SpeechRecognitionEvent) => {
+        for (let i = ev.resultIndex; i < ev.results.length; i++) {
+          if (ev.results[i].isFinal) {
+            clearTapIdle();
+            finalBuf.current += ev.results[i][0].transcript;
+          }
         }
-        try {
-          await runPipeline(said);
-        } catch {
-          setHint("Could not respond.");
-        }
-      })();
-    };
-    recRef.current = rec;
-    try {
-      rec.start();
-      setListening(true);
-    } catch {
-      setHint("Mic busy — try again.");
-    }
-  }, [runPipeline, stopRec]);
+      };
+      rec.onerror = (ev: SpeechRecognitionErrorEvent) => {
+        const msg = speechRecognitionErrorMessage(ev.error);
+        if (msg) setHint(msg);
+        stopRec();
+      };
+      rec.onend = () => {
+        void (async () => {
+          clearTapIdle();
+          const said = finalBuf.current.trim();
+          recRef.current = null;
+          setListening(false);
+          finalBuf.current = "";
+          if (!said) {
+            setHint("Didn't catch that — tap again and speak.");
+            return;
+          }
+          try {
+            await runPipeline(said);
+          } catch {
+            setHint("Could not respond.");
+          }
+        })();
+      };
+      recRef.current = rec;
+      try {
+        rec.start();
+        setListening(true);
+        armTapIdle();
+      } catch {
+        setHint("Mic busy — try again.");
+      }
+    })();
+  }, [runPipeline, stopRec, clearTapIdle]);
 
   /* Continuous listen — only while app is open & foreground (WebView / browser). */
   useEffect(() => {
@@ -345,6 +388,10 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
     rec.onend = () => {
       if (alexaStopRef.current || !alexaModeRef.current) return;
       if (alexaRestartTimerRef.current) clearTimeout(alexaRestartTimerRef.current);
+      const now = Date.now();
+      const sinceStart = now - lastAlexaMicStartMsRef.current;
+      const minGapWait = Math.max(0, HELLO_NEO_MIN_MS_BETWEEN_MIC_STARTS - sinceStart);
+      const outerDelay = Math.max(HELLO_NEO_MIC_RESTART_BASE_MS, minGapWait);
       const tid = window.setTimeout(() => {
         alexaRestartTimerRef.current = null;
         if (alexaStopRef.current || !alexaModeRef.current) return;
@@ -355,16 +402,18 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
           if (alexaRecRef.current !== r) return;
           try {
             r.start();
+            lastAlexaMicStartMsRef.current = Date.now();
           } catch {
             /* ignore */
           }
         }, HELLO_NEO_ONEND_START_JITTER_MS);
-      }, HELLO_NEO_MIC_RESTART_BASE_MS) as unknown as number;
+      }, outerDelay) as unknown as number;
       alexaRestartTimerRef.current = tid;
     };
 
     try {
       rec.start();
+      lastAlexaMicStartMsRef.current = Date.now();
     } catch {
       setHint("Could not start wake listener.");
     }
@@ -373,6 +422,17 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
       stopAlexa();
     };
   }, [assistantActive, alexaMode, runPipeline, stopAlexa]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState !== "visible") {
+        stopRec();
+        if (!isNativeCapacitor()) stopAlexa();
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [stopRec, stopAlexa]);
 
   if (!assistantActive) {
     if (isProfile) {
@@ -424,8 +484,9 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
         <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0 space-y-2">
             <p className="text-[11px] leading-snug text-amber-900/95">
-              Cannot read chats or auto-post for you here — only open WhatsApp Web, Telegram Web, or dial a number.
-              Phone locked or app fully closed: not supported in this browser app (needs native Android).
+              {isNativeCapacitor()
+                ? "Android: enable Notification access for Neo in system settings to hear your latest WhatsApp notification text, then open WhatsApp. Auto-opening a specific chat or sending without your tap is not supported."
+                : "Cannot read chats or auto-post for you here — only open WhatsApp Web, Telegram Web, or dial a number. Phone locked or app fully closed: not supported in this browser app (needs native Android)."}
             </p>
             <p className="text-[11px] text-black/65">
               Type?{" "}

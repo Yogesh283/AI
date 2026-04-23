@@ -53,6 +53,16 @@ public final class NeoCommandRouter {
         }
     }
 
+    /** Wake heard with no command tail — short bilingual prompt (native wake). */
+    public static void speakWakeListeningAck(Context context, String rawHeard) {
+        boolean hi = preferHindiVoice(rawHeard);
+        String msg =
+            hi
+                ? "जी, मैं सुन रहा हूँ। आप क्या चाहेंगे? जैसे YouTube पर गाना चलाना या व्हाट्सऐप खोलना।"
+                : "I'm listening. What would you like — for example play a song on YouTube or open WhatsApp?";
+        speak(context, msg);
+    }
+
     static boolean execute(Context context, String raw) {
         busyAckHandler.removeCallbacksAndMessages(null);
         pendingBusyRunnable = null;
@@ -60,6 +70,9 @@ public final class NeoCommandRouter {
         String text = normalize(raw);
         if (text.isEmpty()) return false;
         if (isReadMessagesIntent(text)) {
+            if (tryReadWhatsAppFromNotification(context, text, raw)) {
+                return true;
+            }
             speak(context, explainCantReadMessages());
             return true;
         }
@@ -484,9 +497,39 @@ public final class NeoCommandRouter {
 
     private static String explainCantReadMessages() {
         if ("hi".equals(Locale.getDefault().getLanguage())) {
-            return "व्हाट्सऐप या टेलीग्राम के अंदर के मैसेज की पूरी डिटेल यहाँ से नहीं पढ़ सकते। बोलिए: नियो, व्हाट्सऐप खोलो — फिर ऐप में देखें।";
+            return "पूरा चैट इनबॉक्स यहाँ से नहीं खोल सकते। सेटिंग्स में Neo के लिए नोटिफिकेशन एक्सेस चालू करें — तब लेटेस्ट व्हाट्सऐप नोटिफिकेशन का टेक्स्ट बता सकता हूँ। वरना बोलिए: व्हाट्सऐप खोलो।";
         }
-        return "I can't read full WhatsApp or Telegram message text from here. Say Neo, open WhatsApp — then read inside the app.";
+        return "I can't open full chats here. Enable Notification access for Neo in Android settings — then I can read your latest WhatsApp notification text. Or say open WhatsApp.";
+    }
+
+    /** Uses {@link NeoPrefs} snapshot from {@link NeoNotificationListenerService} when user granted notification access. */
+    private static boolean tryReadWhatsAppFromNotification(Context context, String text, String raw) {
+        boolean wa =
+            text.contains("whatsapp")
+                || text.contains("व्हाट्स")
+                || text.contains("वाट्स")
+                || text.contains("व्हाट्सऐप");
+        if (!wa) {
+            return false;
+        }
+        String snap = NeoPrefs.getLastWhatsAppNotification(context);
+        if (snap == null || snap.trim().isEmpty()) {
+            return false;
+        }
+        final String snippet = snap.trim();
+        speakThen(
+            context,
+            preferHindiVoice(raw)
+                ? "लास्ट व्हाट्सऐप नोटिफिकेशन: " + snippet
+                : "Your last WhatsApp notification said: " + snippet,
+            2000,
+            () ->
+                openPreferredAppThenStore(
+                    context,
+                    new String[] {"com.whatsapp", "com.whatsapp.w4b"},
+                    Uri.parse("whatsapp://send"),
+                    "com.whatsapp"));
+        return true;
     }
 
     private static boolean isWhatsAppIntent(String t) {

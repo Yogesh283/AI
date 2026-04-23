@@ -51,6 +51,8 @@ export type NeoCommandMode = "voice" | "text" | "voice-followup";
 export type NeoProcessOptions = {
   /** Used for wake-only TTS (e.g. "Yes, I heard you"). */
   speechLang?: VoiceSpeechLangCode;
+  /** Profile display name for personalized wake / greeting copy. */
+  displayName?: string | null;
 };
 
 type PendingConfirmation = {
@@ -564,7 +566,7 @@ export function processNeoCommandLine(
   if (!rest) {
     startNeoFollowUpSession();
     const lang = options?.speechLang ?? DEFAULT_VOICE_SPEECH_LANG;
-    return { reply: neoWakeAckPhrase(lang), actions: [] };
+    return { reply: neoWakeAckPhrase(lang, options?.displayName), actions: [] };
   }
 
   const r = runNeoIntents(rest, true, options?.speechLang);

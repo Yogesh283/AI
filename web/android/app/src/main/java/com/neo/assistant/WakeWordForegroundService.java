@@ -61,11 +61,14 @@ public class WakeWordForegroundService extends Service {
      * {@link NeoCommandRouter} will run {@link #resumeListeningRunnable} when TTS ends.
      */
     private static final int RELISTEN_DEFERRED = -1;
-    /** Short gap before the next {@link SpeechRecognizer#startListening} — keeps one recognizer, avoids long “dead air”. */
-    private static final int RELISTEN_MS_QUICK = 100;
-    private static final int RELISTEN_MS_ERROR = 260;
+    /**
+     * Gap before the next {@link SpeechRecognizer#startListening}. Too aggressive → OEM “tun” / audio-focus churn on
+     * many devices; one recognizer is still reused (no destroy/create per phrase).
+     */
+    private static final int RELISTEN_MS_QUICK = 550;
+    private static final int RELISTEN_MS_ERROR = 900;
     /** Wake heard with no command tail — brief pause so the user can finish the phrase. */
-    private static final int RELISTEN_MS_AFTER_WAKE_ONLY = 420;
+    private static final int RELISTEN_MS_AFTER_WAKE_ONLY = 900;
 
     private final Runnable resumeListeningRunnable =
         () -> {
@@ -115,7 +118,7 @@ public class WakeWordForegroundService extends Service {
                         stopListeningSilently();
                     }
                 } else if (Intent.ACTION_SCREEN_ON.equals(intent.getAction()) && shouldListen) {
-                    schedulePassiveRelisten(420);
+                    schedulePassiveRelisten(900);
                 }
             }
         };
@@ -315,7 +318,8 @@ public class WakeWordForegroundService extends Service {
         if (bundle == null) return RELISTEN_MS_QUICK;
         ArrayList<String> matches = bundle.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
         if (matches == null || matches.isEmpty()) return RELISTEN_MS_QUICK;
-        String said = normalize(matches.get(0));
+        String rawForTts = matches.get(0);
+        String said = normalize(rawForTts);
         if (said.isEmpty()) return RELISTEN_MS_QUICK;
 
         String command = extractWakeCommand(said);
@@ -324,7 +328,11 @@ public class WakeWordForegroundService extends Service {
         }
 
         if (command.isEmpty()) {
-            /* Wake heard (e.g. "hello neo") with no command tail — brief pause before passive listen resumes. */
+            /* Wake only — prompt user; defer STT restart until TTS ends (avoids speaker→mic overlap). */
+            NeoCommandRouter.speakWakeListeningAck(this, rawForTts);
+            if (NeoCommandRouter.isAISpeaking()) {
+                return RELISTEN_DEFERRED;
+            }
             return RELISTEN_MS_AFTER_WAKE_ONLY;
         }
 
@@ -355,6 +363,12 @@ public class WakeWordForegroundService extends Service {
     }
 
     private int indexOfWake(String s) {
+        /* Lock-screen / screen-off listen: allow leading "hello …" as wake (not only "neo"). */
+        if (listenScreenOff && s.length() >= 5 && s.startsWith("hello")) {
+            if (!(s.startsWith("hello neo") || s.startsWith("hello new"))) {
+                return 0;
+            }
+        }
         String[] wakes = new String[] {"hello neo", "hello new", "neo", "नियो", "हेलो नियो"};
         int best = -1;
         for (String w : wakes) {
@@ -369,6 +383,20 @@ public class WakeWordForegroundService extends Service {
     }
 
     private int endOfWake(String s, int start) {
+        if (listenScreenOff && start == 0 && s.startsWith("hello")) {
+            if (s.startsWith("hello neo")) {
+                return Math.max(start, "hello neo".length());
+            }
+            if (s.startsWith("hello new")) {
+                return Math.max(start, "hello new".length());
+            }
+            if (s.startsWith("hello ")) {
+                return 6;
+            }
+            if (s.equals("hello")) {
+                return 5;
+            }
+        }
         String[] wakes = new String[] {"hello neo", "hello new", "neo", "नियो", "हेलो नियो"};
         int bestEnd = start;
         for (String w : wakes) {

@@ -31,6 +31,10 @@ class TtsBody(BaseModel):
 
 @router.post("/transcribe")
 async def transcribe(audio: UploadFile | None = File(None)) -> dict:
+    """
+    Optional upload → Whisper. **Hello Neo / wake listen does not use this route** — device mic STT runs in the
+    browser or in `WakeWordForegroundService`. No server-side mic session for wake commands.
+    """
     if not audio or not audio.filename:
         return {"text": "", "error": "no_audio"}
 
