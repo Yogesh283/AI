@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import aiomysql
@@ -46,6 +48,11 @@ async def init_pool() -> None:
             maxsize=8,
         )
         logger.info("MySQL pool ready (%s/%s)", settings.mysql_host, settings.mysql_database)
+        try:
+            await ensure_live_data_table()
+            await ensure_new_data_table()
+        except Exception as e:
+            logger.warning("ensure_live_data_table / ensure_new_data_table failed: %s", e)
     except Exception as e:
         logger.warning("MySQL pool failed: %s", e)
         _pool = None
@@ -347,3 +354,197 @@ async def fetch_recent_chat_context(user_id: str, limit: int = 24) -> list[dict[
     except Exception as e:
         logger.warning("fetch_recent_chat_context failed: %s", e)
         return []
+
+
+_LIVE_DATA_DDL = """
+CREATE TABLE IF NOT EXISTS live_data (
+  cache_key CHAR(64) NOT NULL,
+  query_sample VARCHAR(500) NOT NULL,
+  snippet_body MEDIUMTEXT NOT NULL,
+  source VARCHAR(32) NOT NULL DEFAULT 'bing',
+  updated_at DATETIME(6) NOT NULL,
+  PRIMARY KEY (cache_key),
+  KEY idx_live_data_updated (updated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+"""
+
+
+async def ensure_live_data_table() -> None:
+    """Bing/live snippet cache rows (refreshed by cron + on-demand)."""
+    if _pool is None:
+        return
+    async with _pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(_LIVE_DATA_DDL)
+
+
+def _utc_naive(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+async def live_data_get_fresh(cache_key: str, *, ttl_minutes: int) -> str | None:
+    """Return snippet_body if row exists and is within TTL (compared in UTC)."""
+    if _pool is None:
+        return None
+    ck = (cache_key or "").strip()
+    if len(ck) != 64:
+        return None
+    try:
+        async with _pool.acquire() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cur:
+                await cur.execute(
+                    "SELECT snippet_body, updated_at FROM live_data WHERE cache_key = %s LIMIT 1",
+                    (ck,),
+                )
+                row = await cur.fetchone()
+    except Exception as e:
+        logger.warning("live_data_get_fresh failed: %s", e)
+        return None
+    if not row:
+        return None
+    body = str(row.get("snippet_body") or "").strip()
+    if not body:
+        return None
+    ua = row.get("updated_at")
+    if not isinstance(ua, datetime):
+        return None
+    now = datetime.now(timezone.utc)
+    updated = _utc_naive(ua)
+    if now - updated > timedelta(minutes=max(1, ttl_minutes)):
+        return None
+    return body
+
+
+async def live_data_upsert(
+    *,
+    cache_key: str,
+    query_sample: str,
+    snippet_body: str,
+    source: str = "bing",
+) -> None:
+    if _pool is None:
+        return
+    ck = (cache_key or "").strip()
+    if len(ck) != 64:
+        return
+    qs = (query_sample or "").strip()[:500]
+    sn = (snippet_body or "").strip()
+    src = (source or "bing").strip()[:32] or "bing"
+    if not sn:
+        return
+    ts = datetime.now(timezone.utc).replace(tzinfo=None)
+    sql = (
+        "INSERT INTO live_data (cache_key, query_sample, snippet_body, source, updated_at) "
+        "VALUES (%s, %s, %s, %s, %s) "
+        "ON DUPLICATE KEY UPDATE "
+        "query_sample = VALUES(query_sample), "
+        "snippet_body = VALUES(snippet_body), "
+        "source = VALUES(source), "
+        "updated_at = VALUES(updated_at)"
+    )
+    try:
+        async with _pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(sql, (ck, qs, sn, src, ts))
+    except Exception as e:
+        logger.warning("live_data_upsert failed: %s", e)
+
+
+_NEW_DATA_DDL = """
+CREATE TABLE IF NOT EXISTS new_data (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  section VARCHAR(512) NOT NULL COMMENT 'Auto-generated from cron query/topic text',
+  api_source VARCHAR(32) NOT NULL DEFAULT 'unknown',
+  content_hash CHAR(64) NOT NULL,
+  snippet_body MEDIUMTEXT NOT NULL,
+  created_at DATETIME(6) NOT NULL,
+  PRIMARY KEY (id),
+  KEY idx_new_data_section_created (section(191), created_at),
+  KEY idx_new_data_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+COMMENT='Live API snapshots; append row only when snippet content changes (hash)'
+"""
+
+
+async def ensure_new_data_table() -> None:
+    """Cron writes here only when fetched live text differs from last row for that section."""
+    if _pool is None:
+        return
+    async with _pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(_NEW_DATA_DDL)
+
+
+def _normalize_new_data_section(section: str) -> str:
+    s = " ".join((section or "").strip().split())
+    return s[:500]
+
+
+async def new_data_insert_if_changed(*, section: str, snippet_body: str, api_source: str) -> bool:
+    """
+    Insert one row into `new_data` only if body differs from the latest row for this section
+    (SHA-256 of snippet_body). Returns True when a new row was inserted.
+    """
+    if _pool is None:
+        return False
+    sec = _normalize_new_data_section(section)
+    body = (snippet_body or "").strip()
+    if not sec or not body:
+        return False
+    src = (api_source or "unknown").strip()[:32] or "unknown"
+    h = hashlib.sha256(body.encode("utf-8")).hexdigest()
+    try:
+        async with _pool.acquire() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cur:
+                await cur.execute(
+                    "SELECT content_hash FROM new_data WHERE section = %s ORDER BY id DESC LIMIT 1",
+                    (sec,),
+                )
+                row = await cur.fetchone()
+        if row and str(row.get("content_hash") or "") == h:
+            return False
+        ts = datetime.now(timezone.utc).replace(tzinfo=None)
+        async with _pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "INSERT INTO new_data (section, api_source, content_hash, snippet_body, created_at) "
+                    "VALUES (%s, %s, %s, %s, %s)",
+                    (sec, src, h, body, ts),
+                )
+        return True
+    except Exception as e:
+        logger.warning("new_data_insert_if_changed failed: %s", e)
+        return False
+
+
+async def live_data_list_stale(*, ttl_minutes: int, limit: int = 30) -> list[dict[str, Any]]:
+    """Rows older than TTL — used by background refresh to re-Bing the same topics."""
+    if _pool is None:
+        return []
+    lim = max(1, min(int(limit), 200))
+    ttl = max(1, ttl_minutes)
+    try:
+        async with _pool.acquire() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cur:
+                await cur.execute(
+                    "SELECT cache_key, query_sample FROM live_data "
+                    "WHERE updated_at < DATE_SUB(UTC_TIMESTAMP(6), INTERVAL %s MINUTE) "
+                    "ORDER BY updated_at ASC LIMIT %s",
+                    (ttl, lim),
+                )
+                rows = await cur.fetchall()
+    except Exception as e:
+        logger.warning("live_data_list_stale failed: %s", e)
+        return []
+    out: list[dict[str, Any]] = []
+    for r in rows or []:
+        if isinstance(r, dict):
+            out.append(
+                {
+                    "cache_key": str(r.get("cache_key") or ""),
+                    "query_sample": str(r.get("query_sample") or ""),
+                }
+            )
+    return out

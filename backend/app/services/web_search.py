@@ -316,14 +316,22 @@ async def _fetch_serpapi_web_snippets(query: str, *, limit: int) -> str:
     if not q:
         return ""
     count = min(max(limit, 1), 10)
-    params = {
+    hl = (settings.serpapi_hl or "en").strip() or "en"
+    gl = (settings.serpapi_gl or "in").strip() or "in"
+    params: dict[str, str | int] = {
         "engine": "google",
         "q": q,
         "api_key": token,
         "num": count,
-        "hl": "en",
-        "gl": "in",
+        "hl": hl,
+        "gl": gl,
     }
+    loc = (settings.serpapi_location or "").strip()
+    if loc:
+        params["location"] = loc
+    gdom = (settings.serpapi_google_domain or "").strip()
+    if gdom:
+        params["google_domain"] = gdom
     backoff_seconds = (0.8, 1.6)
 
     for attempt in range(3):

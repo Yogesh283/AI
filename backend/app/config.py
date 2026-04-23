@@ -68,6 +68,21 @@ class Settings(BaseSettings):
     brave_search_api_key: str = ""
     # Optional: SerpAPI (Google/Bing wrappers) for live web snippets
     serpapi_api_key: str = ""
+    # SerpAPI Google engine localization (optional). Example India + Hindi UI:
+    # SERPAPI_LOCATION=India SERPAPI_GOOGLE_DOMAIN=google.co.in SERPAPI_HL=hi SERPAPI_GL=in
+    serpapi_location: str = ""
+    serpapi_google_domain: str = ""
+    serpapi_hl: str = "en"
+    serpapi_gl: str = "in"
+    # Optional: Azure Bing Web Search v7 — cached in MySQL `live_data` (see live_data_cache + cron)
+    bing_search_api_key: str = ""
+    bing_search_endpoint: str = ""
+    live_cache_ttl_minutes: int = 45
+    live_cache_cron_interval_seconds: int = 2700
+    # Comma-separated topics polled every cron tick → `live_data` + `new_data` (append only if content changed).
+    # Prefer LIVE_CRON_QUERIES; if empty, BING_CRON_QUERIES is used (backward compatible).
+    live_cron_queries: str = ""
+    bing_cron_queries: str = ""
 
     @model_validator(mode="after")
     def _merge_google_client_id(self):

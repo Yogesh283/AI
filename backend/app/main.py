@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Response
@@ -11,11 +13,39 @@ from app.db_mysql import close_pool, init_pool, mysql_configured, pool_ready
 from app.routers import auth, chat, memory, voice
 from app.services.ai import _openai_api_key
 
+logger = logging.getLogger(__name__)
+_live_data_refresh_task: asyncio.Task[None] | None = None
+
+
+async def _live_data_refresh_loop() -> None:
+    """Every ~45m (configurable): SerpAPI/Bing → `live_data` upsert; `new_data` append only if content changed."""
+    from app.jobs.live_data_refresh import run_scheduled_live_data_refresh
+
+    interval = max(120, int(getattr(settings, "live_cache_cron_interval_seconds", 2700)))
+    await asyncio.sleep(min(90, interval))
+    while True:
+        try:
+            await run_scheduled_live_data_refresh()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("live_data scheduled refresh failed")
+        await asyncio.sleep(interval)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _live_data_refresh_task
     await init_pool()
+    _live_data_refresh_task = asyncio.create_task(_live_data_refresh_loop())
     yield
+    if _live_data_refresh_task is not None:
+        _live_data_refresh_task.cancel()
+        try:
+            await _live_data_refresh_task
+        except asyncio.CancelledError:
+            pass
+        _live_data_refresh_task = None
     await close_pool()
 
 

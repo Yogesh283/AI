@@ -1,8 +1,8 @@
 """
 Sports / match-style query detection for chat routing.
 
-Live facts come from {@link app.services.web_search.fetch_google_snippets}
-(Brave Web Search, optional Google CSE, Google News RSS) — see `build_live_web_context_block` below.
+Live facts: MySQL `live_data` (Bing cache, TTL) → Bing on miss → then
+{@link app.services.web_search.fetch_google_snippets} (Brave / CSE / RSS).
 """
 
 from __future__ import annotations
@@ -88,14 +88,17 @@ def google_fetch_query(user_text: str) -> str:
 
 async def build_live_web_context_block(last_user: str, *, now_ist: datetime) -> str:
     """
-    Single live-data pipeline: Brave (optional) + Google CSE (optional) + Google News RSS in parallel.
-    `now_ist` stamps the block so the model can align 'current season' headlines with real time.
+    Live-data pipeline: fresh `live_data` DB row (Bing-shaped) → else live Bing → else
+    Brave / Google CSE / News RSS bundle. `now_ist` stamps the block for the model clock.
     """
+    from app.services.live_data_cache import try_live_db_then_bing_snippets
     from app.services.web_search import fetch_google_snippets
 
     primary = google_fetch_query(last_user)
     lim = 10 if is_sports_live_query(last_user) else 8
-    g = await fetch_google_snippets(primary, limit=lim)
+    g = await try_live_db_then_bing_snippets(primary, limit=lim)
+    if not g.strip():
+        g = await fetch_google_snippets(primary, limit=lim)
     if not g.strip() and is_sports_live_query(last_user):
         y = datetime.now(timezone.utc).year
         m = re.search(r"\b(20\d{2})\b", (last_user or "").strip())
