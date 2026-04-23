@@ -26,6 +26,11 @@ export async function generateMetadata(): Promise<Metadata> {
       template: `%s | ${brand}`,
     },
     description: `Your personal AI assistant — chat, voice, and memory. ${brand}.`,
+    icons: {
+      icon: "/logo.jpeg",
+      shortcut: "/logo.jpeg",
+      apple: "/logo.jpeg",
+    },
   };
 }
 

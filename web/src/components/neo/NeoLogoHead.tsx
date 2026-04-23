@@ -1,10 +1,10 @@
 import Image from "next/image";
 
-const LOGO_SRC = "/neo-logo.png";
+const LOGO_SRC = "/logo.jpeg";
 const INTRINSIC_W = 355;
 const INTRINSIC_H = 355;
 
-/** App mark — uses `public/neo-logo.png` (355×355). */
+/** App mark — uses `public/logo.jpeg`. */
 export function NeoLogoHead({
   className = "",
   priority = false,

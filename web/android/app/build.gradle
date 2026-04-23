@@ -6,14 +6,20 @@ android {
     buildFeatures {
         buildConfig true
     }
+    packaging {
+        jniLibs {
+            // Uncompressed + page-aligned native libs — avoids “App not installed” on some OEMs (Porcupine .so).
+            useLegacyPackaging = true
+        }
+    }
     defaultConfig {
         applicationId "com.neo.assistant"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         def pvKey = (project.findProperty("PV_ACCESS_KEY") ?: System.getenv("PV_ACCESS_KEY") ?: "").toString()
         buildConfigField "String", "PV_ACCESS_KEY", "\"${pvKey.replace('"', '\\"')}\""
-        versionCode 10
-        versionName "1.6.3"
+        versionCode 12
+        versionName "1.6.5"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -22,9 +28,17 @@ android {
         }
     }
     buildTypes {
+        debug {
+            // Install debug APK side-by-side to avoid "App not installed"
+            // when a differently signed production app is already present.
+            applicationIdSuffix ".debug"
+            versionNameSuffix "-debug"
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // Sideload testing: release build signed with debug keystore (not for Play Store).
+            signingConfig signingConfigs.debug
         }
     }
 }
@@ -37,7 +51,8 @@ repositories {
 
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
-    implementation "ai.picovoice:porcupine-android:3.0.2"
+    // 4.x includes 16 KB page-size aligned native libs (Android 15+); 3.0.x can fail install on newer devices.
+    implementation "ai.picovoice:porcupine-android:4.0.0"
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
