@@ -174,10 +174,10 @@ def _realtime_server_vad() -> dict[str, object]:
     """
     return {
         "type": "server_vad",
-        # Slightly lower threshold + longer end-of-turn silence so slow Hindi / long pauses are not cut off early.
-        "threshold": 0.55,
-        "prefix_padding_ms": 620,
-        "silence_duration_ms": 2300,
+        # Shorter silence = faster “user finished” → transcript + live-web injection + reply (trade-off: long mid-sentence pauses may end turn earlier).
+        "threshold": 0.56,
+        "prefix_padding_ms": 480,
+        "silence_duration_ms": 1600,
         "interrupt_response": False,
         "create_response": False,
     }

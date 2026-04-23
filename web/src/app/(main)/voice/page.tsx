@@ -383,7 +383,7 @@ export default function VoicePage() {
             userSpeechDebounceRef.current = setTimeout(() => {
               userSpeechDebounceRef.current = null;
               setUserSpeaking(false);
-            }, 260);
+            }, 180);
           }
           /* Do not mark Google grace here — every OpenAI delta would block Google gap-fill forever. */
           setHistory((h) => {
@@ -459,7 +459,7 @@ export default function VoicePage() {
               const j = await postLiveWebContext(line);
               block = (j.block || "").trim();
               if (!block && sessionOnRef.current && myTurn === voiceLiveWebTurnRef.current) {
-                await new Promise<void>((r) => setTimeout(r, 350));
+                await new Promise<void>((r) => setTimeout(r, 120));
                 if (sessionOnRef.current && myTurn === voiceLiveWebTurnRef.current) {
                   const j2 = await postLiveWebContext(line);
                   block = (j2.block || "").trim();
@@ -487,12 +487,12 @@ export default function VoicePage() {
               (liveResponseBusyRef.current || speakingRef.current)
             ) {
               if (Date.now() - idle0 > maxIdleMs) break;
-              await new Promise<void>((r) => setTimeout(r, 72));
+              await new Promise<void>((r) => setTimeout(r, 42));
             }
             if (!sessionOnRef.current || myTurn !== voiceLiveWebTurnRef.current) return;
             if (liveResponseBusyRef.current) {
               liveCancelRef.current?.();
-              await new Promise<void>((r) => setTimeout(r, 120));
+              await new Promise<void>((r) => setTimeout(r, 70));
             }
             if (!sessionOnRef.current || myTurn !== voiceLiveWebTurnRef.current) return;
             if (block) {

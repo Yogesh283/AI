@@ -1,4 +1,4 @@
-"""Live web context: Brave Web Search (optional), Google CSE (optional), Google News RSS."""
+"""Live web context: SerpAPI, NewsAPI.org, Brave, Google CSE, Google News RSS (optional mix)."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 import httpx
 
 from app.config import settings
+from app.services.newsapi_search import fetch_newsapi_everything_snippets
 
 logger = logging.getLogger(__name__)
 
@@ -495,8 +496,7 @@ async def _fetch_google_cse_snippets(query: str, *, limit: int) -> tuple[str, bo
 
 async def fetch_google_snippets(query: str, *, limit: int = 8) -> str:
     """
-    Live web bundle for the model: **SerpAPI** (if `SERPAPI_API_KEY`),
-    **Brave Search** (if `BRAVE_SEARCH_API_KEY`), **Google CSE** (if `GOOGLE_CSE_*`),
+    Live web bundle for the model: **SerpAPI**, **NewsAPI.org**, **Brave**, **Google CSE** (each if env key set),
     and **Google News RSS** in parallel.
     If no web-search key is configured, returns News RSS only when available.
     """
@@ -505,6 +505,7 @@ async def fetch_google_snippets(query: str, *, limit: int = 8) -> str:
         return ""
 
     serpapi_key = (settings.serpapi_api_key or "").strip()
+    newsapi_key = (settings.newsapi_api_key or "").strip()
     brave_key = (settings.brave_search_api_key or "").strip()
     cse_key = (settings.google_cse_api_key or "").strip()
     cse_cx = (settings.google_cse_cx or "").strip()
@@ -520,6 +521,11 @@ async def fetch_google_snippets(query: str, *, limit: int = 8) -> str:
             return ""
         return await _fetch_serpapi_web_snippets(query, limit=cse_limit)
 
+    async def newsapi_part() -> str:
+        if not newsapi_key:
+            return ""
+        return await fetch_newsapi_everything_snippets(query, limit=cse_limit)
+
     async def brave_part() -> str:
         if not brave_key:
             return ""
@@ -530,18 +536,20 @@ async def fetch_google_snippets(query: str, *, limit: int = 8) -> str:
             return "", False
         return await _fetch_google_cse_snippets(query, limit=cse_limit)
 
-    if not serpapi_key and not brave_key and not (cse_key and cse_cx):
+    if not serpapi_key and not newsapi_key and not brave_key and not (cse_key and cse_cx):
         rss = await rss_part()
         if rss.strip():
             return "## News (Google News RSS)\n" + rss.strip()
         return ""
 
-    serpapi, brave, (cse, cse_rate_limited), rss = await asyncio.gather(
-        serpapi_part(), brave_part(), cse_part(), rss_part()
+    serpapi, newsapi, brave, (cse, cse_rate_limited), rss = await asyncio.gather(
+        serpapi_part(), newsapi_part(), brave_part(), cse_part(), rss_part()
     )
     parts: list[str] = []
     if serpapi.strip():
         parts.append("## Web (SerpAPI)\n" + serpapi.strip())
+    if newsapi.strip():
+        parts.append("## News (NewsAPI.org)\n" + newsapi.strip())
     if brave.strip():
         parts.append("## Web (Brave Search)\n" + brave.strip())
     if cse.strip():
@@ -553,10 +561,12 @@ async def fetch_google_snippets(query: str, *, limit: int = 8) -> str:
         bundle = _prepend_reality_guard(
             bundle,
             query=query,
-            has_web=bool(serpapi.strip() or brave.strip() or cse.strip()),
+            has_web=bool(
+                serpapi.strip() or newsapi.strip() or brave.strip() or cse.strip()
+            ),
             has_rss=bool(rss.strip()),
         )
-        if cse_rate_limited and not cse.strip() and rss.strip() and not brave.strip() and not serpapi.strip():
+        if cse_rate_limited and not cse.strip() and rss.strip() and not brave.strip() and not serpapi.strip() and not newsapi.strip():
             bundle = (
                 "__IMPORTANT: Custom Search (web) API hit rate limits—only News RSS lines appear below. "
                 "Headlines may be incomplete; state only facts visible in these lines—do not invent scores or tables.__\n\n"

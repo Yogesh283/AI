@@ -68,6 +68,9 @@ class Settings(BaseSettings):
     brave_search_api_key: str = ""
     # Optional: SerpAPI (Google/Bing wrappers) for live web snippets
     serpapi_api_key: str = ""
+    # Optional: NewsAPI.org (https://newsapi.org) — /v2/everything for news headlines
+    newsapi_api_key: str = ""
+    newsapi_language: str = "en"
     # SerpAPI Google engine localization (optional). Example India + Hindi UI:
     # SERPAPI_LOCATION=India SERPAPI_GOOGLE_DOMAIN=google.co.in SERPAPI_HL=hi SERPAPI_GL=in
     serpapi_location: str = ""

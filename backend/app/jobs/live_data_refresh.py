@@ -13,6 +13,7 @@ from app.db_mysql import (
 )
 from app.services.bing_search import fetch_bing_web_snippets
 from app.services.live_data_cache import live_cache_key_for_query
+from app.services.newsapi_search import fetch_newsapi_everything_snippets
 from app.services.web_search import _fetch_serpapi_web_snippets
 
 logger = logging.getLogger(__name__)
@@ -40,10 +41,11 @@ async def run_scheduled_live_data_refresh() -> None:
         return
 
     serp_key = (settings.serpapi_api_key or "").strip()
+    news_key = (settings.newsapi_api_key or "").strip()
     bing_key = (settings.bing_search_api_key or "").strip()
-    if not serp_key and not bing_key:
+    if not serp_key and not news_key and not bing_key:
         logger.warning(
-            "Live cron skipped: no SERPAPI_API_KEY or BING_SEARCH_API_KEY — nothing to fetch into the database.",
+            "Live cron skipped: no SERPAPI_API_KEY, NEWSAPI_API_KEY, or BING_SEARCH_API_KEY — nothing to fetch into the database.",
         )
         return
 
@@ -72,6 +74,10 @@ async def run_scheduled_live_data_refresh() -> None:
                 body = await _fetch_serpapi_web_snippets(q, limit=lim)
                 if body.strip():
                     src = "serpapi"
+            if not body.strip() and news_key:
+                body = await fetch_newsapi_everything_snippets(q, limit=lim)
+                if body.strip():
+                    src = "newsapi"
             if not body.strip() and bing_key:
                 body = await fetch_bing_web_snippets(q, limit=lim)
                 if body.strip():
