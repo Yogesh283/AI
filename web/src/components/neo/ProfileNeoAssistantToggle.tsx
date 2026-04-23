@@ -18,8 +18,12 @@ export function ProfileNeoAssistantToggle() {
   const [active, setActive] = useState(false);
   const [alexaListen, setAlexaListen] = useState(false);
   const [wakeScreenOff, setWakeScreenOff] = useState(false);
+  const [nativeApp, setNativeApp] = useState(() =>
+    typeof window !== "undefined" ? isNativeCapacitor() : false,
+  );
 
   useEffect(() => {
+    setNativeApp(isNativeCapacitor());
     setActive(readNeoAssistantActive());
     setAlexaListen(readNeoAlexaListen());
     setWakeScreenOff(readWakeListenScreenOffStorage());
@@ -40,6 +44,26 @@ export function ProfileNeoAssistantToggle() {
     setAlexaListen(next);
     writeNeoAlexaListen(next);
   };
+
+  if (!nativeApp) {
+    return (
+      <section className="neo-screen-card overflow-hidden rounded-[22px]">
+        <div className="border-b border-slate-200/90 px-5 py-3.5">
+          <h2 className="text-sm font-semibold text-black">Neo assistant — voice commands</h2>
+          <p className="mt-0.5 text-xs text-black/70">Hands-free Neo / Hello Neo</p>
+        </div>
+        <div className="px-5 py-4">
+          <p className="text-[13px] leading-relaxed text-black/75">
+            <span className="font-semibold text-black">Voice commands</span> (wake phrase, tap-to-talk, opening apps like
+            WhatsApp, and Hello Neo background listen) run only in the{" "}
+            <span className="font-semibold text-black">Neo AI Android app</span>. In the browser, use{" "}
+            <span className="font-medium text-black">Chat</span> and the microphone there for dictation, or open{" "}
+            <span className="font-medium text-black">Voice</span> for live voice chat where supported.
+          </p>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="neo-screen-card overflow-hidden rounded-[22px]">

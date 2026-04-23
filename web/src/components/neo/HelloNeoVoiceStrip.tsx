@@ -37,19 +37,6 @@ import {
   subscribeNeoAssistantActive,
 } from "@/lib/neoAssistantActive";
 
-/** Lower = faster flush after you pause (wake listen on Profile). */
-const DEBOUNCE_MS = 260;
-const FLUSH_AFTER_SPEECH_END_MS = 160;
-/**
- * After Web Speech `onend`, wait before `start()` again. Voice chat stays on one long-lived mic graph; here each
- * `start()` can trigger OEM “tun” / focus sounds — keep this **high** to avoid rapid restart loops.
- */
-const HELLO_NEO_MIC_RESTART_BASE_MS = 3200;
-/** Never call `start()` again sooner than this after the last successful start (extra guard vs double onend). */
-const HELLO_NEO_MIN_MS_BETWEEN_MIC_STARTS = 2800;
-/** Small delay before `start()` after the outer cooldown — spreads restarts slightly vs the OS scheduler. */
-const HELLO_NEO_ONEND_START_JITTER_MS = 120;
-
 /** Tap-to-talk: if the user says nothing useful within this window, stop the mic (same idea as Voice chat auto-stop). */
 const TAP_TO_TALK_IDLE_MS = 2000;
 
@@ -83,13 +70,14 @@ type Props = {
 };
 
 /**
- * Tap-to-talk + optional wake listen (foreground only). Commands run only after **Neo** / **Hello Neo** / **हेलो नियो**,
- * or during a short post-wake window (~8s). Wake listen uses one continuous `SpeechRecognition` session; after each
- * engine `onend` it restarts quietly (cooldown + tiny jitter) — no extra UI tones; other speech is ignored until wake.
- * Profile toggles; `variant="profile"` only on Profile.
+ * **Android APK only** — tap-to-talk + optional Hello Neo wake (native foreground service in WebView). Browser builds
+ * do not render this strip (see Profile). Commands run only after **Neo** / **Hello Neo** / **हेलो नियो**, or during a
+ * short post-wake window (~8s). Profile toggles; `variant="profile"` only on Profile.
  */
 export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
   const isProfile = variant === "profile";
+  /** Avoid SSR/client hydration mismatch — `isNativeCapacitor()` is false on server. */
+  const [nativeVoiceUi, setNativeVoiceUi] = useState(false);
   const [assistantActive, setAssistantActive] = useState(false);
   const [listening, setListening] = useState(false);
   const [alexaMode, setAlexaMode] = useState(false);
@@ -98,13 +86,6 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
   const [neoFollowUpOpen, setNeoFollowUpOpen] = useState(false);
   const recRef = useRef<SpeechRecognition | null>(null);
   const finalBuf = useRef("");
-  const alexaRecRef = useRef<SpeechRecognition | null>(null);
-  const bufferRef = useRef("");
-  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const alexaStopRef = useRef(false);
-  const alexaModeRef = useRef(false);
-  const alexaRestartTimerRef = useRef<number | null>(null);
-  const lastAlexaMicStartMsRef = useRef(0);
   const tapIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearTapIdle = useCallback(() => {
@@ -115,8 +96,8 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
   }, []);
 
   useEffect(() => {
-    alexaModeRef.current = alexaMode;
-  }, [alexaMode]);
+    setNativeVoiceUi(isNativeCapacitor());
+  }, []);
 
   useEffect(() => {
     setAssistantActive(readNeoAssistantActive());
@@ -156,33 +137,13 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
     setListening(false);
   }, [clearTapIdle]);
 
-  const stopAlexa = useCallback(() => {
-    alexaStopRef.current = true;
-    if (alexaRestartTimerRef.current) {
-      clearTimeout(alexaRestartTimerRef.current);
-      alexaRestartTimerRef.current = null;
-    }
-    try {
-      alexaRecRef.current?.abort?.();
-    } catch {
-      /* ignore */
-    }
-    alexaRecRef.current = null;
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
-      debounceTimerRef.current = null;
-    }
-    bufferRef.current = "";
-  }, []);
-
   useEffect(() => {
     if (!assistantActive) {
       stopRec();
-      stopAlexa();
       return;
     }
     setAlexaMode(readNeoAlexaListen());
-  }, [assistantActive, stopRec, stopAlexa]);
+  }, [assistantActive, stopRec]);
 
   const runPipeline = useCallback(async (said: string) => {
     const lang = readStoredVoiceSpeechLang();
@@ -288,7 +249,7 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
       }
       const armTapIdle = () => {
         clearTapIdle();
-        tapIdleTimerRef.current = window.setTimeout(() => {
+        tapIdleTimerRef.current = setTimeout(() => {
           tapIdleTimerRef.current = null;
           if (recRef.current === rec) {
             stopRec();
@@ -337,102 +298,20 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
     })();
   }, [runPipeline, stopRec, clearTapIdle]);
 
-  /* Continuous listen — only while app is open & foreground (WebView / browser). */
-  useEffect(() => {
-    if (!assistantActive) {
-      stopAlexa();
-      return;
-    }
-    if (!alexaMode) {
-      stopAlexa();
-      return;
-    }
-    if (isNativeCapacitor()) {
-      stopAlexa();
-      /* Native `WakeWordForegroundService` + `NeoWakeNativeSync` — avoid a second mic in WebView. */
-      return;
-    }
-    if (!isSpeechRecognitionSupported()) {
-      setHint("Wake listen needs Chrome or Edge.");
-      return;
-    }
-    alexaStopRef.current = false;
-    const lang = readStoredVoiceSpeechLang();
-    const rec = createSpeechRecognition(lang, { continuous: true });
-    if (!rec) return;
-    alexaRecRef.current = rec;
-
-    const flush = () => {
-      const t = bufferRef.current.replace(/\s+/g, " ").trim();
-      bufferRef.current = "";
-      if (!t || alexaStopRef.current) return;
-      void runPipeline(t).catch(() => setHint("Could not respond."));
-    };
-
-    rec.onresult = (ev: SpeechRecognitionEvent) => {
-      for (let i = ev.resultIndex; i < ev.results.length; i++) {
-        if (!ev.results[i].isFinal) continue;
-        bufferRef.current += ev.results[i][0].transcript + " ";
-      }
-      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-      debounceTimerRef.current = setTimeout(flush, DEBOUNCE_MS);
-    };
-    (rec as SpeechRecognition & { onspeechend?: () => void }).onspeechend = () => {
-      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-      debounceTimerRef.current = setTimeout(flush, FLUSH_AFTER_SPEECH_END_MS);
-    };
-    rec.onerror = (ev: SpeechRecognitionErrorEvent) => {
-      const msg = speechRecognitionErrorMessage(ev.error);
-      if (msg && ev.error !== "aborted") setHint(msg);
-    };
-    rec.onend = () => {
-      if (alexaStopRef.current || !alexaModeRef.current) return;
-      if (alexaRestartTimerRef.current) clearTimeout(alexaRestartTimerRef.current);
-      const now = Date.now();
-      const sinceStart = now - lastAlexaMicStartMsRef.current;
-      const minGapWait = Math.max(0, HELLO_NEO_MIN_MS_BETWEEN_MIC_STARTS - sinceStart);
-      const outerDelay = Math.max(HELLO_NEO_MIC_RESTART_BASE_MS, minGapWait);
-      const tid = window.setTimeout(() => {
-        alexaRestartTimerRef.current = null;
-        if (alexaStopRef.current || !alexaModeRef.current) return;
-        const r = alexaRecRef.current;
-        if (!r) return;
-        window.setTimeout(() => {
-          if (alexaStopRef.current || !alexaModeRef.current) return;
-          if (alexaRecRef.current !== r) return;
-          try {
-            r.start();
-            lastAlexaMicStartMsRef.current = Date.now();
-          } catch {
-            /* ignore */
-          }
-        }, HELLO_NEO_ONEND_START_JITTER_MS);
-      }, outerDelay) as unknown as number;
-      alexaRestartTimerRef.current = tid;
-    };
-
-    try {
-      rec.start();
-      lastAlexaMicStartMsRef.current = Date.now();
-    } catch {
-      setHint("Could not start wake listener.");
-    }
-
-    return () => {
-      stopAlexa();
-    };
-  }, [assistantActive, alexaMode, runPipeline, stopAlexa]);
-
   useEffect(() => {
     const onVis = () => {
       if (document.visibilityState !== "visible") {
         stopRec();
-        if (!isNativeCapacitor()) stopAlexa();
       }
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
-  }, [stopRec, stopAlexa]);
+  }, [stopRec]);
+
+  /* Voice commands (Neo / Hello Neo, tap-to-talk, wake listen) — native Android app only. */
+  if (!nativeVoiceUi) {
+    return null;
+  }
 
   if (!assistantActive) {
     if (isProfile) {

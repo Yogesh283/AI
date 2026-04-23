@@ -65,12 +65,13 @@ export default function FaqPage() {
 
               <TopicSection icon="🎙️" title="Voice Command Feature">
                 <p>
-                  Neo AI works on your personal voice commands for a secure and personalized experience.
+                  Hands-free Neo / Hello Neo voice commands (wake phrase, app shortcuts, and background listen) are
+                  available in the <strong>Neo AI Android app</strong> only — not in the browser.
                 </p>
                 <p>
-                  It responds only to your registered voice and does not accept commands from others.
+                  In the app, Neo responds to your personal voice commands for a secure, personalized experience. It is
+                  designed for your registered voice profile; set that up in the app before relying on voice control.
                 </p>
-                <p>You need to set up your voice profile before using this feature.</p>
               </TopicSection>
 
               <TopicSection icon="📚" title="Smart Learning & Tutor">
