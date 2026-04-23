@@ -1,7 +1,7 @@
 """
 Sports / match-style query detection for chat routing.
 
-Live facts: MySQL `live_data` (Bing cache, TTL) → Bing on miss → then
+Live facts: MySQL `new_data` (cron snapshots) + `live_data` / Bing →
 {@link app.services.web_search.fetch_google_snippets} (Brave / CSE / RSS).
 """
 
@@ -88,14 +88,23 @@ def google_fetch_query(user_text: str) -> str:
 
 async def build_live_web_context_block(last_user: str, *, now_ist: datetime) -> str:
     """
-    Live-data pipeline: fresh `live_data` DB row (Bing-shaped) → else live Bing → else
-    Brave / Google CSE / News RSS bundle. `now_ist` stamps the block for the model clock.
+    Live-data pipeline: MySQL `new_data` (cron snapshots) when relevant → `live_data` / Bing →
+    Brave / Google CSE / News RSS. Same block feeds text chat and voice `/live-context`. `now_ist` stamps IST.
     """
+    from app.db_mysql import new_data_bundle_for_live_context, pool_ready
     from app.services.live_data_cache import try_live_db_then_bing_snippets
     from app.services.web_search import fetch_google_snippets
 
     primary = google_fetch_query(last_user)
     lim = 10 if is_sports_live_query(last_user) else 8
+
+    db_snap = ""
+    if pool_ready():
+        try:
+            db_snap = await new_data_bundle_for_live_context(primary, limit=5)
+        except Exception:
+            db_snap = ""
+
     g = await try_live_db_then_bing_snippets(primary, limit=lim)
     if not g.strip():
         g = await fetch_google_snippets(primary, limit=lim)
@@ -107,11 +116,18 @@ async def build_live_web_context_block(last_user: str, *, now_ist: datetime) -> 
         g = await fetch_google_snippets(
             f"IPL {y} points table standings teams ranked latest news", limit=lim
         )
-    if not g.strip():
+
+    parts: list[str] = []
+    if db_snap.strip():
+        parts.append("### Cached live rows (MySQL `new_data`)\n" + db_snap.strip())
+    if g.strip():
+        parts.append("### Live fetch (web search + news)\n" + g.strip())
+    if not parts:
         return ""
+
     stamp = now_ist.strftime("%Y-%m-%d %H:%M %Z")
     anchor = (
         f"Retrieved {stamp}. Use this clock when judging whether a headline's 'current' or 'latest' table matches "
         "what the user asked; if snippets conflict or are stale, say so—do not guess.\n\n"
     )
-    return anchor + "### Live data (web search + news)\n" + g.strip()
+    return anchor + "\n\n".join(parts)

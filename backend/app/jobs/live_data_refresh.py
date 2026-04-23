@@ -33,12 +33,18 @@ def _cron_query_strings() -> list[str]:
 
 async def run_scheduled_live_data_refresh() -> None:
     if not pool_ready():
+        logger.warning(
+            "Live cron skipped: MySQL pool not ready — set MYSQL_HOST and MYSQL_DATABASE in .env "
+            "and ensure MySQL is running so `live_data` / `new_data` can be filled.",
+        )
         return
 
     serp_key = (settings.serpapi_api_key or "").strip()
     bing_key = (settings.bing_search_api_key or "").strip()
     if not serp_key and not bing_key:
-        logger.debug("live cron: skip (no SERPAPI_API_KEY or BING_SEARCH_API_KEY)")
+        logger.warning(
+            "Live cron skipped: no SERPAPI_API_KEY or BING_SEARCH_API_KEY — nothing to fetch into the database.",
+        )
         return
 
     ttl = max(1, min(int(settings.live_cache_ttl_minutes or 45), 24 * 60))

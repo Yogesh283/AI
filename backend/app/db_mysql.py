@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -480,6 +481,68 @@ async def ensure_new_data_table() -> None:
 def _normalize_new_data_section(section: str) -> str:
     s = " ".join((section or "").strip().split())
     return s[:500]
+
+
+def _new_data_query_tokens(q: str) -> list[str]:
+    """Short tokens (3+ chars) for matching `new_data.section` / snippet text."""
+    raw = (q or "").strip().lower()
+    if not raw:
+        return []
+    words = re.findall(r"[a-z0-9\u0900-\u097f]{3,}", raw)
+    out: list[str] = []
+    for w in words:
+        if w not in out and len(out) < 8:
+            out.append(w)
+    return out
+
+
+async def new_data_bundle_for_live_context(query: str, *, limit: int = 5) -> str:
+    """
+    Rows from `new_data` for voice/chat live injection: prefer rows whose section/snippet
+    overlaps the search query tokens; else latest rows. Empty if table missing/empty.
+    """
+    if _pool is None:
+        return ""
+    lim = max(1, min(int(limit), 12))
+    tokens = _new_data_query_tokens(query)
+    try:
+        async with _pool.acquire() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cur:
+                await cur.execute(
+                    "SELECT id, section, snippet_body, created_at, api_source "
+                    "FROM new_data ORDER BY id DESC LIMIT 80",
+                )
+                rows = await cur.fetchall() or []
+    except Exception as e:
+        logger.warning("new_data_bundle_for_live_context read failed: %s", e)
+        return ""
+
+    picked: list[dict[str, Any]] = []
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        blob = f"{r.get('section') or ''} {r.get('snippet_body') or ''}".lower()
+        if not tokens or any(t in blob for t in tokens):
+            picked.append(r)
+        if len(picked) >= lim:
+            break
+    if not picked and rows:
+        for r in rows[:lim]:
+            if isinstance(r, dict):
+                picked.append(r)
+
+    lines: list[str] = []
+    for r in picked:
+        ts = r.get("created_at")
+        ts_s = ts.isoformat() if hasattr(ts, "isoformat") else str(ts)
+        sec = str(r.get("section") or "")[:200]
+        body = str(r.get("snippet_body") or "").strip()
+        src = str(r.get("api_source") or "")
+        if not body:
+            continue
+        body = body[:3500]
+        lines.append(f"[{ts_s}] (source={src}) section: {sec}\n{body}")
+    return "\n\n".join(lines)
 
 
 async def new_data_insert_if_changed(*, section: str, snippet_body: str, api_source: str) -> bool:

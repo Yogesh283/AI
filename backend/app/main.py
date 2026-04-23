@@ -15,6 +15,20 @@ from app.services.ai import _openai_api_key
 
 logger = logging.getLogger(__name__)
 _live_data_refresh_task: asyncio.Task[None] | None = None
+_live_cron_startup_task: asyncio.Task[None] | None = None
+
+
+async def _live_cron_startup_once() -> None:
+    """First DB fill soon after boot so voice/chat see `new_data` without waiting 45 minutes."""
+    from app.jobs.live_data_refresh import run_scheduled_live_data_refresh
+
+    await asyncio.sleep(12)
+    try:
+        await run_scheduled_live_data_refresh()
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.exception("startup live cron run failed")
 
 
 async def _live_data_refresh_loop() -> None:
@@ -35,10 +49,18 @@ async def _live_data_refresh_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _live_data_refresh_task
+    global _live_data_refresh_task, _live_cron_startup_task
     await init_pool()
+    _live_cron_startup_task = asyncio.create_task(_live_cron_startup_once())
     _live_data_refresh_task = asyncio.create_task(_live_data_refresh_loop())
     yield
+    if _live_cron_startup_task is not None:
+        _live_cron_startup_task.cancel()
+        try:
+            await _live_cron_startup_task
+        except asyncio.CancelledError:
+            pass
+        _live_cron_startup_task = None
     if _live_data_refresh_task is not None:
         _live_data_refresh_task.cancel()
         try:
