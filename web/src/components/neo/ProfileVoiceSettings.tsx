@@ -175,7 +175,7 @@ export function ProfileVoiceSettings({ user, onUserUpdated, onMessage }: Props) 
               Hello Neo commands (top bar)
             </p>
             <p className="text-[11px] text-black/70">
-              Wake replies, time, open apps — <span className="font-medium text-black">alag</span> speed from voice chat.
+              Wake replies, time, open apps — <span className="font-medium text-black">separate</span> speed from voice chat.
             </p>
           </div>
           <div>

@@ -61,12 +61,9 @@ export function queryLooksHindi(q: string): boolean {
   return deva >= 4 || deva / Math.max(t.length, 1) >= 0.06;
 }
 
-function preferHindiReply(q: string, speechLang?: VoiceSpeechLangCode): boolean {
-  return queryLooksHindi(q) || (speechLang ?? "").toLowerCase().startsWith("hi");
-}
-
-function cmdReply(en: string, hi: string, q: string, speechLang?: VoiceSpeechLangCode): string {
-  return preferHindiReply(q, speechLang) ? hi : en;
+/** Product copy is English-only in the app UI; spoken command feedback uses the same. */
+function cmdReply(en: string, _hi: string, _q: string, _speechLang?: VoiceSpeechLangCode): string {
+  return en;
 }
 
 /** After a “busy” line, skip repeating a generic “Opening …” TTS. */
@@ -172,10 +169,9 @@ export function runNeoIntents(
     /(समय|टाइम)\s*(क्या|बताओ|कितना|अभी)/i.test(trimmed);
   if (timeIntent) {
     const now = new Date();
-    const h = preferHindiReply(trimmed, speechLang);
-    const time = now.toLocaleTimeString(h ? "hi-IN" : undefined, { hour: "2-digit", minute: "2-digit" });
+    const time = now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
     return {
-      reply: h ? `अभी का समय ${time} है।` : `It's ${time}.`,
+      reply: `It's ${time}.`,
       actions: [],
     };
   }

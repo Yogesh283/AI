@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { History, Home, MessageCircle, Mic, Sparkles } from "lucide-react";
+import { Home, ImagePlus, MessageCircle, Sparkles, User } from "lucide-react";
 
 const PRIMARY = "#2563EB";
 const MUTED = "#94A3B8";
@@ -27,25 +27,23 @@ type Item =
  * Bottom nav (mobile):
  * 1. Home → /dashboard
  * 2. Chat → /chat
- * 3. AI Assistant (center FAB) → /voice
- * 4. Voice chat → /voice
- * 5. History → /memory
- *
- * Items 3 & 4 share /voice — both highlight on the voice page.
+ * 3. AI Assistant (center FAB) → /voice (voice chat)
+ * 4. Image create → /create
+ * 5. Profile → /profile
  */
 const ITEMS: Item[] = [
   { kind: "tab", href: "/dashboard", label: "Home", Icon: Home },
   { kind: "tab", href: "/chat", label: "Chat", Icon: MessageCircle },
-  { kind: "fab", href: "/voice", title: "AI Assistant" },
+  { kind: "fab", href: "/voice", title: "AI Assistant — voice chat" },
   {
     kind: "tab",
-    href: "/voice",
-    label: "Voice",
-    labelLine2: "chat",
-    Icon: Mic,
-    keySuffix: "voice-chat",
+    href: "/create",
+    label: "Image",
+    labelLine2: "Create",
+    Icon: ImagePlus,
+    keySuffix: "image-create",
   },
-  { kind: "tab", href: "/memory", label: "History", Icon: History },
+  { kind: "tab", href: "/profile", label: "Profile", Icon: User },
 ];
 
 function pathActive(path: string | null, href: string) {
@@ -99,7 +97,7 @@ export function NeoBottomDock() {
                           active ? "text-[#2563EB]" : "text-[#94A3B8]"
                         }`}
                       >
-                        Assist
+                        Voice
                       </span>
                     </span>
                   </Link>

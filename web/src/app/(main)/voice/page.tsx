@@ -54,8 +54,8 @@ function shouldSuppressLiveVoiceRealtimeError(msg: string): boolean {
   );
 }
 
-/** Persona preview TTS (Man / Woman) — slow, warm delivery. */
-const VOICE_CHAT_TTS_SPEED: TtsSpeedPreset = "slow";
+/** Persona preview TTS (Man / Woman) — natural is snappier; still warm tone below. */
+const VOICE_CHAT_TTS_SPEED: TtsSpeedPreset = "natural";
 const VOICE_CHAT_TTS_TONE: TtsTonePreset = "warm";
 const VOICE_CHAT_AVATAR_OPTS = { voiceChatOpenAiTts: true as const };
 
@@ -383,7 +383,7 @@ export default function VoicePage() {
             userSpeechDebounceRef.current = setTimeout(() => {
               userSpeechDebounceRef.current = null;
               setUserSpeaking(false);
-            }, 420);
+            }, 260);
           }
           /* Do not mark Google grace here — every OpenAI delta would block Google gap-fill forever. */
           setHistory((h) => {
@@ -418,7 +418,7 @@ export default function VoicePage() {
           const nowMs = Date.now();
           if (
             line === lastVoicePipelineUserLineRef.current.line &&
-            nowMs - lastVoicePipelineUserLineRef.current.at < 3200
+            nowMs - lastVoicePipelineUserLineRef.current.at < 1800
           ) {
             liveUserTranscriptOpenRef.current = false;
             return;
@@ -453,14 +453,13 @@ export default function VoicePage() {
             const send = liveSendClientEventRef.current;
             if (!send) return;
             setLiveWebFetching(true);
-            const t0 = Date.now();
             let block = "";
             let liveFetchFailed = false;
             try {
               const j = await postLiveWebContext(line);
               block = (j.block || "").trim();
               if (!block && sessionOnRef.current && myTurn === voiceLiveWebTurnRef.current) {
-                await new Promise<void>((r) => setTimeout(r, 900));
+                await new Promise<void>((r) => setTimeout(r, 350));
                 if (sessionOnRef.current && myTurn === voiceLiveWebTurnRef.current) {
                   const j2 = await postLiveWebContext(line);
                   block = (j2.block || "").trim();
@@ -468,13 +467,9 @@ export default function VoicePage() {
               }
             } catch {
               liveFetchFailed = true;
-              /* offline / API error — still continue after min delay */
+              /* offline / API error — continue without blocking on artificial delay */
             }
-            /* Give CSE + News time to finish before the model answers (live facts). */
-            const waitMs = Math.max(0, 4500 - (Date.now() - t0));
-            await new Promise<void>((r) => {
-              setTimeout(r, waitMs);
-            });
+            /* `postLiveWebContext` is already awaited — do not pad multi-second waits (felt broken / “late”). */
             if (!sessionOnRef.current || myTurn !== voiceLiveWebTurnRef.current) {
               setLiveWebFetching(false);
               return;
@@ -492,12 +487,12 @@ export default function VoicePage() {
               (liveResponseBusyRef.current || speakingRef.current)
             ) {
               if (Date.now() - idle0 > maxIdleMs) break;
-              await new Promise<void>((r) => setTimeout(r, 100));
+              await new Promise<void>((r) => setTimeout(r, 72));
             }
             if (!sessionOnRef.current || myTurn !== voiceLiveWebTurnRef.current) return;
             if (liveResponseBusyRef.current) {
               liveCancelRef.current?.();
-              await new Promise<void>((r) => setTimeout(r, 220));
+              await new Promise<void>((r) => setTimeout(r, 120));
             }
             if (!sessionOnRef.current || myTurn !== voiceLiveWebTurnRef.current) return;
             if (block) {
@@ -547,8 +542,10 @@ export default function VoicePage() {
           };
           liveWebPipelineRef.current = liveWebPipelineRef.current
             .then(runPipeline)
-            .catch(() => {
-              /* ignore */
+            .catch((e) => {
+              if (!sessionOnRef.current) return;
+              const msg = e instanceof Error ? e.message : String(e);
+              if (msg.trim()) setErr(`Voice lookup: ${msg.trim()}`);
             });
         },
         onAssistantTranscriptDelta: (delta) => {

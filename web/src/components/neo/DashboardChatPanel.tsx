@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { getStoredUser } from "@/lib/auth";
@@ -29,12 +28,62 @@ import {
   whatsAppOpenAck,
 } from "@/lib/whatsappOpenCommand";
 
-type Msg = { role: "user" | "assistant"; content: string };
+type Msg = { role: "user" | "assistant"; content: string; imageDataUrl?: string };
+
+/** JPEG data URL for chat attachment; shrinks until under ~110k chars for storage/API. */
+async function compressImageToDataUrl(file: File): Promise<string> {
+  const maxChars = 110_000;
+  const read = (maxW: number, quality: number) =>
+    new Promise<string>((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        let w = img.naturalWidth;
+        let h = img.naturalHeight;
+        if (w < 1 || h < 1) {
+          reject(new Error("bad image"));
+          return;
+        }
+        if (w > maxW) {
+          h = Math.round((h * maxW) / w);
+          w = maxW;
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("canvas"));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, w, h);
+        try {
+          resolve(canvas.toDataURL("image/jpeg", quality));
+        } catch (e) {
+          reject(e);
+        }
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("load"));
+      };
+      img.src = url;
+    });
+
+  for (const maxW of [960, 720, 560, 420, 320, 260]) {
+    for (const q of [0.82, 0.72, 0.62, 0.52, 0.42]) {
+      const dataUrl = await read(maxW, q);
+      if (dataUrl.length <= maxChars) return dataUrl;
+    }
+  }
+  throw new Error("too large");
+}
 
 function initialMsgs(displayName?: string | null): Msg[] {
   const name = shortDisplayNameForGreeting(displayName ?? undefined);
   const line = name
-    ? `Hey ${name} — I'm ${NEO_ASSISTANT_NAME}. Chat here like you would with a person: ask anything, in Hindi or English, short or detailed — I'm listening.`
+    ? `Hey ${name} — I'm ${NEO_ASSISTANT_NAME}. Chat here like you would with a person: ask anything, short or detailed — I'm listening.`
     : `Hi — I'm ${NEO_ASSISTANT_NAME}. Just type like you would to a friend; I'm here.`;
   return [{ role: "assistant", content: line }];
 }
@@ -69,6 +118,10 @@ export function DashboardChatPanel() {
   const liveSearchBufRef = useRef("");
   const liveSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [liveSearchUi, setLiveSearchUi] = useState(false);
+  const [pendingAttachment, setPendingAttachment] = useState<{ dataUrl: string; name: string } | null>(null);
+  const pendingAttachmentRef = useRef<{ dataUrl: string; name: string } | null>(null);
+  pendingAttachmentRef.current = pendingAttachment;
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   const resetConversation = useCallback(() => {
     streamAbortRef.current?.abort();
@@ -85,6 +138,8 @@ export function DashboardChatPanel() {
       liveSearchTimerRef.current = null;
     }
     setLiveSearchUi(false);
+    setPendingAttachment(null);
+    setVoiceHint(null);
   }, [brandName]);
 
   /** Match Tailwind max-h-36 (9rem) / min-h ~ single line composer. */
@@ -150,7 +205,16 @@ export function DashboardChatPanel() {
 
   useEffect(() => {
     const uid = getStoredUser()?.id ?? "anon";
-    saveChatMessages(uid, msgs);
+    const persisted = msgs.map((m) => {
+      if (m.role === "user" && m.imageDataUrl) {
+        return {
+          role: "user" as const,
+          content: `${m.content}\n\n📷 (photo was attached — preview not kept after refresh)`.trim(),
+        };
+      }
+      return { role: m.role, content: m.content };
+    });
+    saveChatMessages(uid, persisted);
   }, [msgs]);
 
   useEffect(() => {
@@ -253,11 +317,14 @@ export function DashboardChatPanel() {
 
   const sendMessage = useCallback(async (text: string) => {
     const trimmed = text.trim();
-    if (!trimmed) return;
-    setInput("");
+    const attach = pendingAttachmentRef.current;
+    if (!trimmed && !attach) return;
     const cur = msgsRef.current;
 
-    if (shouldOpenWhatsAppFromCommand(trimmed)) {
+    if (trimmed && shouldOpenWhatsAppFromCommand(trimmed)) {
+      setInput("");
+      setPendingAttachment(null);
+      pendingAttachmentRef.current = null;
       const waUrl = buildWhatsAppWebUrl(trimmed);
       const popped = tryOpenWhatsAppPopup(waUrl);
       const ack = whatsAppOpenAck(readStoredVoiceSpeechLang(), popped ? "new-tab" : "same-tab");
@@ -268,11 +335,25 @@ export function DashboardChatPanel() {
       return;
     }
 
+    setInput("");
+    setPendingAttachment(null);
+    pendingAttachmentRef.current = null;
+
     streamAbortRef.current?.abort();
     streamAbortRef.current = new AbortController();
     const signal = streamAbortRef.current.signal;
 
-    const next: Msg[] = [...cur, { role: "user", content: trimmed }, { role: "assistant", content: "" }];
+    const displayUserText = trimmed || (attach ? "📷" : "");
+    const apiUserText = attach
+      ? `${displayUserText}\n\n[User attached an image file "${attach.name}". You cannot see the image pixels—answer from their text, or ask briefly what the image shows if needed.]`
+      : displayUserText;
+
+    const userMsg: Msg = {
+      role: "user",
+      content: displayUserText,
+      ...(attach ? { imageDataUrl: attach.dataUrl } : {}),
+    };
+    const next: Msg[] = [...cur, userMsg, { role: "assistant", content: "" }];
     setMsgs(next);
     msgsRef.current = next;
     setLoading(true);
@@ -309,10 +390,13 @@ export function DashboardChatPanel() {
     };
 
     try {
-      const apiMsgs = next.slice(0, -1).map((m) => ({
-        role: m.role as "user" | "assistant",
-        content: m.content,
-      }));
+      const apiMsgs = next.slice(0, -1).map((m, i, arr) => {
+        const isLast = i === arr.length - 1;
+        if (isLast && m.role === "user" && attach) {
+          return { role: "user" as const, content: apiUserText };
+        }
+        return { role: m.role as "user" | "assistant", content: m.content };
+      });
       const uid = getStoredUser()?.id ?? "default";
       await postChatStream(
         apiMsgs,
@@ -439,8 +523,35 @@ export function DashboardChatPanel() {
     void sendMessage(input);
   }
 
+  const canClearChat = msgs.length > 1 || input.trim().length > 0 || Boolean(pendingAttachment);
+
   return (
     <div className="relative z-[1] flex min-h-0 flex-1 flex-col overflow-hidden bg-[#F5F7FA]">
+      <div className="shrink-0 border-b border-slate-200/70 bg-[#F5F7FA] px-3 py-2 sm:px-5 md:px-8">
+        <div className="mx-auto flex max-w-[52rem] items-center justify-end">
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => {
+              if (!canClearChat) {
+                resetConversation();
+                return;
+              }
+              if (
+                typeof window !== "undefined" &&
+                !window.confirm("Clear all chat messages on this device? This cannot be undone.")
+              ) {
+                return;
+              }
+              resetConversation();
+            }}
+            className="rounded-[12px] border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-[2px_3px_10px_rgba(15,23,42,0.05)] transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 disabled:pointer-events-none disabled:opacity-40"
+            title="Start fresh — clears thread and composer"
+          >
+            Clear chat
+          </button>
+        </div>
+      </div>
       <div
         ref={scrollRef}
         className="neo-chat-scroll min-h-0 flex-1 overflow-y-auto overscroll-y-contain scroll-smooth bg-[#F5F7FA] px-3 py-5 sm:px-5 md:px-8 md:py-6"
@@ -478,9 +589,16 @@ export function DashboardChatPanel() {
                     }
                   >
                     {m.role === "user" ? (
-                      <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed text-slate-900">
-                        {m.content}
-                      </p>
+                      <div className="text-[15px] leading-relaxed text-slate-900">
+                        {m.imageDataUrl ? (
+                          <img
+                            src={m.imageDataUrl}
+                            alt=""
+                            className="mb-2 max-h-52 w-full max-w-xs rounded-xl border border-slate-200/90 object-contain shadow-sm"
+                          />
+                        ) : null}
+                        <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                      </div>
                     ) : (
                       <div className="text-[15px] leading-relaxed text-slate-800">
                         {loading && isLast && liveSearchUi ? (
@@ -522,6 +640,49 @@ export function DashboardChatPanel() {
 
       <div className="z-10 shrink-0 border-t border-slate-200/90 bg-[#EDEFF3] px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-8px_32px_rgba(15,23,42,0.06)] sm:px-5 md:px-8 md:pt-4">
         <div className="mx-auto w-full max-w-[52rem]">
+          {pendingAttachment ? (
+            <div className="mb-2 flex items-center gap-2 rounded-[16px] border border-slate-200/90 bg-white/90 px-2.5 py-2 shadow-[4px_6px_14px_rgba(15,23,42,0.05)]">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={pendingAttachment.dataUrl}
+                alt=""
+                className="h-11 w-11 shrink-0 rounded-lg border border-slate-200 object-cover"
+              />
+              <span className="min-w-0 flex-1 truncate text-xs font-medium text-slate-600">
+                {pendingAttachment.name}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPendingAttachment(null)}
+                className="shrink-0 rounded-lg px-2 py-1 text-xs font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                aria-label="Remove image"
+              >
+                Remove
+              </button>
+            </div>
+          ) : null}
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
+            className="sr-only"
+            aria-hidden
+            tabIndex={-1}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = "";
+              if (!f || !f.type.startsWith("image/")) return;
+              void (async () => {
+                try {
+                  const dataUrl = await compressImageToDataUrl(f);
+                  setPendingAttachment({ dataUrl, name: f.name });
+                  setVoiceHint(null);
+                } catch {
+                  setVoiceHint("Could not use that image — try a smaller JPG or PNG.");
+                }
+              })();
+            }}
+          />
           <div className="flex w-full items-end gap-1.5 rounded-[24px] border border-white bg-[linear-gradient(180deg,#fafbfd,#eef2f7)] py-2 pl-3 pr-2 shadow-[8px_10px_24px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/60 backdrop-blur-md sm:gap-2 sm:pl-4 sm:pr-2.5">
             <textarea
               ref={inputRef}
@@ -542,24 +703,6 @@ export function DashboardChatPanel() {
             />
             <button
               type="button"
-              onClick={() => void send()}
-              disabled={loading || voiceListening || !input.trim()}
-              className="neo-gradient-fill flex h-10 w-10 shrink-0 items-center justify-center rounded-[16px] text-white shadow-[0_4px_14px_rgba(37,99,235,0.35)] transition duration-300 hover:scale-[1.04] hover:brightness-105 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-35"
-              aria-label="Send message"
-              title="Send (Enter)"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
-                <path
-                  d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7Z"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </button>
-            <button
-              type="button"
               onClick={() => toggleVoice()}
               disabled={loading}
               className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[16px] text-slate-600 transition duration-300 hover:bg-slate-200/90 disabled:opacity-40 ${
@@ -576,19 +719,42 @@ export function DashboardChatPanel() {
                 />
               </svg>
             </button>
-            <Link
-              href="/voice"
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] bg-gradient-to-br from-[#3b82f6] to-[#2563eb] text-white shadow-[0_2px_12px_rgba(37,99,235,0.4)] transition duration-300 hover:scale-[1.03] active:scale-[0.97]"
-              aria-label="Voice chat"
-              title="Voice chat"
+            <button
+              type="button"
+              onClick={() => imageInputRef.current?.click()}
+              disabled={loading || voiceListening}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[16px] bg-sky-100/90 text-sky-800 shadow-[inset_0_0_0_1px_rgba(14,165,233,0.25)] transition duration-300 hover:bg-sky-200/90 disabled:pointer-events-none disabled:opacity-35"
+              aria-label="Attach image"
+              title="Upload image"
             >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
-                <rect x="4" y="10" width="3" height="8" rx="1" fill="currentColor" />
-                <rect x="9" y="6" width="3" height="16" rx="1" fill="currentColor" />
-                <rect x="14" y="8" width="3" height="12" rx="1" fill="currentColor" />
-                <rect x="19" y="4" width="3" height="20" rx="1" fill="currentColor" />
+                <path
+                  d="M4 16l4.586-4.586a2 2 0 0 1 2.828 0L16 16m-2-2 1.586-1.586a2 2 0 0 1 2.828 0L20 14M6 20h12a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-3.17a2 2 0 0 1-1.41-.59l-1.83-1.83A2 2 0 0 0 9.17 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2Z"
+                  stroke="currentColor"
+                  strokeWidth="1.65"
+                  strokeLinejoin="round"
+                />
+                <circle cx="9" cy="9" r="1.5" fill="currentColor" />
               </svg>
-            </Link>
+            </button>
+            <button
+              type="button"
+              onClick={() => void send()}
+              disabled={loading || voiceListening || (!input.trim() && !pendingAttachment)}
+              className="neo-gradient-fill flex h-10 w-10 shrink-0 items-center justify-center rounded-[16px] text-white shadow-[0_4px_14px_rgba(37,99,235,0.35)] transition duration-300 hover:scale-[1.04] hover:brightness-105 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-35"
+              aria-label="Send message"
+              title="Send (Enter)"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <path
+                  d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7Z"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
           </div>
           {voiceHint ? (
             <p className="mt-2.5 text-center text-[11px] text-amber-400/95" role="status">

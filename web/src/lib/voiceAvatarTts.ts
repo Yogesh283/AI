@@ -454,7 +454,7 @@ export function createVoiceChatStreamedOpenAiTtsSession(opts: {
 
   const findNextFlushEnd = (full: string, from: number, isFirst: boolean): number => {
     const n = full.length;
-    const minLen = isFirst ? 10 : 22;
+    const minLen = isFirst ? 8 : 18;
     if (n - from < minLen) return -1;
     const hardMax = 140;
     const searchTo = Math.min(n, from + hardMax);
@@ -528,7 +528,7 @@ export function createVoiceChatStreamedOpenAiTtsSession(opts: {
       if (!genOk()) return;
       tryFlushHardBoundaries();
       tryFlushIdlePartial();
-    }, 280);
+    }, 165);
   };
 
   const flushRemainder = () => {
