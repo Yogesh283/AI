@@ -80,12 +80,12 @@ async def sync_user_record(rec: dict[str, Any]) -> None:
         prov = "password"
     sql = (
         "INSERT INTO users (id, email, display_name, password_hash_b64, auth_provider) "
-        "VALUES (%s, %s, %s, %s, %s) "
+        "VALUES (%s, %s, %s, %s, %s) AS new "
         "ON DUPLICATE KEY UPDATE "
-        "email = VALUES(email), "
-        "display_name = VALUES(display_name), "
-        "auth_provider = VALUES(auth_provider), "
-        "password_hash_b64 = COALESCE(NULLIF(VALUES(password_hash_b64), ''), password_hash_b64)"
+        "email = new.email, "
+        "display_name = new.display_name, "
+        "auth_provider = new.auth_provider, "
+        "password_hash_b64 = COALESCE(NULLIF(new.password_hash_b64, ''), password_hash_b64)"
     )
     try:
         async with _pool.acquire() as conn:
@@ -370,9 +370,32 @@ CREATE TABLE IF NOT EXISTS live_data (
 """
 
 
+async def _mysql_table_exists(table: str) -> bool:
+    """Avoid repeating CREATE TABLE IF NOT EXISTS on every startup (noisy in logs)."""
+    if _pool is None:
+        return False
+    name = (table or "").strip()
+    if not name or not re.fullmatch(r"[A-Za-z0-9_]+", name):
+        return False
+    try:
+        async with _pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT 1 FROM information_schema.tables "
+                    "WHERE table_schema = DATABASE() AND table_name = %s LIMIT 1",
+                    (name,),
+                )
+                row = await cur.fetchone()
+        return row is not None
+    except Exception:
+        return False
+
+
 async def ensure_live_data_table() -> None:
     """Bing/live snippet cache rows (refreshed by cron + on-demand)."""
     if _pool is None:
+        return
+    if await _mysql_table_exists("live_data"):
         return
     async with _pool.acquire() as conn:
         async with conn.cursor() as cur:
@@ -438,12 +461,12 @@ async def live_data_upsert(
     ts = datetime.now(timezone.utc).replace(tzinfo=None)
     sql = (
         "INSERT INTO live_data (cache_key, query_sample, snippet_body, source, updated_at) "
-        "VALUES (%s, %s, %s, %s, %s) "
+        "VALUES (%s, %s, %s, %s, %s) AS new "
         "ON DUPLICATE KEY UPDATE "
-        "query_sample = VALUES(query_sample), "
-        "snippet_body = VALUES(snippet_body), "
-        "source = VALUES(source), "
-        "updated_at = VALUES(updated_at)"
+        "query_sample = new.query_sample, "
+        "snippet_body = new.snippet_body, "
+        "source = new.source, "
+        "updated_at = new.updated_at"
     )
     try:
         async with _pool.acquire() as conn:
@@ -472,6 +495,8 @@ COMMENT='Live API snapshots; append row only when snippet content changes (hash)
 async def ensure_new_data_table() -> None:
     """Cron writes here only when fetched live text differs from last row for that section."""
     if _pool is None:
+        return
+    if await _mysql_table_exists("new_data"):
         return
     async with _pool.acquire() as conn:
         async with conn.cursor() as cur:
