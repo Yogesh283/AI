@@ -68,12 +68,12 @@ export function neoWakeAckPhrase(code: VoiceSpeechLangCode, displayName?: string
   const nm = displayName?.trim();
   if (code.startsWith("hi")) {
     return nm
-      ? `नमस्ते ${nm} जी, मैं सुन रहा हूँ। आप क्या चाहेंगे? जैसे YouTube पर गाना चलाना या WhatsApp खोलना।`
-      : `नमस्ते, मैं सुन रहा हूँ। आप क्या चाहेंगे? जैसे YouTube या WhatsApp।`;
+      ? `नमस्ते ${nm} जी, बोलिए। क्या चाहिए—YouTube, WhatsApp, कॉल, या कोई ऐप?`
+      : `नमस्ते, बोलिए। क्या चाहिए—YouTube, WhatsApp, या कॉल?`;
   }
   return nm
-    ? `Hello ${nm}, I'm listening. What would you like — for example play a song on YouTube or open WhatsApp?`
-    : `Hello, I'm listening. What would you like — for example YouTube or WhatsApp?`;
+    ? `Hi ${nm} — I'm listening. What would you like? Try music, WhatsApp, a call, or any app.`
+    : `Hi — I'm listening. What would you like? You can ask for music, WhatsApp, a call, or any app.`;
 }
 
 /** Played when the user taps Try Neo (before one-shot listen). Smooth bilingual by speech locale. */
@@ -81,12 +81,12 @@ export function neoVoiceCommandSessionGreeting(code: VoiceSpeechLangCode, displa
   const nm = displayName?.trim();
   if (code.startsWith("hi")) {
     return nm
-      ? `नमस्ते ${nm} जी, बताइए मैं आपकी क्या मदद करूँ?`
-      : `नमस्ते, बताइए मैं आपकी क्या मदद करूँ?`;
+      ? `नमस्ते ${nm} जी… आराम से बोलिए, मैं सुन रहा हूँ। जो चाहें—खोलना, सवाल, या बस बात।`
+      : `नमस्ते… आराम से बोलिए, मैं सुन रहा हूँ।`;
   }
   return nm
-    ? `Hello ${nm}, what can I do for you today?`
-    : `Hello, what can I do for you today?`;
+    ? `Hey ${nm}… take your time. I'm listening — ask for anything, or just talk.`
+    : `Hey… take your time. I'm listening — ask for anything, or just talk.`;
 }
 
 /**
@@ -94,10 +94,13 @@ export function neoVoiceCommandSessionGreeting(code: VoiceSpeechLangCode, displa
  * Gender matches Hello Neo TTS setting in Profile.
  */
 export function neoWorkingAckPhrase(
-  _code: VoiceSpeechLangCode,
+  code: VoiceSpeechLangCode,
   _gender: "male" | "female" = "female",
 ): string {
-  return "On it — just a moment.";
+  if (code.startsWith("hi")) {
+    return "ठीक है… थोड़ा समय दीजिए, कर रहा हूँ।";
+  }
+  return "Alright… give me just a moment.";
 }
 
 export function ackPhraseForLang(code: VoiceSpeechLangCode): string {

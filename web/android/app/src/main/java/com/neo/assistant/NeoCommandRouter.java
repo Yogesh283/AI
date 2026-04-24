@@ -9,13 +9,18 @@ import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.provider.ContactsContract;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
+import android.speech.tts.Voice;
 import androidx.core.content.ContextCompat;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -53,13 +58,13 @@ public final class NeoCommandRouter {
         }
     }
 
-    /** Wake heard with no command tail — short bilingual prompt (native wake). */
+    /** Wake heard with no command tail — short, assistant-style prompt (Alexa-like: brief + one beat to speak). */
     public static void speakWakeListeningAck(Context context, String rawHeard) {
         boolean hi = preferHindiVoice(rawHeard);
         String msg =
             hi
-                ? "जी, मैं सुन रहा हूँ। आप क्या चाहेंगे? जैसे YouTube पर गाना चलाना या व्हाट्सऐप खोलना।"
-                : "I'm listening. What would you like — for example play a song on YouTube or open WhatsApp?";
+                ? "जी, बोलिए। क्या चाहिए—YouTube, WhatsApp, कॉल, या कोई ऐप?"
+                : "I'm listening. What would you like? You can ask for music, WhatsApp, a call, or any app.";
         speak(context, msg);
     }
 
@@ -124,12 +129,12 @@ public final class NeoCommandRouter {
                 boolean launched = openInstalledAppByLabel(context, appName);
                 if (launched) {
                     speak(context, preferHindiVoice(raw)
-                        ? "ठीक है, " + appName + " खोल रहे हैं।"
-                        : "Okay, opening " + appName + ".");
+                        ? "ठीक है, " + appName + " खोल रहा हूँ।"
+                        : "Sure — opening " + appName + " now.");
                 } else {
                     speak(context, preferHindiVoice(raw)
-                        ? "यह ऐप इंस्टॉल्ड नहीं मिला। कृपया सही ऐप नाम बोलें।"
-                        : "I could not find that installed app. Please say the exact app name.");
+                        ? "वह ऐप फोन पर नहीं मिला। थोड़ा साफ नाम बोलकर फिर कोशिश करिए।"
+                        : "I don't see that app on this phone. Try saying the app name a bit more clearly.");
                 }
                 return true;
             }
@@ -227,45 +232,45 @@ public final class NeoCommandRouter {
         boolean hi = preferHindiVoice(raw);
         String msg =
             hi
-                ? "जी, आपके फोन पर अभी का समय " + t + " है।"
-                : "Alright — right now, the time is " + t + ".";
+                ? "अभी समय " + t + " है।"
+                : "Right now it's " + t + ".";
         speak(context, msg);
     }
 
     private static String calmOpenWhatsAppPhrase(String raw) {
         return preferHindiVoice(raw)
-            ? "जी, व्हाट्सऐप आपके लिए खोल रहे हैं — एक छोटा सा पल।"
-            : "Sure — I am opening WhatsApp for you, just a moment.";
+            ? "ठीक है, WhatsApp खोल रहा हूँ।"
+            : "Got it — opening WhatsApp.";
     }
 
     private static String calmOpenTelegramPhrase(String raw) {
         return preferHindiVoice(raw)
-            ? "जी, टेलीग्राम खोल रहे हैं — एक पल।"
-            : "Sure — opening Telegram for you, one moment.";
+            ? "ठीक है, Telegram खोल रहा हूँ।"
+            : "Got it — opening Telegram.";
     }
 
     private static String calmOpenYouTubePhrase(String raw) {
         return preferHindiVoice(raw)
-            ? "जी, यूट्यूब खोल रहे हैं — एक पल।"
-            : "Sure — opening YouTube for you, one moment.";
+            ? "ठीक है, YouTube खोल रहा हूँ।"
+            : "Got it — opening YouTube.";
     }
 
     private static String calmOpenContactsPhrase(String raw) {
         return preferHindiVoice(raw)
-            ? "जी, संपर्क खोल रहे हैं — एक पल।"
-            : "Sure — opening contacts for you, one moment.";
+            ? "ठीक है, संपर्क खोल रहा हूँ।"
+            : "Got it — opening contacts.";
     }
 
     private static String calmOpenMusicPhrase(String raw) {
         return preferHindiVoice(raw)
-            ? "जी, म्यूजिक ऐप खोल रहे हैं — एक पल।"
-            : "Sure — opening your music app, one moment.";
+            ? "ठीक है, म्यूजिक ऐप खोल रहा हूँ।"
+            : "Got it — opening your music app.";
     }
 
     private static String calmCallPhrase(String raw) {
         return preferHindiVoice(raw)
-            ? "जी, कॉल शुरू कर रहे हैं — एक पल।"
-            : "Sure — starting the call for you, one moment.";
+            ? "ठीक है, कॉल लगा रहा हूँ।"
+            : "Got it — placing the call.";
     }
 
     private static void speakThen(Context context, String phrase, long delayMs, Runnable action) {
@@ -281,13 +286,71 @@ public final class NeoCommandRouter {
         busyAckHandler.postDelayed(pendingBusyRunnable, delayMs);
     }
 
-    private static void applyNeoTtsCalmProfile() {
-        if (tts != null && ttsReady) {
-            try {
-                tts.setSpeechRate(0.76f);
-                tts.setPitch(0.94f);
-            } catch (Exception ignored) {
+    /**
+     * Human, assistant-style delivery: near-conversation speed, slight warmth, and the clearest installed
+     * voice for the current locale (higher quality / neural when the engine exposes it).
+     */
+    private static void applyNeoAssistantVoiceProfile() {
+        if (tts == null || !ttsReady) return;
+        try {
+            tts.setSpeechRate(0.86f);
+            tts.setPitch(1.0f);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                Voice v = pickBestAssistantVoice(tts, Locale.getDefault());
+                if (v != null && tts.setVoice(v) == TextToSpeech.SUCCESS) {
+                    return;
+                }
             }
+            tts.setLanguage(Locale.getDefault());
+        } catch (Exception ignored) {
+        }
+    }
+
+    /** Prefer same language as the phone, then highest engine quality (often neural / network voices). */
+    private static Voice pickBestAssistantVoice(TextToSpeech engine, Locale preferred) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return null;
+        try {
+            Set<Voice> voices = engine.getVoices();
+            if (voices == null || voices.isEmpty()) return null;
+            String wantLang = preferred.getLanguage();
+            ArrayList<Voice> candidates = new ArrayList<>();
+            for (Voice v : voices) {
+                if (v == null) continue;
+                Locale l = v.getLocale();
+                if (l == null) continue;
+                if (wantLang.equals(l.getLanguage())) {
+                    candidates.add(v);
+                }
+            }
+            if (candidates.isEmpty()) {
+                for (Voice v : voices) {
+                    if (v == null) continue;
+                    Locale l = v.getLocale();
+                    if (l != null && "en".equals(l.getLanguage())) {
+                        candidates.add(v);
+                    }
+                }
+            }
+            if (candidates.isEmpty()) return null;
+            Collections.sort(
+                candidates,
+                (a, b) -> {
+                    int qa = a.getQuality();
+                    int qb = b.getQuality();
+                    if (qa != qb) {
+                        return Integer.compare(qb, qa);
+                    }
+                    boolean na = a.isNetworkConnectionRequired();
+                    boolean nb = b.isNetworkConnectionRequired();
+                    if (na != nb) {
+                        /* Prefer cloud / neural voices when quality ties. */
+                        return Boolean.compare(nb, na);
+                    }
+                    return 0;
+                });
+            return candidates.get(0);
+        } catch (Exception e) {
+            return null;
         }
     }
 
@@ -334,7 +397,7 @@ public final class NeoCommandRouter {
 
     private static void speakInternal(String text) {
         if (tts == null || !ttsReady) return;
-        applyNeoTtsCalmProfile();
+        applyNeoAssistantVoiceProfile();
         attachUtteranceListener();
         isAISpeaking = true;
         String uttId = "neo-utt-" + System.nanoTime();
@@ -743,7 +806,7 @@ public final class NeoCommandRouter {
                             ttsReady = true;
                             tts.setLanguage(Locale.getDefault());
                             attachUtteranceListener();
-                            applyNeoTtsCalmProfile();
+                            applyNeoAssistantVoiceProfile();
                             if (pendingSpeech != null) {
                                 speakInternal(pendingSpeech);
                                 pendingSpeech = null;

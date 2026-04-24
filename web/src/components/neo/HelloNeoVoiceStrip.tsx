@@ -21,12 +21,14 @@ import {
   neoWorkingAckPhrase,
   readStoredVoiceSpeechLang,
 } from "@/lib/voiceLanguages";
-import { getStoredUser } from "@/lib/auth";
+import { postChat } from "@/lib/api";
+import { getStoredToken, getStoredUser } from "@/lib/auth";
 import { isNativeCapacitor } from "@/lib/nativeAppLinks";
 import {
   executeNeoActions,
   extractHelloNeoCommand,
   isShortOpenActionReply,
+  isVoiceGeneralHelpReply,
   processNeoCommandLine,
 } from "@/lib/neoVoiceCommands";
 import { clearNeoFollowUpSession, isNeoFollowUpActive } from "@/lib/neoVoiceSession";
@@ -46,7 +48,7 @@ async function speakReply(text: string, lang: string) {
     window.speechSynthesis?.resume();
     /* APK WebView: no usable `speechSynthesis` — same `/neo-api/api/voice/tts-audio` path as Voice chat. */
     if (preferOpenAiTtsForVoiceUi()) {
-      const ok = await tryPlayOpenAiTtsPlain(text, readHelloNeoTtsGender());
+      const ok = await tryPlayOpenAiTtsPlain(text, readHelloNeoTtsGender(), { calmCommandVoice: true });
       if (ok) return;
     }
     if (typeof window !== "undefined" && window.speechSynthesis) {
@@ -55,6 +57,7 @@ async function speakReply(text: string, lang: string) {
         speedPreset: readHelloNeoTtsSpeedPreset(),
         tonePreset: readHelloNeoTtsTonePreset(),
         replyMood: "neutral",
+        voiceCommandCalmDelivery: true,
       });
     }
   } catch {
@@ -70,14 +73,12 @@ type Props = {
 };
 
 /**
- * **Android APK only** — tap-to-talk + optional Hello Neo wake (native foreground service in WebView). Browser builds
- * do not render this strip (see Profile). Commands run only after **Neo** / **Hello Neo** / **हेलो नियो**, or during a
- * short post-wake window (~8s). Profile toggles; `variant="profile"` only on Profile.
+ * Tap-to-talk + optional Hello Neo wake. **Browser (Profile):** Web Speech + same command router as typed chat.
+ * **Android:** native wake service when installed; tap path can forward to {@link NeoNativeRouter}.
+ * Commands run only after **Neo** / **Hello Neo** / **हेलो नियो**, or during the post-wake follow-up window.
  */
 export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
   const isProfile = variant === "profile";
-  /** Avoid SSR/client hydration mismatch — `isNativeCapacitor()` is false on server. */
-  const [nativeVoiceUi, setNativeVoiceUi] = useState(false);
   const [assistantActive, setAssistantActive] = useState(false);
   const [listening, setListening] = useState(false);
   const [alexaMode, setAlexaMode] = useState(false);
@@ -87,16 +88,19 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
   const recRef = useRef<SpeechRecognition | null>(null);
   const finalBuf = useRef("");
   const tapIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Browser-only continuous listen when “Hello Neo wake” is on in Profile. */
+  const wakeRecRef = useRef<SpeechRecognition | null>(null);
+  const wakeRestartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wakeDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wakeBufRef = useRef("");
+  const listeningRef = useRef(false);
+  const lastWakeProcessedRef = useRef<{ t: string; at: number }>({ t: "", at: 0 });
 
   const clearTapIdle = useCallback(() => {
     if (tapIdleTimerRef.current !== null) {
       clearTimeout(tapIdleTimerRef.current);
       tapIdleTimerRef.current = null;
     }
-  }, []);
-
-  useEffect(() => {
-    setNativeVoiceUi(isNativeCapacitor());
   }, []);
 
   useEffect(() => {
@@ -124,6 +128,24 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
     return () => window.clearInterval(id);
   }, [assistantActive]);
 
+  const stopWakeListen = useCallback(() => {
+    if (wakeRestartTimerRef.current !== null) {
+      clearTimeout(wakeRestartTimerRef.current);
+      wakeRestartTimerRef.current = null;
+    }
+    if (wakeDebounceTimerRef.current !== null) {
+      clearTimeout(wakeDebounceTimerRef.current);
+      wakeDebounceTimerRef.current = null;
+    }
+    wakeBufRef.current = "";
+    try {
+      wakeRecRef.current?.abort?.();
+    } catch {
+      /* ignore */
+    }
+    wakeRecRef.current = null;
+  }, []);
+
   const stopRec = useCallback(() => {
     clearTapIdle();
     stopSpeaking();
@@ -134,8 +156,13 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
       /* ignore */
     }
     recRef.current = null;
+    listeningRef.current = false;
     setListening(false);
   }, [clearTapIdle]);
+
+  useEffect(() => {
+    listeningRef.current = listening;
+  }, [listening]);
 
   useEffect(() => {
     if (!assistantActive) {
@@ -209,11 +236,39 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
       }
     }
 
-    const { reply, actions } = processNeoCommandLine(trimmed, "voice", {
+    let { reply, actions } = processNeoCommandLine(trimmed, "voice", {
       speechLang: lang,
       displayName: getStoredUser()?.display_name,
     });
     const willAct = actions.length > 0;
+    if (
+      !isNativeCapacitor() &&
+      !willAct &&
+      reply.trim() &&
+      isVoiceGeneralHelpReply(reply) &&
+      getStoredToken() &&
+      commandText.replace(/\s+/g, " ").trim().length >= 2
+    ) {
+      try {
+        const uid = getStoredUser()?.id ?? "default";
+        const j = await postChat(
+          [
+            {
+              role: "system",
+              content:
+                "You are Neo, a warm human-like assistant. The user used a short voice phrase (maybe mixed Hindi/English). Reply in at most 3 short sentences — conversational, calm, no bullet points or numbered lists. If they asked to open a site or app, you may suggest the closest helpful step for a browser. Never sound rushed.",
+            },
+            { role: "user", content: commandText.replace(/\s+/g, " ").trim().slice(0, 1400) },
+          ],
+          uid,
+          { source: "voice", speechLang: lang },
+        );
+        const ai = (j.reply || "").trim();
+        if (ai.length > 24) reply = ai.slice(0, 1200);
+      } catch {
+        /* keep template reply */
+      }
+    }
     if (willAct) {
       await speakReply(neoWorkingAckPhrase(lang, readHelloNeoTtsGender()), lang);
     }
@@ -228,8 +283,105 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
     syncFollowUp();
   }, []);
 
+  const flushWakeBuffer = useCallback(() => {
+    const said = wakeBufRef.current.replace(/\s+/g, " ").trim();
+    wakeBufRef.current = "";
+    if (!said) return;
+    const now = Date.now();
+    if (
+      said === lastWakeProcessedRef.current.t &&
+      now - lastWakeProcessedRef.current.at < 2400
+    ) {
+      return;
+    }
+    lastWakeProcessedRef.current = { t: said, at: now };
+    void runPipeline(said);
+  }, [runPipeline]);
+
+  const scheduleWakeFlush = useCallback(() => {
+    if (wakeDebounceTimerRef.current !== null) clearTimeout(wakeDebounceTimerRef.current);
+    wakeDebounceTimerRef.current = window.setTimeout(() => {
+      wakeDebounceTimerRef.current = null;
+      flushWakeBuffer();
+    }, 500);
+  }, [flushWakeBuffer]);
+
+  /* Web Profile: continuous mic when “Hello Neo wake listen” is on (native uses foreground service). */
+  useEffect(() => {
+    if (isNativeCapacitor() || !isProfile || !assistantActive || !alexaMode) {
+      stopWakeListen();
+      return;
+    }
+    if (listeningRef.current) {
+      stopWakeListen();
+      return;
+    }
+
+    const mayRunWake = () =>
+      !isNativeCapacitor() &&
+      readNeoAssistantActive() &&
+      readNeoAlexaListen() &&
+      !listeningRef.current;
+
+    const startWake = () => {
+      if (!mayRunWake()) return;
+      if (!isSpeechRecognitionSupported()) return;
+      try {
+        wakeRecRef.current?.abort?.();
+      } catch {
+        /* ignore */
+      }
+      wakeRecRef.current = null;
+      const lang = readStoredVoiceSpeechLang();
+      const rec = createSpeechRecognition(lang, { continuous: true });
+      if (!rec) return;
+      wakeRecRef.current = rec;
+      rec.onresult = (ev: SpeechRecognitionEvent) => {
+        for (let i = ev.resultIndex; i < ev.results.length; i++) {
+          if (ev.results[i].isFinal) {
+            wakeBufRef.current = `${wakeBufRef.current} ${ev.results[i][0].transcript}`.trim();
+            scheduleWakeFlush();
+          }
+        }
+      };
+      rec.onerror = () => {
+        try {
+          wakeRecRef.current?.abort?.();
+        } catch {
+          /* ignore */
+        }
+        wakeRecRef.current = null;
+        if (wakeRestartTimerRef.current !== null) clearTimeout(wakeRestartTimerRef.current);
+        if (!mayRunWake()) return;
+        const jitter = 200 + Math.floor(Math.random() * 500);
+        wakeRestartTimerRef.current = window.setTimeout(startWake, 2200 + jitter);
+      };
+      rec.onend = () => {
+        wakeRecRef.current = null;
+        if (wakeRestartTimerRef.current !== null) clearTimeout(wakeRestartTimerRef.current);
+        if (!mayRunWake()) return;
+        const jitter = 200 + Math.floor(Math.random() * 600);
+        wakeRestartTimerRef.current = window.setTimeout(startWake, 2000 + jitter);
+      };
+      try {
+        rec.start();
+      } catch {
+        if (wakeRestartTimerRef.current !== null) clearTimeout(wakeRestartTimerRef.current);
+        if (!mayRunWake()) return;
+        const jitter = 200 + Math.floor(Math.random() * 500);
+        wakeRestartTimerRef.current = window.setTimeout(startWake, 2600 + jitter);
+      }
+    };
+
+    startWake();
+    return () => {
+      stopWakeListen();
+    };
+  }, [assistantActive, alexaMode, isProfile, listening, stopWakeListen, scheduleWakeFlush]);
+
   const startListen = useCallback(() => {
     void (async () => {
+      stopWakeListen();
       setHint(null);
       unlockWebAudioAndSpeechFromUserGesture();
       if (!isSpeechRecognitionSupported()) {
@@ -274,10 +426,11 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
           clearTapIdle();
           const said = finalBuf.current.trim();
           recRef.current = null;
+          listeningRef.current = false;
           setListening(false);
           finalBuf.current = "";
           if (!said) {
-            setHint("Didn't catch that — tap again and speak.");
+            setHint("I didn't quite hear that — tap again and speak clearly.");
             return;
           }
           try {
@@ -290,13 +443,14 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
       recRef.current = rec;
       try {
         rec.start();
+        listeningRef.current = true;
         setListening(true);
         armTapIdle();
       } catch {
         setHint("Mic busy — try again.");
       }
     })();
-  }, [runPipeline, stopRec, clearTapIdle]);
+  }, [runPipeline, stopRec, stopWakeListen, clearTapIdle]);
 
   useEffect(() => {
     const onVis = () => {
@@ -307,11 +461,6 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [stopRec]);
-
-  /* Voice commands (Neo / Hello Neo, tap-to-talk, wake listen) — native Android app only. */
-  if (!nativeVoiceUi) {
-    return null;
-  }
 
   if (!assistantActive) {
     if (isProfile) {
@@ -380,7 +529,7 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
           </div>
           <button
             type="button"
-            disabled={alexaMode}
+            disabled={alexaMode && isNativeCapacitor()}
             onClick={listening ? stopRec : startListen}
             className={`flex w-full shrink-0 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-bold transition disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto ${
               listening
@@ -392,7 +541,11 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
             <span className={`text-lg tabular-nums ${listening ? "text-white/90" : "text-white/80"}`} aria-hidden>
               {listening ? "■" : "●"}
             </span>
-            {alexaMode ? "Voice ready (off above)" : listening ? "Stop" : "Tap — talk once"}
+            {alexaMode && isNativeCapacitor()
+              ? "Voice ready (off above)"
+              : listening
+                ? "Stop"
+                : "Tap — talk once"}
           </button>
         </div>
         {neoFollowUpOpen ? (
@@ -401,7 +554,7 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
             aria-live="polite"
             className="border-t border-slate-200/80 bg-emerald-50/40 px-5 py-2 text-center text-[11px] leading-snug text-black/75"
           >
-            Neo is active — say your command now (~8s, no need to say &quot;Neo&quot; again). After that, say{" "}
+            Neo is active — say your command now (~10s, no need to say &quot;Neo&quot; again). After that, say{" "}
             <span className="font-semibold text-black">Hello Neo</span> again. Wake listen restarts quietly in the
             background — no extra tones.
           </div>
@@ -454,7 +607,7 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
           <div className="flex shrink-0 flex-col gap-2 sm:items-end">
             <button
               type="button"
-              disabled={alexaMode}
+              disabled={alexaMode && isNativeCapacitor()}
               onClick={listening ? stopRec : startListen}
               className={`flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-bold transition disabled:cursor-not-allowed disabled:opacity-40 ${
                 listening
@@ -466,7 +619,11 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
               <span className="text-lg tabular-nums text-white/50" aria-hidden>
                 {listening ? "■" : "●"}
               </span>
-              {alexaMode ? "Voice ready (toggle off for tap)" : listening ? "Stop" : "Tap — talk once"}
+              {alexaMode && isNativeCapacitor()
+                ? "Voice ready (toggle off for tap)"
+                : listening
+                  ? "Stop"
+                  : "Tap — talk once"}
             </button>
           </div>
         </div>
@@ -476,7 +633,7 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
             aria-live="polite"
             className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-center text-[11px] leading-snug text-white/50"
           >
-            Neo is active — say your command now (~8s, no need to say &quot;Neo&quot; again). Then say{" "}
+            Neo is active — say your command now (~10s, no need to say &quot;Neo&quot; again). Then say{" "}
             <span className="text-white/70">Hello Neo</span> again. Wake listen restarts quietly — no extra tones.
           </div>
         ) : null}

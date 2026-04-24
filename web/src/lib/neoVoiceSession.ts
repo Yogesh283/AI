@@ -4,8 +4,8 @@
  * Web only — resets on navigation.
  */
 
-/** Default ~7.5s: enough for one follow-up command, then user should say "Hello Neo" again for the next cycle. */
-const DEFAULT_COMMAND_WINDOW_MS = 7500;
+/** ~9.5s: follow-up without repeating the wake (similar to smart-speaker command windows). */
+const DEFAULT_COMMAND_WINDOW_MS = 9500;
 
 let followUpUntil = 0;
 

@@ -316,7 +316,10 @@ cd "D:\AI\web\android"
 
 
 Set-Location "D:\AI\web\android"
-.\gradlew.bat assembleRelease
+# Sideload (separate package; installs beside Play): app-sideload-release.apk
+.\gradlew.bat assembleSideloadRelease
+# Play / same package id as store: app-play-release.apk
+.\gradlew.bat assemblePlayRelease
 
 ---
 
@@ -344,6 +347,19 @@ Phone ko USB se PC se jodo, **USB debugging** on. WebView ko **`http://localhost
 **Check:** `adb devices` mein device `device` dikhna chahiye (unauthorized ho to phone par allow karo).
 
 **Live site test** (USB ke bina): `npm run cap:sync:android:prod` phir Gradle build — WebView `https://myneoxai.com` load karega.
+
+### Google Play Protect — “App blocked to protect your device”
+
+Jab APK **Play Store se nahi** aati (WhatsApp / Files / Drive se sideload), **Google Play Protect** aksar **install rok deta hai** — message me “sensitive data” / “identity theft” jaisa generic text hota hai. NeoAssistant me **mic**, **phone call**, **notification access** jaise permissions honay se scan **aur strict** ho sakta hai. **Ye build error nahi hai** — user / distribution trust ka step hai.
+
+**Kya karein (order me try karo):**
+
+1. **WhatsApp ke andar direct install mat karo.** APK ko **Downloads** me save karo, phir **Files / My Files** app khol kar wahi `.apk` par tap karke **Install** chalao. Kai ROMs par WhatsApp installer par sirf **OK** dikhta hai, “Install anyway” nahi milta.
+2. Install screen par agar **“Install anyway”**, **“More details”**, ya **“Learn more”** ho to use follow karo (label device ke hisaab se alag ho sakta hai).
+3. Phir bhi block ho to: **Settings → Security** (kabhi **Privacy** / **Google** ke andar) → **Google Play Protect** → **⚙ Settings** → temporary **“Scan apps with Play Protect”** / **“Improve harmful app detection”** **band** karo → APK install karo → baad me dubara **on** kar lena.
+4. **Unknown apps:** **Settings → Apps → Special app access → Install unknown apps** → **Files** (ya jis app se APK kholi) par **Allow** hona chahiye.
+
+**Permanent / commercial tareeka:** App ko **Google Play Console** (Internal testing / Closed testing / Production) par chala do — Play-distributed builds par Play Protect aise block nahi karta (Play App Signing + listing).
 
 ### APK: Login / Register — Continue with Google
 
@@ -408,7 +424,7 @@ Neo’s service already **stops** each recognition when the engine ends the sess
 
 
 
-
+`
 
 export APP_ROOT=/home/myneoxai/apps/neoxai
 cd "$APP_ROOT"
@@ -435,4 +451,4 @@ cd "$APP_ROOT/web" && rm -rf .next && npm ci && npm run build
 cd "$APP_ROOT/backend" && . .venv/bin/activate && pip install -r requirements.txt
 pm2 restart neo-api neo-web
 
-cd /home/myneoxai/apps/neoxai/web && rm -rf .next && npm ci && npm run build && pm2 restart neo-web
+cd /home/myneoxai/apps/neoxai/web && rm -rf .next && npm ci && npm run build && pm2 restart neo-web``

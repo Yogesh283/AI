@@ -88,7 +88,7 @@ export async function captureNativeSpeechOnce(
         maxResults: 1,
         partialResults: true,
         popup: false,
-        prompt: "Speak now",
+        prompt: "Listening",
       });
       await new Promise((r) => setTimeout(r, 3600));
     } finally {
@@ -284,16 +284,16 @@ export function writeHelloNeoTtsGender(g: TtsVoiceGender): void {
 
 const HELLO_NEO_TTS_SPEED_KEY = "neo-hello-neo-tts-speed";
 
-/** Speed for Hello Neo strip TTS only. If unset, matches voice chat {@link readTtsSpeedPreset}. */
+/** Speed for Hello Neo strip TTS only. Default `slow` when unset — calm, easy voice commands. */
 export function readHelloNeoTtsSpeedPreset(): TtsSpeedPreset {
-  if (typeof window === "undefined") return "natural";
+  if (typeof window === "undefined") return "slow";
   try {
     const v = localStorage.getItem(HELLO_NEO_TTS_SPEED_KEY);
     if (v === "slow" || v === "natural" || v === "clear" || v === "fast") return v;
   } catch {
     /* ignore */
   }
-  return readTtsSpeedPreset();
+  return "slow";
 }
 
 export function writeHelloNeoTtsSpeedPreset(p: TtsSpeedPreset): void {
@@ -307,10 +307,7 @@ export function writeHelloNeoTtsSpeedPreset(p: TtsSpeedPreset): void {
 
 const HELLO_NEO_TTS_TONE_KEY = "neo-hello-neo-tts-tone";
 
-/**
- * Tone for Hello Neo strip only. If unset, uses the opposite of {@link readTtsTonePreset}
- * so command audio feels different from voice chat by default.
- */
+/** Tone for Hello Neo strip only. Default warm = softer spoken replies. */
 export function readHelloNeoTtsTonePreset(): TtsTonePreset {
   if (typeof window === "undefined") return "warm";
   try {
@@ -319,7 +316,7 @@ export function readHelloNeoTtsTonePreset(): TtsTonePreset {
   } catch {
     /* ignore */
   }
-  return readTtsTonePreset() === "warm" ? "bright" : "warm";
+  return "warm";
 }
 
 export function writeHelloNeoTtsTonePreset(p: TtsTonePreset): void {
@@ -384,7 +381,7 @@ export function writeTtsTonePreset(p: TtsTonePreset): void {
 export function rateForSpeedPreset(p: TtsSpeedPreset): number {
   switch (p) {
     case "slow":
-      return 0.82;
+      return 0.74;
     case "natural":
       /* Default — noticeably quicker while staying clear */
       return 0.93;
@@ -712,6 +709,8 @@ export async function speakText(
     onSpeechBoundary?: () => void;
     /** Voice chat only: slightly slower rate, calmer pitch, longer pauses between chunks. */
     voiceChatCalmDelivery?: boolean;
+    /** Hello Neo / voice commands: extra-soft pacing in the browser. */
+    voiceCommandCalmDelivery?: boolean;
   }
 ): Promise<void> {
   let trimmed = textForTts(text);
@@ -768,9 +767,15 @@ export async function speakText(
       if (opts?.voiceChatCalmDelivery) {
         u.rate = Math.min(1.1, Math.max(0.62, u.rate * 0.93));
       }
+      if (opts?.voiceCommandCalmDelivery) {
+        u.rate = Math.min(1.02, Math.max(0.58, u.rate * 0.9));
+      }
       u.pitch = utterancePitch(mood, chunkLang, opts?.voiceGender, chunkIdx, tone);
       if (opts?.voiceChatCalmDelivery) {
         u.pitch = Math.min(1.22, Math.max(0.84, u.pitch * 0.97));
+      }
+      if (opts?.voiceCommandCalmDelivery) {
+        u.pitch = Math.min(1.12, Math.max(0.82, u.pitch * 0.97));
       }
       if (voice && voiceMatchesUtteranceLang(voice, chunkLang)) {
         u.voice = voice;
@@ -800,7 +805,8 @@ export async function speakText(
       }
     });
 
-  const pauseMul = opts?.voiceChatCalmDelivery ? 1.12 : 1;
+  const pauseMul =
+    opts?.voiceChatCalmDelivery ? 1.12 : opts?.voiceCommandCalmDelivery ? 1.22 : 1;
   for (let i = 0; i < chunks.length; i++) {
     await speakChunk(chunks[i], i);
     if (i < chunks.length - 1) {

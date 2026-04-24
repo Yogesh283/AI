@@ -1,10 +1,44 @@
 apply plugin: 'com.android.application'
 
+/* Optional stable sideload signing: create web/android/keystore.properties (gitignored) with:
+   storeFile=../path/to/your.jks
+   storePassword=...
+   keyAlias=...
+   keyPassword=...
+   Otherwise release uses debug keystore (fine for one machine; Play-installed build needs uninstall first). */
+def neoKeystoreProps = new Properties()
+def neoKeystoreFile = rootProject.file("keystore.properties")
+if (neoKeystoreFile.exists()) {
+    neoKeystoreFile.withInputStream { neoKeystoreProps.load(it) }
+}
+
 android {
     namespace = "com.neo.assistant"
     compileSdk = rootProject.ext.compileSdkVersion
     buildFeatures {
         buildConfig true
+    }
+    /* play = store id com.neo.assistant. sideload = com.neo.assistant.sideload (installs beside Play; own Google OAuth client may be needed). */
+    flavorDimensions += "channel"
+    productFlavors {
+        play {
+            dimension "channel"
+        }
+        sideload {
+            dimension "channel"
+            applicationIdSuffix ".sideload"
+            versionNameSuffix "-sd"
+        }
+    }
+    signingConfigs {
+        neoSideload {
+            if (neoKeystoreFile.exists()) {
+                storeFile file(neoKeystoreProps["storeFile"])
+                storePassword neoKeystoreProps["storePassword"]
+                keyAlias neoKeystoreProps["keyAlias"]
+                keyPassword neoKeystoreProps["keyPassword"]
+            }
+        }
     }
     defaultConfig {
         applicationId "com.neo.assistant"
@@ -12,8 +46,9 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         def pvKey = (project.findProperty("PV_ACCESS_KEY") ?: System.getenv("PV_ACCESS_KEY") ?: "").toString()
         buildConfigField "String", "PV_ACCESS_KEY", "\"${pvKey.replace('"', '\\"')}\""
-        versionCode 13
-        versionName "1.6.6"
+        /* Bump so sideload updates beat older installs; raise again if Play/internal builds use higher codes. */
+        versionCode 20
+        versionName "1.6.8"
         // Phone APKs only — drops x86/x86_64 Porcupine libs (smaller, fewer installer edge cases).
         ndk {
             abiFilters "arm64-v8a", "armeabi-v7a"
@@ -29,8 +64,12 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            // Sideload testing: release build signed with debug keystore (not for Play Store).
-            signingConfig signingConfigs.debug
+            if (neoKeystoreFile.exists()) {
+                signingConfig signingConfigs.neoSideload
+            } else {
+                // Sideload testing: debug keystore. Cannot install over Play Store build — uninstall com.neo.assistant first.
+                signingConfig signingConfigs.debug
+            }
         }
     }
 }

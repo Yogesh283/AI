@@ -21,12 +21,16 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Set-Location (Join-Path $WebDir "android")
-& .\gradlew.bat clean assembleRelease
+# sideload flavor = package com.neo.assistant.sideload — installs even if Play Store has com.neo.assistant
+& .\gradlew.bat clean assembleSideloadRelease
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-$apk = Join-Path $WebDir "android\app\build\outputs\apk\release\app-release.apk"
-$out = Join-Path $RootDir "NeoAssistant-release-install.apk"
+$apk = Join-Path $WebDir "android\app\build\outputs\apk\sideload\release\app-sideload-release.apk"
+$out = Join-Path $RootDir "NeoAssistant-sideload-install.apk"
 Copy-Item -LiteralPath $apk -Destination $out -Force
 Write-Host ""
 Write-Host "OK -> $out" -ForegroundColor Green
-Write-Host "Uninstall any old NeoAssistant first if install fails (signature / downgrade)." -ForegroundColor Yellow
+Write-Host "Package: com.neo.assistant.sideload (can install alongside Play Store Neo)." -ForegroundColor Cyan
+Write-Host ""
+Write-Host "If install still fails: Files app, free space, Play Protect; Google Sign-In needs OAuth for this package+SHA1." -ForegroundColor Yellow
+Write-Host "Store build: cd android; .\gradlew.bat assemblePlayRelease" -ForegroundColor DarkGray

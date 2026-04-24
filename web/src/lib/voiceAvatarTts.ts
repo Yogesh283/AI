@@ -196,6 +196,8 @@ async function fetchOpenAiTtsBlob(
   fetchOpts?: {
     model?: "tts-1" | "tts-1-hd" | "gpt-4o-mini-tts";
     voiceStyle?: "default" | "conversation";
+    /** Appended to {@link HUMAN_LIKE_TTS_INSTRUCTIONS} when using conversation mini-TTS. */
+    instructionsExtra?: string;
   },
 ): Promise<Blob> {
   const trimmed = (text || "").trim();
@@ -219,7 +221,10 @@ async function fetchOpenAiTtsBlob(
     model,
   };
   if (model === "gpt-4o-mini-tts" && voiceStyle === "conversation") {
-    payload.instructions = HUMAN_LIKE_TTS_INSTRUCTIONS;
+    const extra = fetchOpts?.instructionsExtra?.trim();
+    payload.instructions = extra
+      ? `${HUMAN_LIKE_TTS_INSTRUCTIONS} ${extra}`
+      : HUMAN_LIKE_TTS_INSTRUCTIONS;
   }
 
   const res = await fetch(`${apiOrigin()}/api/voice/tts-audio`, {
@@ -391,12 +396,38 @@ async function tryOpenAiTts(
 export async function tryPlayOpenAiTtsPlain(
   text: string,
   voiceGender?: TtsVoiceGender,
+  opts?: { calmCommandVoice?: boolean },
 ): Promise<boolean> {
   try {
+    if (opts?.calmCommandVoice) {
+      try {
+        const blob = await fetchOpenAiTtsBlob(text, voiceGender, {
+          model: "gpt-4o-mini-tts",
+          voiceStyle: "conversation",
+          instructionsExtra:
+            "Extra: speak noticeably slowly—like reassuring a friend who is resting. Soft, unhurried; never sound like you are in a hurry.",
+        });
+        await playMp3BlobSimple(blob);
+        return true;
+      } catch {
+        const blob = await fetchOpenAiTtsBlob(text, voiceGender, { model: "tts-1-hd" });
+        await playMp3BlobSimple(blob);
+        return true;
+      }
+    }
     const blob = await fetchOpenAiTtsBlob(text, voiceGender, { model: "tts-1-hd" });
     await playMp3BlobSimple(blob);
     return true;
   } catch {
+    if (opts?.calmCommandVoice) {
+      try {
+        const blob = await fetchOpenAiTtsBlob(text, voiceGender, { model: "tts-1-hd" });
+        await playMp3BlobSimple(blob);
+        return true;
+      } catch {
+        return false;
+      }
+    }
     return false;
   }
 }

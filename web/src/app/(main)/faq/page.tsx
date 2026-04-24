@@ -65,12 +65,14 @@ export default function FaqPage() {
 
               <TopicSection icon="🎙️" title="Voice Command Feature">
                 <p>
-                  Hands-free Neo / Hello Neo voice commands (wake phrase, app shortcuts, and background listen) are
-                  available in the <strong>Neo AI Android app</strong> only — not in the browser.
+                  On the <strong>web</strong>, open <strong>Profile</strong>: turn Neo assistant <strong>Active</strong>,
+                  use <strong>Try Neo</strong> (tap-to-talk) or turn on <strong>Hello Neo wake listen</strong> for
+                  hands-free commands while that tab stays open (Chrome or Edge; allow the microphone). Background wake
+                  when the app is closed is <strong>Android app</strong> only.
                 </p>
                 <p>
-                  In the app, Neo responds to your personal voice commands for a secure, personalized experience. It is
-                  designed for your registered voice profile; set that up in the app before relying on voice control.
+                  Say <strong>Neo</strong> or <strong>Hello Neo</strong> first, then e.g. open WhatsApp Web, YouTube, or
+                  dial a number — same ideas as the Android app, within the browser.
                 </p>
               </TopicSection>
 

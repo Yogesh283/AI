@@ -24,6 +24,9 @@ web/.turbo/
 mobile/.expo/
 mobile/dist/
 
+# Android release keystore secrets (optional sideload signing)
+web/android/keystore.properties
+
 # Env & secrets (never commit)
 .env
 .env.*

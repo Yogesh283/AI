@@ -3,7 +3,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { MainTopNav } from "@/components/neo/MainTopNav";
 import { fetchMe, getStoredToken, getStoredUser, patchVoicePersona, saveSession } from "@/lib/auth";
-import { appendUserMessageToChatStorage } from "@/lib/chatStorage";
+import {
+  appendUserMessageToChatStorage,
+  chatMessagesKey,
+  loadChatMessages,
+  NEO_CHAT_MESSAGES_CHANGED_EVENT,
+  saveChatMessages,
+} from "@/lib/chatStorage";
 import { postLiveWebContext, postVoiceRealtimeToken } from "@/lib/api";
 import {
   DEFAULT_VOICE_SPEECH_LANG,
@@ -150,6 +156,8 @@ export default function VoicePage() {
   const liveAssistStreamOpenRef = useRef(false);
   /** True while OpenAI `input_audio_transcription.delta` is building the current user line. */
   const liveUserTranscriptOpenRef = useRef(false);
+  /** After first hydrate from `loadChatMessages` / voice backup — blocks saving `[]` over a good thread. */
+  const voiceHistoryHydratedRef = useRef(false);
 
   useEffect(() => {
     historyRef.current = history;
@@ -183,34 +191,110 @@ export default function VoicePage() {
     writeNeoAlexaListen(false);
   }, []);
 
+  /* Same persisted thread as /dashboard text chat — do not use voice-only storage as primary. */
   useEffect(() => {
     const uid = getStoredUser()?.id ?? "anon";
+    const fromChat = loadChatMessages(uid);
+    if (fromChat && fromChat.length > 0) {
+      historyRef.current = fromChat;
+      setHistory(fromChat);
+      voiceHistoryHydratedRef.current = true;
+      return;
+    }
     try {
       const raw = localStorage.getItem(`${VOICE_HISTORY_PREFIX}${uid}`);
-      if (!raw) return;
+      if (!raw) {
+        voiceHistoryHydratedRef.current = true;
+        return;
+      }
       const parsed = JSON.parse(raw) as Turn[];
-      if (!Array.isArray(parsed) || parsed.length === 0) return;
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        voiceHistoryHydratedRef.current = true;
+        return;
+      }
       const clean = parsed.filter(
         (x) =>
           x &&
           (x.role === "user" || x.role === "assistant") &&
           typeof x.content === "string",
       );
-      if (clean.length === 0) return;
+      if (clean.length === 0) {
+        voiceHistoryHydratedRef.current = true;
+        return;
+      }
       historyRef.current = clean;
       setHistory(clean);
     } catch {
       /* ignore */
     }
+    voiceHistoryHydratedRef.current = true;
   }, []);
 
+  /* When text chat updates the shared thread (same tab or other), refresh voice history if Live is off. */
   useEffect(() => {
     const uid = getStoredUser()?.id ?? "anon";
-    try {
-      localStorage.setItem(`${VOICE_HISTORY_PREFIX}${uid}`, JSON.stringify(history));
-    } catch {
-      /* ignore */
-    }
+    const onChatChanged = (e: Event) => {
+      const ce = e as CustomEvent<{ userId?: string }>;
+      if (ce.detail?.userId && ce.detail.userId !== uid) return;
+      if (sessionOnRef.current) return;
+      const loaded = loadChatMessages(uid);
+      if (loaded && loaded.length > 0) {
+        historyRef.current = loaded;
+        setHistory(loaded);
+      }
+    };
+    window.addEventListener(NEO_CHAT_MESSAGES_CHANGED_EVENT, onChatChanged as EventListener);
+    return () => window.removeEventListener(NEO_CHAT_MESSAGES_CHANGED_EVENT, onChatChanged as EventListener);
+  }, []);
+
+  /* Other browser tab updated typed chat in localStorage — pull thread when Live is off. */
+  useEffect(() => {
+    const uid = getStoredUser()?.id ?? "anon";
+    const key = chatMessagesKey(uid);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== key || !e.newValue) return;
+      if (sessionOnRef.current) return;
+      try {
+        const parsed = JSON.parse(e.newValue) as unknown;
+        if (!Array.isArray(parsed) || parsed.length === 0) return;
+        const clean = parsed.filter(
+          (x): x is Turn =>
+            !!x &&
+            typeof x === "object" &&
+            (x as Turn).role !== undefined &&
+            ((x as Turn).role === "user" || (x as Turn).role === "assistant") &&
+            typeof (x as Turn).content === "string",
+        );
+        if (clean.length === 0) return;
+        historyRef.current = clean;
+        setHistory(clean);
+      } catch {
+        /* ignore */
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  /* Mirror Live voice thread into shared chat storage (user + assistant) so Chat page matches Voice. */
+  useEffect(() => {
+    if (!voiceHistoryHydratedRef.current) return;
+    if (history.length === 0) return;
+    const uid = getStoredUser()?.id ?? "anon";
+    const t = window.setTimeout(() => {
+      try {
+        saveChatMessages(uid, history);
+        localStorage.setItem(`${VOICE_HISTORY_PREFIX}${uid}`, JSON.stringify(history));
+        window.dispatchEvent(
+          new CustomEvent(NEO_CHAT_MESSAGES_CHANGED_EVENT, {
+            detail: { userId: uid },
+          } as CustomEventInit<{ userId: string }>),
+        );
+      } catch {
+        /* quota */
+      }
+    }, 400);
+    return () => window.clearTimeout(t);
   }, [history]);
 
   useEffect(() => {

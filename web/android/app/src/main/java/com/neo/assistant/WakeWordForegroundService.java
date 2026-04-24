@@ -67,8 +67,8 @@ public class WakeWordForegroundService extends Service {
      */
     private static final int RELISTEN_MS_QUICK = 550;
     private static final int RELISTEN_MS_ERROR = 900;
-    /** Wake heard with no command tail — brief pause so the user can finish the phrase. */
-    private static final int RELISTEN_MS_AFTER_WAKE_ONLY = 900;
+    /** Wake heard with no command tail — brief pause so the user can finish the phrase (Alexa-like beat). */
+    private static final int RELISTEN_MS_AFTER_WAKE_ONLY = 1150;
 
     private final Runnable resumeListeningRunnable =
         () -> {

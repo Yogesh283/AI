@@ -11,7 +11,7 @@
  *   `tel:` links, YouTube/music intents, etc. `executeNeoActions()` performs `window.open`, `location`, or native
  *   deep links (`nativeAppLinks.ts`).
  * - **Spoken feedback**: callers pass `silentReplies` for voice; short `reply` strings are spoken via browser TTS or
- *   OpenAI TTS (`voiceAvatarTts.ts`). After **Hello Neo** with no tail, a short command window opens (`neoVoiceSession`);
+ *   OpenAI TTS (`voiceAvatarTts.ts`). After **Hello Neo** with no tail, a follow-up command window opens (`neoVoiceSession`, ~9.5s);
  *   then the user should say **Hello Neo** again for the next cycle (see Hello Neo strip + native wake service delays).
  *
  * Wake: **Neo** / **नियो** (or Hello Neo / हेलो नियो). Example: “Neo, open WhatsApp”.
@@ -412,8 +412,8 @@ export function runNeoIntents(
     reply: silentReplies
       ? ""
       : cmdReply(
-          "Say: open WhatsApp, open my Telegram channel, or call plus nine one and your number.",
-          "कहिए—व्हाट्सऐप खोलो, टेलीग्राम खोलो, या नौ एक और फिर अपना नंबर बोलकर कॉल लगाओ।",
+          "Try something like: open WhatsApp, open Telegram, or call plus nine one and your number.",
+          "जैसे बोलें—WhatsApp खोलो, Telegram खोलो, या नौ एक और नंबर बोलकर कॉल।",
           trimmed,
           speechLang,
         ),
@@ -588,6 +588,17 @@ export function processNeoCommandLine(
   }
   if (r.actions.length > 0) clearNeoFollowUpSession();
   return r;
+}
+
+/** True when no shortcut intent matched — {@link HelloNeoVoiceStrip} may ask the chat model for a human reply. */
+export function isVoiceGeneralHelpReply(reply: string): boolean {
+  const t = reply.trim();
+  if (!t) return false;
+  return (
+    t.includes("Try something like:") ||
+    t.includes("जैसे बोलें") ||
+    t.includes("Say Neo, then your command")
+  );
 }
 
 export function executeNeoActions(actions: NeoAction[]): void {
