@@ -9,6 +9,14 @@ export const WHATSAPP_WEB_URL = "https://web.whatsapp.com/";
 export function mentionsWhatsApp(text: string): boolean {
   const lower = text.toLowerCase();
   if (/\bwhatsapp\b/.test(lower)) return true;
+  /* Web Speech often writes “what’s app”, “whats app”, “whatasapp”, missing letters, etc. */
+  if (/\bwhats\s+app\b/.test(lower)) return true;
+  if (/\bwhat\s*s\s*app\b/.test(lower)) return true;
+  if (/what['\u2019]\s*s\s*app/i.test(lower)) return true;
+  if (/\bwhatasapp\b/.test(lower)) return true;
+  if (/\bwatsapp\b/.test(lower)) return true;
+  if (/\bwotsa?pp\b/.test(lower)) return true;
+  if (/\bwattsapp\b/.test(lower)) return true;
   return /व्हाट्सएप|व्हाट्सप|व्हाटसप|वाट्सऐप|व्हाट्सऐप/i.test(text);
 }
 
@@ -27,11 +35,13 @@ export function shouldOpenWhatsAppFromCommand(text: string): boolean {
   if (isNegatedOpenIntent(s)) return false;
 
   const lower = s.toLowerCase();
+  const wa =
+    "(?:whatsapp|whats\\s*app|what\\s*s\\s*app|whatasapp|watsapp|wotsa?pp|wattsapp)";
   if (
-    /\b(open|launch|start|show)\s+whatsapp\b/i.test(lower) ||
-    /\b(open|launch|start|show|go\s+to)\s+my\s+whatsapp\b/i.test(lower) ||
-    /\bwhatsapp\s+(open|launch)\b/i.test(lower) ||
-    /\bgo\s+to\s+whatsapp\b/i.test(lower) ||
+    new RegExp(`\\b(open|launch|start|show)\\s+${wa}\\b`, "i").test(lower) ||
+    new RegExp(`\\b(open|launch|start|show|go\\s+to)\\s+my\\s+${wa}\\b`, "i").test(lower) ||
+    new RegExp(`\\b${wa}\\s+(open|launch)\\b`, "i").test(lower) ||
+    new RegExp(`\\bgo\\s+to\\s+${wa}\\b`, "i").test(lower) ||
     /^open\s+wa\b/i.test(lower)
   ) {
     return true;

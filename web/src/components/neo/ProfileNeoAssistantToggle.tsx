@@ -13,6 +13,7 @@ import {
   readWakeListenScreenOffStorage,
   subscribeNeoWakeScreenOffListen,
 } from "@/lib/neoWakeNative";
+import { unlockWebAudioAndSpeechFromUserGesture } from "@/lib/voiceChat";
 
 export function ProfileNeoAssistantToggle() {
   const [active, setActive] = useState(false);
@@ -32,6 +33,7 @@ export function ProfileNeoAssistantToggle() {
     const next = !active;
     setActive(next);
     writeNeoAssistantActive(next);
+    if (next) unlockWebAudioAndSpeechFromUserGesture();
   };
 
   const toggleAlexa = () => {
@@ -39,6 +41,7 @@ export function ProfileNeoAssistantToggle() {
     const next = !alexaListen;
     setAlexaListen(next);
     writeNeoAlexaListen(next);
+    if (next) unlockWebAudioAndSpeechFromUserGesture();
   };
 
   return (

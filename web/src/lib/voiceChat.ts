@@ -508,6 +508,13 @@ function voiceClarityBonus(v: SpeechSynthesisVoice): number {
   return b;
 }
 
+/** Desktop Chrome/Edge on Windows — neural / Natural voices are usually smoother here. */
+function isWindowsDesktopBrowser(): boolean {
+  if (typeof navigator === "undefined") return false;
+  if (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)) return false;
+  return /Win/i.test(navigator.userAgent);
+}
+
 /** Break speech into phrase-sized chunks so the engine breathes between sentences (more human). */
 function splitTtsChunks(text: string, maxLen = 220, devanagari = false): string[] {
   const t = text.trim();
@@ -632,6 +639,13 @@ function pickVoice(lang: string, gender?: TtsVoiceGender): SpeechSynthesisVoice 
     /* Stronger gender weight so Man/Woman beats “best neural” when both are same language tier */
     let s = langRank(v, want, primary) * 10 + genderRank(v, gender) * 11;
     if (v.name.includes("Google") && langRank(v, want, primary) >= 4) s += 2;
+    if (
+      isWindowsDesktopBrowser() &&
+      /\b(microsoft|natural|neural|edge)\b/i.test(v.name) &&
+      langRank(v, want, primary) >= 3
+    ) {
+      s += 4;
+    }
     s += voiceClarityBonus(v);
     if (primary === "hi" && /hindi|hi-in|indic|devanagari/i.test(`${v.name} ${v.lang}`)) s += 4;
     if (s > bestScore) {
@@ -806,7 +820,13 @@ export async function speakText(
     });
 
   const pauseMul =
-    opts?.voiceChatCalmDelivery ? 1.12 : opts?.voiceCommandCalmDelivery ? 1.22 : 1;
+    opts?.voiceChatCalmDelivery
+      ? 1.12
+      : opts?.voiceCommandCalmDelivery
+        ? isWindowsDesktopBrowser()
+          ? 1.28
+          : 1.22
+        : 1;
   for (let i = 0; i < chunks.length; i++) {
     await speakChunk(chunks[i], i);
     if (i < chunks.length - 1) {

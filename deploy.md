@@ -451,4 +451,3 @@ cd "$APP_ROOT/web" && rm -rf .next && npm ci && npm run build
 cd "$APP_ROOT/backend" && . .venv/bin/activate && pip install -r requirements.txt
 pm2 restart neo-api neo-web
 
-cd /home/myneoxai/apps/neoxai/web && rm -rf .next && npm ci && npm run build && pm2 restart neo-web``

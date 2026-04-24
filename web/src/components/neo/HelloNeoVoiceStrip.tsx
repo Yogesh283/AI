@@ -31,7 +31,11 @@ import {
   isVoiceGeneralHelpReply,
   processNeoCommandLine,
 } from "@/lib/neoVoiceCommands";
-import { clearNeoFollowUpSession, isNeoFollowUpActive } from "@/lib/neoVoiceSession";
+import {
+  clearNeoFollowUpSession,
+  isNeoFollowUpActive,
+  startNeoFollowUpSession,
+} from "@/lib/neoVoiceSession";
 import {
   readNeoAlexaListen,
   readNeoAssistantActive,
@@ -39,8 +43,8 @@ import {
   subscribeNeoAssistantActive,
 } from "@/lib/neoAssistantActive";
 
-/** Tap-to-talk: if the user says nothing useful within this window, stop the mic (same idea as Voice chat auto-stop). */
-const TAP_TO_TALK_IDLE_MS = 2000;
+/** Tap-to-talk: silence after last speech (final or interim) before stopping the mic — finals are often late in Chrome. */
+const TAP_TO_TALK_IDLE_MS = 5500;
 
 async function speakReply(text: string, lang: string) {
   primeSpeechVoices();
@@ -75,7 +79,8 @@ type Props = {
 /**
  * Tap-to-talk + optional Hello Neo wake. **Browser (Profile):** Web Speech + same command router as typed chat.
  * **Android:** native wake service when installed; tap path can forward to {@link NeoNativeRouter}.
- * Commands run only after **Neo** / **Hello Neo** / **हेलो नियो**, or during the post-wake follow-up window.
+ * **Tap:** after the greeting, a follow-up window opens so commands can run **without** repeating the wake phrase.
+ * **Wake listen:** say **Neo** / **Hello Neo** / **हेलो नियो** first (unless already in that window).
  */
 export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
   const isProfile = variant === "profile";
@@ -83,16 +88,19 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
   const [listening, setListening] = useState(false);
   const [alexaMode, setAlexaMode] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
-  /** True while the post–wake-word command window is active (a few seconds after “Hello Neo” only). */
+  /** True while the post–wake command window is active (after “Hello Neo” only, or after Try Neo greeting). */
   const [neoFollowUpOpen, setNeoFollowUpOpen] = useState(false);
   const recRef = useRef<SpeechRecognition | null>(null);
   const finalBuf = useRef("");
-  const tapIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** DOM timers are numeric handles in browsers (Node typings use `Timeout`). */
+  const tapIdleTimerRef = useRef<number | null>(null);
   /** Browser-only continuous listen when “Hello Neo wake” is on in Profile. */
   const wakeRecRef = useRef<SpeechRecognition | null>(null);
-  const wakeRestartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const wakeDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wakeRestartTimerRef = useRef<number | null>(null);
+  const wakeDebounceTimerRef = useRef<number | null>(null);
   const wakeBufRef = useRef("");
+  /** Latest interim slice from the wake recognizer — combined with finals so “Hello Neo” is heard before `isFinal`. */
+  const wakeInterimRef = useRef("");
   const listeningRef = useRef(false);
   const lastWakeProcessedRef = useRef<{ t: string; at: number }>({ t: "", at: 0 });
 
@@ -138,6 +146,7 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
       wakeDebounceTimerRef.current = null;
     }
     wakeBufRef.current = "";
+    wakeInterimRef.current = "";
     try {
       wakeRecRef.current?.abort?.();
     } catch {
@@ -184,7 +193,7 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
     const inFollowUp = isNeoFollowUpActive();
     const { hadWake, rest } = extractHelloNeoCommand(trimmed);
 
-    /** Commands run only after “Neo” / “Hello Neo”, or inside the post-wake window — same for APK native routing. */
+    /** Wake listen: need wake unless follow-up is active (after “Hello Neo” or after Try Neo greeting). */
     if (!inFollowUp && !hadWake) {
       syncFollowUp();
       return;
@@ -270,12 +279,17 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
       }
     }
     if (willAct) {
-      await speakReply(neoWorkingAckPhrase(lang, readHelloNeoTtsGender()), lang);
-    }
-    if (reply.trim()) {
-      if (!willAct || !isShortOpenActionReply(reply)) {
+      /* Short “Opening …” lines were skipped → users heard nothing if working-ack TTS failed. Speak the concrete line. */
+      if (reply.trim() && isShortOpenActionReply(reply)) {
         await speakReply(reply, lang);
+      } else {
+        await speakReply(neoWorkingAckPhrase(lang, readHelloNeoTtsGender()), lang);
+        if (reply.trim() && !isShortOpenActionReply(reply)) {
+          await speakReply(reply, lang);
+        }
       }
+    } else if (reply.trim()) {
+      await speakReply(reply, lang);
     }
     if (willAct) {
       executeNeoActions(actions);
@@ -284,8 +298,9 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
   }, []);
 
   const flushWakeBuffer = useCallback(() => {
-    const said = wakeBufRef.current.replace(/\s+/g, " ").trim();
+    const said = `${wakeBufRef.current} ${wakeInterimRef.current}`.replace(/\s+/g, " ").trim();
     wakeBufRef.current = "";
+    wakeInterimRef.current = "";
     if (!said) return;
     const now = Date.now();
     if (
@@ -337,12 +352,19 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
       if (!rec) return;
       wakeRecRef.current = rec;
       rec.onresult = (ev: SpeechRecognitionEvent) => {
+        let interimAll = "";
         for (let i = ev.resultIndex; i < ev.results.length; i++) {
+          const piece = ev.results[i][0].transcript;
           if (ev.results[i].isFinal) {
-            wakeBufRef.current = `${wakeBufRef.current} ${ev.results[i][0].transcript}`.trim();
-            scheduleWakeFlush();
+            wakeBufRef.current = `${wakeBufRef.current} ${piece}`.trim();
           }
         }
+        for (let i = 0; i < ev.results.length; i++) {
+          if (!ev.results[i].isFinal) interimAll += ev.results[i][0].transcript;
+        }
+        wakeInterimRef.current = interimAll.trim();
+        const combined = `${wakeBufRef.current} ${wakeInterimRef.current}`.replace(/\s+/g, " ").trim();
+        if (combined) scheduleWakeFlush();
       };
       rec.onerror = () => {
         try {
@@ -390,9 +412,13 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
       }
       stopRec();
       finalBuf.current = "";
+      const tapInterimRef = { current: "" };
       const lang = readStoredVoiceSpeechLang();
       const name = getStoredUser()?.display_name;
       await speakReply(neoVoiceCommandSessionGreeting(lang, name), lang);
+      /* Same window as after “Hello Neo” only — users expect “open WhatsApp” right after tapping, without saying Neo. */
+      startNeoFollowUpSession();
+      setNeoFollowUpOpen(true);
 
       const rec = createSpeechRecognition(lang);
       if (!rec) {
@@ -401,7 +427,7 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
       }
       const armTapIdle = () => {
         clearTapIdle();
-        tapIdleTimerRef.current = setTimeout(() => {
+        tapIdleTimerRef.current = window.setTimeout(() => {
           tapIdleTimerRef.current = null;
           if (recRef.current === rec) {
             stopRec();
@@ -409,11 +435,20 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
         }, TAP_TO_TALK_IDLE_MS);
       };
       rec.onresult = (ev: SpeechRecognitionEvent) => {
+        let interim = "";
         for (let i = ev.resultIndex; i < ev.results.length; i++) {
+          const piece = ev.results[i][0].transcript;
           if (ev.results[i].isFinal) {
-            clearTapIdle();
-            finalBuf.current += ev.results[i][0].transcript;
+            finalBuf.current += piece;
+          } else {
+            interim += piece;
           }
+        }
+        tapInterimRef.current = interim;
+        const live = `${finalBuf.current} ${tapInterimRef.current}`.replace(/\s+/g, " ").trim();
+        if (live) {
+          clearTapIdle();
+          armTapIdle();
         }
       };
       rec.onerror = (ev: SpeechRecognitionErrorEvent) => {
@@ -424,11 +459,12 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
       rec.onend = () => {
         void (async () => {
           clearTapIdle();
-          const said = finalBuf.current.trim();
+          const said = `${finalBuf.current} ${tapInterimRef.current}`.replace(/\s+/g, " ").trim();
           recRef.current = null;
           listeningRef.current = false;
           setListening(false);
           finalBuf.current = "";
+          tapInterimRef.current = "";
           if (!said) {
             setHint("I didn't quite hear that — tap again and speak clearly.");
             return;
@@ -502,11 +538,12 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
         <div className="border-b border-slate-200/90 px-5 py-3.5">
           <h2 className="text-sm font-semibold text-black">Try Neo</h2>
           <p className="mt-0.5 text-xs text-black/70">
-            Say <span className="font-medium text-black">Neo</span> or Hello Neo, then e.g. music, YouTube, WhatsApp,
-            Telegram, contacts, or time.{" "}
+            <span className="font-medium text-black">Tap the mic</span> — after the short greeting you can say your
+            command directly (e.g. open WhatsApp, YouTube, time) for ~10 seconds. You can still start with{" "}
+            <span className="font-medium text-black">Neo</span> or Hello Neo if you prefer.{" "}
             {isNativeCapacitor()
-              ? "Wake listen runs in the app while Hello Neo wake is on (see Profile); other speech is ignored until you say the wake phrase."
-              : "Wake listen only runs while you stay on this page; other speech is ignored until you say the wake phrase."}
+              ? "Hands-free wake listen (Profile): other speech is ignored until you say the wake phrase."
+              : "Hands-free wake listen on this page: say Neo or Hello Neo first, then your command."}
           </p>
         </div>
         <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -578,11 +615,11 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
           <div className="min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#00D4FF]/90">Neo</p>
             <p className="mt-1 text-[12px] leading-relaxed text-white/65">
-              Say <span className="text-white/88">Neo</span> or <span className="text-white/88">Hello Neo</span> — e.g.{" "}
-              music / YouTube, <span className="text-white/88">&quot;Neo open my WhatsApp&quot;</span>, Telegram,
-              contacts, time, or call a number. Speech without the wake phrase does nothing. If you only say the wake
-              phrase, Neo confirms, then you get a short window for the next command without repeating the wake.{" "}
-              <span className="text-white/55">Wake listen</span> (mic for Hello Neo on Profile) is only in{" "}
+              <span className="text-white/88">Profile → Try Neo:</span> tap the mic; after the greeting say your command
+              directly (open WhatsApp, time, …) for ~10s, or start with{" "}
+              <span className="text-white/88">Neo / Hello Neo</span>. Hands-free{" "}
+              <span className="text-white/55">wake listen</span> needs the wake phrase first. If you only say the wake
+              phrase, Neo confirms, then you get a short window without repeating it. Wake listen (Profile) is only in{" "}
               <Link href="/profile" className="text-[#00D4FF]/90 underline-offset-2 hover:underline">
                 Profile
               </Link>

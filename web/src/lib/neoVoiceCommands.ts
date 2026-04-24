@@ -96,6 +96,129 @@ function isConfirmNo(text: string): boolean {
   return /^(no|nope|cancel|stop|mat|nahi|nahin|ना|नहीं|रद्द|cancel it)$/i.test(t);
 }
 
+/** Browser-only: common sites + search fallback (APK uses installed apps via native router). */
+const WEB_QUICK_NAV: Record<string, string> = {
+  google: "https://www.google.com/",
+  chrome: "https://www.google.com/chrome/",
+  "google chrome": "https://www.google.com/chrome/",
+  gmail: "https://mail.google.com/mail/",
+  mail: "https://mail.google.com/mail/",
+  inbox: "https://mail.google.com/mail/",
+  maps: "https://maps.google.com/",
+  map: "https://maps.google.com/",
+  "google maps": "https://maps.google.com/",
+  youtube: "https://www.youtube.com/",
+  facebook: "https://www.facebook.com/",
+  fb: "https://www.facebook.com/",
+  instagram: "https://www.instagram.com/",
+  ig: "https://www.instagram.com/",
+  twitter: "https://twitter.com/",
+  x: "https://x.com/",
+  linkedin: "https://www.linkedin.com/",
+  amazon: "https://www.amazon.in/",
+  flipkart: "https://www.flipkart.com/",
+  drive: "https://drive.google.com/",
+  "google drive": "https://drive.google.com/",
+  calendar: "https://calendar.google.com/",
+  photos: "https://photos.google.com/",
+  translate: "https://translate.google.com/",
+  news: "https://news.google.com/",
+  weather: "https://www.google.com/search?q=weather",
+  netflix: "https://www.netflix.com/",
+  spotify: "https://open.spotify.com/",
+  github: "https://github.com/",
+  reddit: "https://www.reddit.com/",
+  paytm: "https://paytm.com/",
+  phonepe: "https://www.phonepe.com/",
+  "google pay": "https://pay.google.com/",
+  gpay: "https://pay.google.com/",
+  playstore: "https://play.google.com/store",
+  "play store": "https://play.google.com/store",
+  zoom: "https://zoom.us/",
+  teams: "https://teams.microsoft.com/",
+  outlook: "https://outlook.live.com/",
+  hotmail: "https://outlook.live.com/",
+  bing: "https://www.bing.com/",
+  duckduckgo: "https://duckduckgo.com/",
+};
+
+const HI_SITE_TOKEN: Record<string, string> = {
+  गूगल: "google",
+  जीमेल: "gmail",
+  यूट्यूब: "youtube",
+  फेसबुक: "facebook",
+  इंस्टाग्राम: "instagram",
+  मैप: "maps",
+  मैप्स: "maps",
+};
+
+function normalizeWebOpenTarget(raw: string): string {
+  return raw
+    .replace(/[.!?,]+$/g, "")
+    .replace(/\s+/g, " ")
+    .replace(/^(the|my|a|an)\s+/i, "")
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * Web: “open Gmail”, “open Google”, Hindi “गूगल खोलो”, or unknown “open Xyz” → best URL or Google search.
+ * APK: not used (native opens real apps).
+ */
+export function tryFlexibleWebOpen(
+  trimmed: string,
+  speechLang?: VoiceSpeechLangCode,
+): { reply: string; actions: NeoAction[] } | null {
+  if (isNativeCapacitor()) return null;
+  const t = trimmed.trim();
+  if (t.length < 3) return null;
+
+  const searchM = t.match(
+    /^(?:neo\s+)?\b(search|google|look\s*up|find)\s+(?:the\s+web\s+for\s+|for\s+|the\s+)?(.+)/i,
+  );
+  if (searchM && searchM[2]?.trim().length > 1) {
+    const q = searchM[2].trim().slice(0, 200);
+    return {
+      reply: cmdReply("Opening a search for that in a new tab.", "नए टैब में सर्च खोल रहे हैं।", t, speechLang),
+      actions: [{ kind: "open_url", url: `https://duckduckgo.com/?q=${encodeURIComponent(q)}` }],
+    };
+  }
+
+  let target: string | null = null;
+  const enOpen = t.match(
+    /\b(?:open|launch|visit|go\s*to|goto|show|start|take\s+me\s+to)\s+(?:the\s+|my\s+|a\s+)?(.+)$/i,
+  );
+  if (enOpen?.[1]) target = normalizeWebOpenTarget(enOpen[1]);
+
+  if (!target || target.length < 2) {
+    const hi = t.match(
+      /^(?:नियो\s+)?(गूगल|जीमेल|यूट्यूब|फेसबुक|इंस्टाग्राम|मैप्स|मैप)\s*(?:खोलो|खोल|ओपन)/u,
+    );
+    if (hi?.[1]) {
+      const key = HI_SITE_TOKEN[hi[1]];
+      if (key) target = key;
+    }
+  }
+
+  if (!target || target.length < 2) return null;
+
+  let url = WEB_QUICK_NAV[target];
+  if (!url) url = WEB_QUICK_NAV[target.split(/\s+/)[0] ?? ""];
+  if (!url) {
+    url = `https://www.google.com/search?q=${encodeURIComponent(`open ${target}`)}`;
+  }
+  const pretty = target.slice(0, 32);
+  return {
+    reply: cmdReply(
+      `Alright — opening ${pretty} in a new browser tab for you.`,
+      `ठीक है — ${pretty} नए ब्राउज़र टैब में खोल रहे हैं।`,
+      t,
+      speechLang,
+    ),
+    actions: [{ kind: "open_url", url }],
+  };
+}
+
 function looksIllegalOrUnsafeCommand(text: string): boolean {
   const t = text.trim().toLowerCase();
   if (!t) return false;
@@ -143,8 +266,8 @@ export function isShortOpenActionReply(reply: string): boolean {
 export function extractHelloNeoCommand(raw: string): { hadWake: boolean; rest: string } {
   const t = raw.replace(/\s+/g, " ").trim();
   const patterns = [
-    /\b(hello|hi|hey)[,!.']*\s+neo\b/i,
-    /\b(hello|hi|hey)[,!.']*\s+new\b/i,
+    /\b(hello|hi|hey|hallo|helo)[,!.']*\s+neo\b/i,
+    /\b(hello|hi|hey|hallo|helo)[,!.']*\s+new\b/i,
     /(नमस्ते|हेलो|हाय)[,!.']*\s+नियो/u,
     /\bneo\b/i,
     /\bनियो\b/u,
@@ -236,11 +359,17 @@ export function runNeoIntents(
   const wantsMusicApp =
     /\b(open|play|launch|start)\b.*\bmusic\b|\bmusic\b.*\b(open|play|launch|start)\b/i.test(trimmed) ||
     /\bopen\s+my\s+music\b/i.test(trimmed);
-  if (isNativeCapacitor() && wantsMusicApp) {
-    const url = "intent://#Intent;package=com.google.android.apps.youtube.music;end";
+  if (wantsMusicApp) {
+    if (isNativeCapacitor()) {
+      const url = "intent://#Intent;package=com.google.android.apps.youtube.music;end";
+      return {
+        reply: cmdReply("Opening music.", "संगीत ऐप खोल रहे हैं।", trimmed, speechLang),
+        actions: [{ kind: "open_url", url }],
+      };
+    }
     return {
-      reply: cmdReply("Opening music.", "संगीत ऐप खोल रहे हैं।", trimmed, speechLang),
-      actions: [{ kind: "open_url", url }],
+      reply: cmdReply("Opening YouTube Music in your browser.", "ब्राउज़र में YouTube Music खोल रहे हैं।", trimmed, speechLang),
+      actions: [{ kind: "open_url", url: "https://music.youtube.com/" }],
     };
   }
 
@@ -250,10 +379,16 @@ export function runNeoIntents(
     /\b(my\s+contact|mycontact|my\s+contacts)\b/i.test(trimmed) ||
     /(संपर्क|फोन\s*बुक).*(\bखोल|open|launch)/i.test(trimmed) ||
     /\b(खोल|open)\b.*(संपर्क|फोन\s*बुक)/i.test(trimmed);
-  if (isNativeCapacitor() && contactsOpen) {
+  if (contactsOpen) {
+    if (isNativeCapacitor()) {
+      return {
+        reply: cmdReply("Opening contacts.", "संपर्क सूची खोल रहे हैं।", trimmed, speechLang),
+        actions: [{ kind: "open_url", url: "content://com.android.contacts/contacts" }],
+      };
+    }
     return {
-      reply: cmdReply("Opening contacts.", "संपर्क सूची खोल रहे हैं।", trimmed, speechLang),
-      actions: [{ kind: "open_url", url: "content://com.android.contacts/contacts" }],
+      reply: cmdReply("Opening Google Contacts in your browser.", "ब्राउज़र में Google Contacts खोल रहे हैं।", trimmed, speechLang),
+      actions: [{ kind: "open_url", url: "https://contacts.google.com/" }],
     };
   }
 
@@ -408,6 +543,9 @@ export function runNeoIntents(
     };
   }
 
+  const flexWeb = tryFlexibleWebOpen(trimmed, speechLang);
+  if (flexWeb) return flexWeb;
+
   return {
     reply: silentReplies
       ? ""
@@ -532,10 +670,20 @@ export function processNeoCommandLine(
     return r;
   }
 
-  /* voice */
+  /* voice — follow-up window: user may omit the wake phrase; strip it if they repeat “Neo …”. */
   if (isNeoFollowUpActive()) {
-    const r = runNeoIntents(trimmed, true, options?.speechLang);
-    if (needsActionConfirmation(trimmed, r.actions)) {
+    const { hadWake, rest } = extractHelloNeoCommand(trimmed);
+    if (hadWake && !rest.trim()) {
+      startNeoFollowUpSession();
+      const lang = options?.speechLang ?? DEFAULT_VOICE_SPEECH_LANG;
+      return { reply: neoWakeAckPhrase(lang, options?.displayName), actions: [] };
+    }
+    const q = (hadWake && rest.trim() ? rest : trimmed).replace(/\s+/g, " ").trim();
+    if (!q) {
+      return { reply: "", actions: [] };
+    }
+    const r = runNeoIntents(q, true, options?.speechLang);
+    if (needsActionConfirmation(q, r.actions)) {
       pendingConfirmation = {
         actions: r.actions,
         expiresAt: Date.now() + CONFIRM_TTL_MS,
@@ -602,52 +750,45 @@ export function isVoiceGeneralHelpReply(reply: string): boolean {
 }
 
 export function executeNeoActions(actions: NeoAction[]): void {
-  const openWithFallback = (primary: string, fallback: string) => {
+  const openUrlInBrowserTab = (url: string) => {
     if (typeof window === "undefined") return;
     try {
-      window.location.assign(primary);
-    } catch {
-      window.location.assign(fallback);
-      return;
-    }
-    if (isNativeCapacitor()) return;
-    window.setTimeout(() => {
-      if (document.visibilityState !== "hidden") {
-        window.location.assign(fallback);
+      const abs = new URL(url, window.location.href);
+      const ext = /^https?:$/i.test(abs.protocol) && abs.origin !== window.location.origin;
+      if (ext) {
+        /* After async STT/TTS, `window.open` is often blocked — same-tab fallback so the action still runs. */
+        const w = window.open(url, "_blank", "noopener,noreferrer");
+        if (w == null) {
+          window.location.assign(url);
+        }
+        return;
       }
-    }, 1200);
-  };
-
-  const toWhatsAppAppUrl = (webUrl: string): string => {
-    const m = webUrl.match(/[?&]text=([^&]+)/i);
-    if (m?.[1]) return `whatsapp://send?text=${m[1]}`;
-    return "whatsapp://send";
-  };
-
-  const toTelegramAppUrl = (webUrl: string): string => {
-    const m = webUrl.match(/[?&]text=([^&]+)/i);
-    if (m?.[1]) return `tg://msg?text=${m[1]}`;
-    return "tg://";
+    } catch {
+      /* fall through */
+    }
+    window.location.assign(url);
   };
 
   for (const a of actions) {
     if (a.kind === "open_url") {
       if (isNativeCapacitor()) {
+        const raw = (a.url || "").trim().toLowerCase();
+        if (raw.startsWith("http://") || raw.startsWith("https://")) {
+          /* APK voice: only native / app schemes — skip accidental web URLs. */
+          continue;
+        }
         openNativeDeepLink(a.url);
         continue;
       }
-      const u = a.url.toLowerCase();
-      if (u.includes("web.whatsapp.com")) {
-        openWithFallback(toWhatsAppAppUrl(a.url), a.url);
-      } else if (u.includes("web.telegram.org") || u.includes("t.me/share")) {
-        openWithFallback(toTelegramAppUrl(a.url), a.url);
-      } else if (u.includes("youtube.com") || u.includes("youtu.be")) {
-        openWithFallback(
-          `vnd.youtube:${a.url.includes("search_query=") ? `results?search_query=${a.url.split("search_query=")[1]}` : ""}`,
-          a.url,
-        );
+      const raw = (a.url || "").trim().toLowerCase();
+      if (raw.startsWith("http://") || raw.startsWith("https://")) {
+        openUrlInBrowserTab(a.url);
       } else {
-        window.location.assign(a.url);
+        try {
+          window.location.assign(a.url);
+        } catch {
+          /* ignore */
+        }
       }
     } else if (a.kind === "tel") {
       if (isNativeCapacitor()) {
