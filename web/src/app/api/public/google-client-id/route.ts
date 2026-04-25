@@ -9,5 +9,9 @@ export async function GET() {
     process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.trim() ||
     process.env.GOOGLE_OAUTH_WEB_CLIENT_ID?.trim() ||
     "";
-  return NextResponse.json({ clientId });
+  const androidClientId =
+    process.env.NEXT_PUBLIC_GOOGLE_ANDROID_CLIENT_ID?.trim() ||
+    process.env.GOOGLE_OAUTH_ANDROID_CLIENT_ID?.trim() ||
+    "";
+  return NextResponse.json({ clientId, androidClientId });
 }

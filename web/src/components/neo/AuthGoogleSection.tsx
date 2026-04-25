@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
-import { fetchGoogleWebClientId } from "@/lib/googleClientId";
+import { fetchGoogleClientConfig } from "@/lib/googleClientId";
 
 /** Client-only: avoids SSR/hydration serving `GoogleLogin` (GIS) in the APK — GIS opens Chrome on `accounts.google.com/gsi/tr` and never returns. */
 const NeoGoogleSignIn = dynamic(
@@ -38,22 +38,29 @@ export function AuthGoogleSection({
   layout?: "beforeForm" | "afterForm";
 }) {
   const buildId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.trim() ?? "";
+  const buildAndroidId = process.env.NEXT_PUBLIC_GOOGLE_ANDROID_CLIENT_ID?.trim() ?? "";
   const [clientId, setClientId] = useState(buildId);
+  const [androidClientId, setAndroidClientId] = useState(buildAndroidId);
   const [ready, setReady] = useState(Boolean(buildId));
 
   useEffect(() => {
-    if (buildId) return;
+    if (buildId && buildAndroidId) return;
     let cancelled = false;
-    void fetchGoogleWebClientId().then((id) => {
+    void fetchGoogleClientConfig().then((cfg) => {
       if (!cancelled) {
-        setClientId(id);
+        if (!buildId) {
+          setClientId(cfg.clientId);
+        }
+        if (!buildAndroidId) {
+          setAndroidClientId(cfg.androidClientId);
+        }
         setReady(true);
       }
     });
     return () => {
       cancelled = true;
     };
-  }, [buildId]);
+  }, [buildAndroidId, buildId]);
 
   const hasGoogle = Boolean(clientId);
 
@@ -83,6 +90,7 @@ export function AuthGoogleSection({
     ) : hasGoogle ? (
       <NeoGoogleSignIn
         clientId={clientId}
+        nativeClientId={androidClientId}
         intent={intent}
         disabled={disabled}
         onCredential={onCredential}

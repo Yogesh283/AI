@@ -64,18 +64,22 @@ async function pauseWakeListenerForGoogleSignIn(): Promise<() => Promise<void>> 
  */
 export function NeoGoogleSignIn({
   clientId,
+  nativeClientId,
   intent,
   onCredential,
   onGoogleError,
   disabled,
 }: {
   clientId: string;
+  nativeClientId?: string;
   intent: Intent;
   onCredential: (idToken: string) => void | Promise<void>;
   onGoogleError?: (message: string) => void;
   disabled?: boolean;
 }) {
   const cid = clientId.trim();
+  const androidCid = nativeClientId?.trim() ?? "";
+  const initId = (androidCid || cid).trim();
   const [nativeBusy, setNativeBusy] = useState(false);
   const onCredentialRef = useRef(onCredential);
   const onGoogleErrorRef = useRef(onGoogleError);
@@ -93,23 +97,23 @@ export function NeoGoogleSignIn({
       (Capacitor.isNativePlatform() || isNativeCapacitor()));
 
   useEffect(() => {
-    if (!inAppAndroidGoogle || !cid) return;
-    void ensureNativeGoogleInitialized(cid).catch((e) => {
+    if (!inAppAndroidGoogle || !initId) return;
+    void ensureNativeGoogleInitialized(initId).catch((e) => {
       onGoogleErrorRef.current?.(
         e instanceof Error
           ? e.message
-          : "Could not start Google sign-in. Check Web client ID in Google Cloud and app signing SHA-1 for Android.",
+          : "Could not start Google sign-in. Check Android OAuth client ID + SHA-1 in Google Cloud.",
       );
     });
-  }, [cid, inAppAndroidGoogle]);
+  }, [initId, inAppAndroidGoogle]);
 
   const runNativeSignIn = useCallback(async () => {
-    if (!cid) return;
+    if (!initId) return;
     setNativeBusy(true);
     let resumeWake: (() => Promise<void>) | null = null;
     try {
       resumeWake = await pauseWakeListenerForGoogleSignIn();
-      await ensureNativeGoogleInitialized(cid);
+      await ensureNativeGoogleInitialized(initId);
       const result = await GoogleSignIn.signIn();
       if (result.idToken) {
         await onCredentialRef.current(result.idToken);
@@ -144,7 +148,7 @@ export function NeoGoogleSignIn({
       }
       setNativeBusy(false);
     }
-  }, [cid]);
+  }, [initId]);
 
   if (!cid) return null;
 
