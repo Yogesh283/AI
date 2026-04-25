@@ -135,6 +135,14 @@ public final class NeoCommandRouter {
             "जी, सुन रहा हूँ। व्हाट्सऐप खोलकर किसी को ढूंढना, संदेश पढ़ना, इसे संदेश भेजना, कॉल, या यूट्यूब—जो चाहिए बोलिए।");
     }
 
+    /** Wake voice-chat mode: speak backend/OpenAI chat text reply via the same TTS channel. */
+    public static void speakVoiceChatReply(Context context, String text) {
+        if (text == null || text.trim().isEmpty()) {
+            return;
+        }
+        speak(context, text.trim());
+    }
+
     /** Mic is toggled in the UI; voice phrases must not trigger TTS or other routers (no “use the mic button” spam). */
     private static boolean isMicControlIntent(String t, String raw) {
         if (t == null) return false;

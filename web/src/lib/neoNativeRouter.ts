@@ -12,6 +12,8 @@ export type NeoNativeRouterPlugin = {
   getWakeScreenOffListen(): Promise<{ enabled: boolean }>;
   setWakePorcupineStream(options: { enabled: boolean }): Promise<void>;
   getWakePorcupineStream(): Promise<{ enabled: boolean }>;
+  setWakeVoiceChatMode(options: { enabled: boolean }): Promise<void>;
+  getWakeVoiceChatMode(): Promise<{ enabled: boolean }>;
 };
 
 /** Android: runs `NeoCommandRouter.execute` (real app intents, not WebView https). */
@@ -35,5 +37,7 @@ export const NeoNativeRouter = registerPlugin<NeoNativeRouterPlugin>("NeoNativeR
     getWakeScreenOffListen: async () => ({ enabled: false }),
     setWakePorcupineStream: async () => {},
     getWakePorcupineStream: async () => ({ enabled: false }),
+    setWakeVoiceChatMode: async () => {},
+    getWakeVoiceChatMode: async () => ({ enabled: false }),
   },
 });

@@ -19,11 +19,8 @@ export function readWakeListenScreenOffStorage(): boolean {
     const raw = window.localStorage.getItem(NEO_WAKE_SCREEN_OFF_KEY);
     if (raw === "1") return true;
     if (raw === "0") return false;
-    /*
-     * Policy: wake-word detection should work with screen ON and OFF by default.
-     * Mic for full command capture still turns on only after wake detection.
-     */
-    if (isNativeCapacitor()) return true;
+    /* Policy: voice command module is active only while screen is ON. */
+    if (isNativeCapacitor()) return false;
     return false;
   } catch {
     return false;
@@ -66,12 +63,15 @@ async function runWakeBridgeSyncOnce(): Promise<void> {
     typeof document === "undefined" ? true : document.visibilityState === "visible";
   try {
     const { NeoNativeRouter } = await import("@/lib/neoNativeRouter");
+    const voiceChatMode = !!(await NeoNativeRouter.getWakeVoiceChatMode()).enabled;
     /*
-     * Only keep native wake in background when user explicitly enables screen-off listening.
-     * This reduces repeated mic start/stop and OEM "tun" sounds while other apps are in use.
+     * Keep wake service running while:
+     * - page is visible (screen ON command mode), or
+     * - screen-off listening is explicitly enabled, or
+     * - wake voice-chat mode is enabled (screen OFF Hello Neo -> OpenAI chat).
      */
-    if (assistantActive && alexaListen && (screenOff || pageVisible)) {
-      await NeoNativeRouter.startWakeListener({ screenOffListen: screenOff });
+    if (assistantActive && alexaListen && (screenOff || pageVisible || voiceChatMode)) {
+      await NeoNativeRouter.startWakeListener({ screenOffListen: screenOff || voiceChatMode });
     } else {
       await NeoNativeRouter.stopWakeListener();
     }
@@ -111,4 +111,26 @@ export async function persistWakeScreenOffNative(enabled: boolean): Promise<void
   writeWakeListenScreenOffStorage(enabled);
   if (!isNativeCapacitor()) return;
   await syncNativeWakeBridge(true);
+}
+
+/** Separate wake voice-chat mode toggle (OpenAI chat replies over TTS after Hello Neo). */
+export async function setNativeWakeVoiceChatMode(enabled: boolean): Promise<void> {
+  if (!isNativeCapacitor()) return;
+  try {
+    const { NeoNativeRouter } = await import("@/lib/neoNativeRouter");
+    await NeoNativeRouter.setWakeVoiceChatMode({ enabled });
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function getNativeWakeVoiceChatMode(): Promise<boolean> {
+  if (!isNativeCapacitor()) return false;
+  try {
+    const { NeoNativeRouter } = await import("@/lib/neoNativeRouter");
+    const r = await NeoNativeRouter.getWakeVoiceChatMode();
+    return !!r.enabled;
+  } catch {
+    return false;
+  }
 }

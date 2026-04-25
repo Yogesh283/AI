@@ -61,6 +61,8 @@ public class MainActivity extends BridgeActivity {
         decor.postDelayed(this::configureWebViewForVoice, 400);
         /* READ_CONTACTS: delayed so it does not stack on top of Google Sign-In on cold start; one prompt only. */
         decor.postDelayed(this::maybeRequestReadContactsOnce, 1600);
+        /* Bring wake listener back whenever app returns to foreground (after opening WhatsApp/Telegram/etc). */
+        decor.post(this::maybeStartWakeServiceForForeground);
     }
 
     private void maybeRequestReadContactsOnce() {
@@ -187,7 +189,7 @@ public class MainActivity extends BridgeActivity {
          * Default: stop native wake when leaving the activity (other app / lock) — avoids pocket noise.
          * If user enabled “listen when screen is off”, keep the foreground wake service running while locked.
          */
-        if (!NeoPrefs.isWakeListenScreenOff(this)) {
+        if (!NeoPrefs.isWakeListenScreenOff(this) && !NeoPrefs.isWakeVoiceChatModeEnabled(this)) {
             maybeStopWakeService();
         }
     }
@@ -201,5 +203,24 @@ public class MainActivity extends BridgeActivity {
         Intent service = new Intent(this, WakeWordForegroundService.class);
         service.setAction(WakeWordForegroundService.ACTION_STOP);
         startService(service);
+    }
+
+    private void maybeStartWakeServiceForForeground() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+                != PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+        Intent service = new Intent(this, WakeWordForegroundService.class);
+        service.setAction(WakeWordForegroundService.ACTION_START);
+        /* Foreground use-case: keep command wake active while screen is ON. */
+        service.putExtra(WakeWordForegroundService.EXTRA_SCREEN_OFF_LISTEN, false);
+        service.putExtra(
+            WakeWordForegroundService.EXTRA_VOICE_CHAT_MODE,
+            NeoPrefs.isWakeVoiceChatModeEnabled(this));
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            ContextCompat.startForegroundService(this, service);
+        } else {
+            startService(service);
+        }
     }
 }

@@ -24,10 +24,17 @@ import android.util.Log;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
+import java.io.BufferedReader;
+import java.io.OutputStream;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 /**
  * Foreground “Hello Neo” wake listener: one {@link SpeechRecognizer}, short relisten delays, no per-phrase
@@ -43,6 +50,8 @@ public class WakeWordForegroundService extends Service {
     public static final String ACTION_STOP = "com.neo.assistant.action.STOP_WAKE";
     /** Extra boolean: when true, keep listening after screen off (more battery / OEM quirks possible). */
     public static final String EXTRA_SCREEN_OFF_LISTEN = "screen_off_listen";
+    /** Extra boolean: separate wake voice-chat mode (OpenAI reply via TTS), independent from command routing. */
+    public static final String EXTRA_VOICE_CHAT_MODE = "voice_chat_mode";
 
     private static final String CHANNEL_ID = "neo_wake_channel_silent_v2";
     private static final int NOTIFICATION_ID = 9001;
@@ -64,6 +73,9 @@ public class WakeWordForegroundService extends Service {
     /** Ignore duplicate final transcripts (screen-off partial quirks / echo). */
     private long lastHandledCommandMs;
     private String lastHandledCommandKey = "";
+    /** After a successful wake command on screen-ON, allow one short follow-up without repeating wake phrase. */
+    private long followUpUntilMs = 0L;
+    private static final long FOLLOWUP_WINDOW_MS = 14000L;
     /**
      * Return value from {@link #consumeRecognizerResults(android.os.Bundle)}: do not schedule STT restart here —
      * {@link NeoCommandRouter} will run {@link #resumeListeningRunnable} when TTS ends.
@@ -85,6 +97,12 @@ public class WakeWordForegroundService extends Service {
     /** If other app audio/video is active, stay idle and retry later. */
     private static final int MEDIA_ACTIVE_RECHECK_MS = 3000;
     private static final int MEDIA_ACTIVE_RECHECK_MAX_MS = 5200;
+    /**
+     * Best-effort silent mode:
+     * Repeated request/abandon of transient-exclusive audio focus can trigger OEM mic/focus cues ("tun").
+     * Keep disabled by default; we already guard by media-active detection + delayed relistens.
+     */
+    private static final boolean ENABLE_MIC_AUDIO_FOCUS = false;
 
     /** True after {@link RecognitionListener#onReadyForSpeech}; prevents duplicate starts. */
     private volatile boolean isListening = false;
@@ -94,12 +112,18 @@ public class WakeWordForegroundService extends Service {
     private int mediaBackoffMs = MEDIA_ACTIVE_RECHECK_MS;
     private AudioManager audioManager;
     private AudioFocusRequest micAudioFocusRequest;
+    private volatile boolean voiceChatMode = false;
+    private volatile boolean chatRequestInFlight = false;
+    private static final int CHAT_CONNECT_TIMEOUT_MS = 7000;
+    private static final int CHAT_READ_TIMEOUT_MS = 12000;
+    private static final String CHAT_API_FALLBACK = "https://myneoxai.com/api/chat";
 
     private final Runnable resumeListeningRunnable =
         () -> {
             if (!shouldListen) return;
             if (!mayUseMicNow()) return;
             if (NeoCommandRouter.isAISpeaking()) return;
+            if (chatRequestInFlight) return;
             if (isMediaPlaybackActive()) {
                 schedulePassiveRelisten(nextMediaBackoffMs());
                 return;
@@ -137,9 +161,13 @@ public class WakeWordForegroundService extends Service {
         registerScreenStateReceiver();
     }
 
-    /** When {@link #listenScreenOff} is false, skip work while display is off (pocket / OEM beeps). */
+    /** Screen policy: screen ON -> command mode; screen OFF -> only wake voice-chat mode (if enabled). */
     private boolean mayUseMicNow() {
-        if (listenScreenOff) return true;
+        if (isScreenInteractive()) return true;
+        return voiceChatMode;
+    }
+
+    private boolean isScreenInteractive() {
         PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
         return pm == null || pm.isInteractive();
     }
@@ -150,7 +178,7 @@ public class WakeWordForegroundService extends Service {
             public void onReceive(Context context, Intent intent) {
                 if (intent == null || intent.getAction() == null) return;
                 if (Intent.ACTION_SCREEN_OFF.equals(intent.getAction())) {
-                    if (!listenScreenOff) {
+                    if (!voiceChatMode && !listenScreenOff) {
                         stopListeningSilently();
                     }
                 } else if (Intent.ACTION_SCREEN_ON.equals(intent.getAction()) && shouldListen) {
@@ -246,16 +274,22 @@ public class WakeWordForegroundService extends Service {
         }
 
         if (intent != null && intent.hasExtra(EXTRA_SCREEN_OFF_LISTEN)) {
-            listenScreenOff = intent.getBooleanExtra(EXTRA_SCREEN_OFF_LISTEN, true);
+            listenScreenOff = intent.getBooleanExtra(EXTRA_SCREEN_OFF_LISTEN, false);
         } else {
             listenScreenOff = NeoPrefs.isWakeListenScreenOff(this);
         }
+        if (intent != null && intent.hasExtra(EXTRA_VOICE_CHAT_MODE)) {
+            voiceChatMode = intent.getBooleanExtra(EXTRA_VOICE_CHAT_MODE, false);
+            NeoPrefs.setWakeVoiceChatModeEnabled(this, voiceChatMode);
+        } else {
+            voiceChatMode = NeoPrefs.isWakeVoiceChatModeEnabled(this);
+        }
         /*
-         * Policy rule: wake-word detection stays active for both screen ON/OFF.
-         * Command capture mic still opens only after wake phrase detection.
+         * Screen-on-only rule:
+         * keep wake/voice processing active only while display is ON.
          */
-        listenScreenOff = true;
-        NeoPrefs.setWakeListenScreenOff(this, true);
+        listenScreenOff = false;
+        NeoPrefs.setWakeListenScreenOff(this, false);
 
         if (!hasRecordAudioPermission()) {
             shouldListen = false;
@@ -289,6 +323,7 @@ public class WakeWordForegroundService extends Service {
     @Override
     public void onDestroy() {
         shouldListen = false;
+        chatRequestInFlight = false;
         NeoCommandRouter.setAssistantSpeechEndedRunnable(null);
         mainHandler.removeCallbacks(resumeListeningRunnable);
         mainHandler.removeCallbacksAndMessages(null);
@@ -392,6 +427,7 @@ public class WakeWordForegroundService extends Service {
                 int delayMs = consumeRecognizerResults(results);
                 if (!shouldListen || !mayUseMicNow()) return;
                 if (NeoCommandRouter.isAISpeaking()) return;
+                if (chatRequestInFlight) return;
                 if (isMediaPlaybackActive()) {
                     schedulePassiveRelisten(nextMediaBackoffMs());
                     return;
@@ -434,12 +470,27 @@ public class WakeWordForegroundService extends Service {
         if (said.isEmpty()) return RELISTEN_MS_QUICK;
 
         String command = extractWakeCommand(said);
+        if (command == null && isScreenInteractive()) {
+            long now = System.currentTimeMillis();
+            if (now <= followUpUntilMs) {
+                /* Follow-up turn: user can continue without saying "Hello Neo" again. */
+                command = said;
+            }
+        }
         if (command == null) {
             return RELISTEN_MS_QUICK;
         }
 
         if (command.isEmpty()) {
             /* Wake only — no TTS in background listener (silent operation; no speaker→mic overlap). */
+            return RELISTEN_MS_AFTER_WAKE_ONLY;
+        }
+
+        if (!isScreenInteractive()) {
+            if (voiceChatMode) {
+                handleWakeVoiceChat(command);
+                return RELISTEN_DEFERRED;
+            }
             return RELISTEN_MS_AFTER_WAKE_ONLY;
         }
 
@@ -451,20 +502,109 @@ public class WakeWordForegroundService extends Service {
         lastHandledCommandKey = key;
         lastHandledCommandMs = now;
 
-        boolean handled;
-        NeoCommandRouter.beginSilentWakeRouting();
-        try {
-            handled = NeoCommandRouter.execute(this, command);
-        } finally {
-            NeoCommandRouter.endSilentWakeRouting();
-        }
+        boolean handled = NeoCommandRouter.execute(this, command);
         if (!handled) {
-            Log.v(TAG, "wake command unmatched");
+            /*
+             * Screen ON:
+             * - Primary: app command router (open WhatsApp, call, contacts, etc.)
+             * - Fallback: OpenAI voice chat for natural follow-up or general queries.
+             */
+            handleWakeVoiceChat(command);
+            followUpUntilMs = System.currentTimeMillis() + FOLLOWUP_WINDOW_MS;
+            return RELISTEN_DEFERRED;
         }
+        followUpUntilMs = System.currentTimeMillis() + FOLLOWUP_WINDOW_MS;
         if (NeoCommandRouter.isAISpeaking()) {
             return RELISTEN_DEFERRED;
         }
         return RELISTEN_MS_QUICK;
+    }
+
+    /**
+     * Separate wake chat mode: after "Hello Neo ...", send text to backend chat route and speak reply via TTS.
+     * Keeps this mode independent from app-intent command router behavior.
+     */
+    private void handleWakeVoiceChat(String userText) {
+        final String q = userText == null ? "" : userText.trim();
+        if (q.isEmpty()) {
+            return;
+        }
+        if (chatRequestInFlight) {
+            return;
+        }
+        chatRequestInFlight = true;
+        new Thread(
+                () -> {
+                    String reply = "";
+                    try {
+                        reply = requestVoiceChatReply(q);
+                    } catch (Exception ignored) {
+                    }
+                    final String out = reply == null ? "" : reply.trim();
+                    mainHandler.post(
+                        () -> {
+                            chatRequestInFlight = false;
+                            if (!shouldListen || !mayUseMicNow()) return;
+                            if (!out.isEmpty()) {
+                                NeoCommandRouter.speakVoiceChatReply(this, out);
+                                return;
+                            }
+                            if (NeoCommandRouter.isAISpeaking()) return;
+                            schedulePassiveRelisten(RELISTEN_MS_ERROR);
+                        });
+                },
+                "neo-wake-chat")
+            .start();
+    }
+
+    private String requestVoiceChatReply(String userText) {
+        HttpURLConnection conn = null;
+        try {
+            URL url = new URL(CHAT_API_FALLBACK);
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setConnectTimeout(CHAT_CONNECT_TIMEOUT_MS);
+            conn.setReadTimeout(CHAT_READ_TIMEOUT_MS);
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+            conn.setRequestProperty("Accept", "application/json");
+
+            JSONObject body = new JSONObject();
+            JSONArray messages = new JSONArray();
+            JSONObject user = new JSONObject();
+            user.put("role", "user");
+            user.put("content", userText);
+            messages.put(user);
+            body.put("messages", messages);
+            body.put("source", "voice");
+            body.put("use_web", false);
+            body.put("speech_lang", Locale.getDefault().toLanguageTag());
+
+            byte[] bytes = body.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(bytes);
+            }
+
+            int code = conn.getResponseCode();
+            if (code < 200 || code >= 300) {
+                return "";
+            }
+            StringBuilder sb = new StringBuilder();
+            try (BufferedReader br =
+                    new BufferedReader(
+                        new InputStreamReader(conn.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = br.readLine()) != null) {
+                    sb.append(line);
+                }
+            }
+            JSONObject json = new JSONObject(sb.toString());
+            return json.optString("reply", "");
+        } catch (Exception e) {
+            return "";
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
     }
 
     private String extractWakeCommand(String said) {
@@ -567,12 +707,15 @@ public class WakeWordForegroundService extends Service {
     }
 
     private boolean requestMicAudioFocus() {
+        if (!ENABLE_MIC_AUDIO_FOCUS) {
+            return true;
+        }
         AudioManager am = audioManager;
         if (am == null) return true;
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 AudioFocusRequest req =
-                    new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
+                    new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
                         .setAudioAttributes(
                             new AudioAttributes.Builder()
                                 .setUsage(AudioAttributes.USAGE_ASSISTANT)
@@ -593,7 +736,7 @@ public class WakeWordForegroundService extends Service {
                 am.requestAudioFocus(
                     null,
                     AudioManager.STREAM_MUSIC,
-                    AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE);
+                    AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK);
             return r == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
         } catch (Exception ignored) {
             return false;
@@ -601,6 +744,10 @@ public class WakeWordForegroundService extends Service {
     }
 
     private void releaseMicAudioFocus() {
+        if (!ENABLE_MIC_AUDIO_FOCUS) {
+            micAudioFocusRequest = null;
+            return;
+        }
         AudioManager am = audioManager;
         if (am == null) return;
         try {

@@ -55,8 +55,22 @@ public class NeoNativeRouterPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void setWakeVoiceChatMode(PluginCall call) {
+        Boolean on = call.getBoolean("enabled", false);
+        NeoPrefs.setWakeVoiceChatModeEnabled(getContext(), Boolean.TRUE.equals(on));
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void getWakeVoiceChatMode(PluginCall call) {
+        JSObject o = new JSObject();
+        o.put("enabled", NeoPrefs.isWakeVoiceChatModeEnabled(getContext()));
+        call.resolve(o);
+    }
+
+    @PluginMethod
     public void startWakeListener(PluginCall call) {
-        Boolean so = call.getBoolean("screenOffListen", true);
+        Boolean so = call.getBoolean("screenOffListen", false);
         NeoPrefs.setWakeListenScreenOff(getContext(), Boolean.TRUE.equals(so));
         if (getPermissionState("microphone") != PermissionState.GRANTED) {
             requestPermissionForAlias("microphone", call, "onMicPermissionForWake");
@@ -78,7 +92,7 @@ public class NeoNativeRouterPlugin extends Plugin {
             call.resolve(out);
             return;
         }
-        Boolean so = call.getBoolean("screenOffListen", true);
+        Boolean so = call.getBoolean("screenOffListen", false);
         NeoPrefs.setWakeListenScreenOff(getContext(), Boolean.TRUE.equals(so));
         boolean started = startWakeService(Boolean.TRUE.equals(so));
         out.put("started", started);
@@ -90,6 +104,9 @@ public class NeoNativeRouterPlugin extends Plugin {
         Intent i = new Intent(getContext(), WakeWordForegroundService.class);
         i.setAction(WakeWordForegroundService.ACTION_START);
         i.putExtra(WakeWordForegroundService.EXTRA_SCREEN_OFF_LISTEN, screenOffListen);
+        i.putExtra(
+            WakeWordForegroundService.EXTRA_VOICE_CHAT_MODE,
+            NeoPrefs.isWakeVoiceChatModeEnabled(getContext()));
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 ContextCompat.startForegroundService(getContext(), i);

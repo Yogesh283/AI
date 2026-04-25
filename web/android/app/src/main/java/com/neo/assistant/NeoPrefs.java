@@ -11,6 +11,8 @@ public final class NeoPrefs {
     public static final String KEY_WAKE_SCREEN_OFF = "wake_listen_screen_off";
     /** When true and Picovoice assets + PV_ACCESS_KEY are present, wake uses AudioRecord + Porcupine. */
     public static final String KEY_WAKE_PORCUPINE_STREAM = "wake_porcupine_stream";
+    /** Separate wake voice chat mode (OpenAI reply over TTS) independent of command router mode. */
+    public static final String KEY_WAKE_VOICE_CHAT_MODE = "wake_voice_chat_mode";
     /** Latest WhatsApp notification line (title + text) when {@link NeoNotificationListenerService} is enabled. */
     public static final String KEY_LAST_WA_SNIPPET = "last_wa_notif_snippet";
     /** Ring buffer JSON: [{app,title,text,ts}, …] newest first — WhatsApp + Telegram previews for voice “read for …”. */
@@ -30,10 +32,10 @@ public final class NeoPrefs {
     private NeoPrefs() {}
 
     public static boolean isWakeListenScreenOff(Context c) {
-        /* Match web `neoWakeNative`: on APK, default true so backgrounding doesn’t stop wake before bridge sync. */
+        /* Screen-on-only voice policy: default OFF for screen-off listening. */
         return c.getApplicationContext()
             .getSharedPreferences(FILE, Context.MODE_PRIVATE)
-            .getBoolean(KEY_WAKE_SCREEN_OFF, true);
+            .getBoolean(KEY_WAKE_SCREEN_OFF, false);
     }
 
     public static void setWakeListenScreenOff(Context c, boolean on) {
@@ -59,6 +61,20 @@ public final class NeoPrefs {
             .getSharedPreferences(FILE, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KEY_WAKE_PORCUPINE_STREAM, on)
+            .apply();
+    }
+
+    public static boolean isWakeVoiceChatModeEnabled(Context c) {
+        return c.getApplicationContext()
+            .getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .getBoolean(KEY_WAKE_VOICE_CHAT_MODE, true);
+    }
+
+    public static void setWakeVoiceChatModeEnabled(Context c, boolean on) {
+        c.getApplicationContext()
+            .getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_WAKE_VOICE_CHAT_MODE, on)
             .apply();
     }
 
