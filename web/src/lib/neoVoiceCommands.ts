@@ -1,18 +1,22 @@
 /**
- * **Neo voice commands — intent router (this file).**
+ * **Neo voice commands — integrated pipeline (this file is the “command processor” + action contract).**
  *
- * This repo does **not** use Python `SpeechRecognition`, Vosk, Kivy, or Pyjnius. Those are valid choices if you
- * build a standalone assistant in Python + Android JNI; here the stack is:
+ * End-to-end layers (voice shortcut path only — not full free-form chat):
  *
- * - **Speech → text**: browser Web Speech API (`voiceChat.ts`), Capacitor/native one-shot capture where applicable,
- *   and the Voice page / Hello Neo UI (`HelloNeoVoiceStrip.tsx`, `voice/page.tsx`).
- * - **Text → actions**: this module matches wake phrases (`wakeWord.ts`) and routes intents (English + Hindi regex
- *   patterns) to `NeoAction[]` — open WhatsApp/Telegram (`whatsappOpenCommand.ts`, `telegramOpenCommand.ts`),
- *   `tel:` links, YouTube/music intents, etc. `executeNeoActions()` performs `window.open`, `location`, or native
- *   deep links (`nativeAppLinks.ts`).
- * - **Spoken feedback**: callers pass `silentReplies` for voice; short `reply` strings are spoken via browser TTS or
- *   OpenAI TTS (`voiceAvatarTts.ts`). After **Hello Neo** with no tail, a follow-up command window opens (`neoVoiceSession`, ~9.5s);
- *   then the user should say **Hello Neo** again for the next cycle (see Hello Neo strip + native wake service delays).
+ * 1. **Voice recognition** → text: Web Speech API (`voiceChat.ts`), Hello Neo / Voice UI (`HelloNeoVoiceStrip.tsx`,
+ *    `voice/page.tsx`); APK uses native / Capacitor capture where needed.
+ * 2. **Command processor** → structured intent: `extractHelloNeoCommand`, `processNeoCommandLine`, `runNeoIntents`
+ *    (this file + `whatsappOpenCommand.ts`, `telegramOpenCommand.ts`, etc.).
+ * 3. **“API” / app integration** → side effects: `executeNeoActions` (browser `https` / `tel:`) and
+ *    `NeoNativeRouter` + Android intents on Capacitor — not vendor private APIs (no WhatsApp inbox read).
+ * 4. **Natural reply (short)** → template / TTS: `cmdReply` strings here; `speakText` / `tryPlayOpenAiTtsPlain`
+ *    (`voiceChat.ts`, `voiceAvatarTts.ts`). Optional LLM line only when `HelloNeoVoiceStrip` calls `postChat` for
+ *    unmatched voice help — still gated to signed-in web, not native shortcut spam.
+ * 5. **Event / orchestration** → order & state: `HelloNeoVoiceStrip` `runPipeline` (wake, follow-up `neoVoiceSession.ts`),
+ *    mic lifecycle, `executeNeoActions` after speak; APK foreground wake + `NeoCommandRouter.java` for parallel path.
+ *
+ * **Cross-platform parity:** `runNeoIntents` / `processNeoCommandLine` are shared for dashboard **typed** `text` and
+ * **voice**; only step (1) and deep links in (3) differ by device.
  *
  * Wake: **Neo** / **नियो** (or Hello Neo / हेलो नियो). Example: “Neo, open WhatsApp”.
  */
@@ -264,11 +268,16 @@ export function isShortOpenActionReply(reply: string): boolean {
  * Hindi: **नियो** alone or after greeting.
  */
 export function extractHelloNeoCommand(raw: string): { hadWake: boolean; rest: string } {
-  const t = raw.replace(/\s+/g, " ").trim();
+  const t = raw
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\u2019/g, "'")
+    .replace(/[\u201c\u201d]/g, '"');
   const patterns = [
-    /\b(hello|hi|hey|hallo|helo)[,!.']*\s+neo\b/i,
-    /\b(hello|hi|hey|hallo|helo)[,!.']*\s+new\b/i,
-    /(नमस्ते|हेलो|हाय)[,!.']*\s+नियो/u,
+    /\b(hello|hi|hey|hallo|helo|hullo|hola)[,!.']*\s+neo\b/i,
+    /\b(hello|hi|hey|hallo|helo|hullo|hola)[,!.']*\s+new\b/i,
+    /\bnamaste[,!.']*\s+neo\b/i,
+    /(नमस्ते|हेलो|हाय|हैलो|हॅलो)[,!.']*\s*नियो/u,
     /\bneo\b/i,
     /\bनियो\b/u,
   ];
@@ -292,6 +301,18 @@ export function stripHelloNeoPrefix(raw: string): { hadWake: boolean; rest: stri
   return extractHelloNeoCommand(raw);
 }
 
+/** Mic is UI-only; swallow these phrases with no reply/TTS so they are not mistaken for other intents. */
+export function isMicControlCommand(q: string): boolean {
+  const trimmed = q.replace(/\s+/g, " ").trim();
+  if (!trimmed) return false;
+  const t = trimmed.toLowerCase();
+  return (
+    /\b(mic|microphone)\b.*\b(on|off|start|stop|mute|unmute)\b/i.test(t) ||
+    /\b(on|off|start|stop|mute|unmute)\b.*\b(mic|microphone)\b/i.test(t) ||
+    /(माइक|माइक्रोफोन).*(चालू|बंद|ऑन|ऑफ|शुरू|रोक|म्यूट|अनम्यूट)/i.test(trimmed)
+  );
+}
+
 export function extractTelHrefFromCommand(text: string): string | null {
   if (
     !/\b(call|dial|phone|ring|\u0915\u094C\u0932|\u092B\u094B\u0928)\b/i.test(text) &&
@@ -307,7 +328,7 @@ export function extractTelHrefFromCommand(text: string): string | null {
   return `tel:+${digits}`;
 }
 
-/** Core intents on command text only (no wake). `silentReplies`: voice — no TTS when no action. */
+/** Core intents on command text only (no wake). `silentReplies`: voice mode (templates still spoken where helpful). */
 export function runNeoIntents(
   q: string,
   silentReplies = false,
@@ -315,6 +336,10 @@ export function runNeoIntents(
 ): { reply: string; actions: NeoAction[] } {
   const trimmed = q.trim();
   if (!trimmed) {
+    return { reply: "", actions: [] };
+  }
+
+  if (isMicControlCommand(trimmed)) {
     return { reply: "", actions: [] };
   }
 
@@ -332,14 +357,12 @@ export function runNeoIntents(
     /\b(message|messages|sms|मैसेज|chat|whatsapp|telegram|व्हाट्स|टेली)\b/i.test(trimmed);
   if (wantsReadInbox && !openAppOnly) {
     return {
-      reply: silentReplies
-        ? ""
-        : cmdReply(
-            "I can't read full WhatsApp or Telegram message text from here for privacy. Say Neo, open WhatsApp — then read inside the app.",
-            "निजता के कारण यहाँ से व्हाट्सऐप या टेलीग्राम के भीतर के संदेश पूरी तरह नहीं पढ़े जा सकते। पहले नियो कहकर ऐप खुलवा लें, फिर ऐप में देखें।",
-            trimmed,
-            speechLang,
-          ),
+      reply: cmdReply(
+        "I can't read full WhatsApp or Telegram message text from here for privacy. Say Neo, open WhatsApp — then read inside the app.",
+        "निजता के कारण यहाँ से व्हाट्सऐप या टेलीग्राम के भीतर के संदेश पूरी तरह नहीं पढ़े जा सकते। पहले नियो कहकर ऐप खुलवा लें, फिर ऐप में देखें।",
+        trimmed,
+        speechLang,
+      ),
       actions: [],
     };
   }
@@ -377,6 +400,10 @@ export function runNeoIntents(
     /\b(open|launch|show|start)\b.*\b(contact|contacts|phonebook|phone book|address book)\b/i.test(trimmed) ||
     /\b(contact|contacts|phonebook|phone book)\b.*\b(open|launch|show|start)\b/i.test(trimmed) ||
     /\b(my\s+contact|mycontact|my\s+contacts)\b/i.test(trimmed) ||
+    /\b(contact|contacts)\s*(list|लिस्ट)\b/i.test(trimmed) ||
+    /(कॉन्टैक्ट|कांटेक्ट|संपर्क).*(लिस्ट|list|सूची)/i.test(trimmed) ||
+    /(लिस्ट|list|सूची).*(कॉन्टैक्ट|कांटेक्ट|संपर्क)/i.test(trimmed) ||
+    /मेरी\s+(कॉन्टैक्ट|कांटेक्ट|संपर्क)/i.test(trimmed) ||
     /(संपर्क|फोन\s*बुक).*(\bखोल|open|launch)/i.test(trimmed) ||
     /\b(खोल|open)\b.*(संपर्क|फोन\s*बुक)/i.test(trimmed);
   if (contactsOpen) {
@@ -392,16 +419,42 @@ export function runNeoIntents(
     };
   }
 
+  const openProfileOrAccount =
+    !/\b(whatsapp|telegram|facebook|instagram)\s+(profile|account)\b/i.test(trimmed) &&
+    (/\b(my\s+)?(profile|account)\b/i.test(trimmed) ||
+      /\baccount\s+settings\b/i.test(trimmed) ||
+      /\bneo\s+profile\b/i.test(trimmed) ||
+      /(प्रोफाइल|प्रोफ़ाइल|अकाउंट|खाता)/i.test(trimmed)) &&
+    (/\b(open|show|launch|start|go to|visit|take me|can you|could you|please)\b/i.test(trimmed) ||
+      /\b(open|show)\s+my\s+account\b/i.test(trimmed) ||
+      /(खोल|ओपन|दिखा)/i.test(trimmed));
+  if (openProfileOrAccount) {
+    if (isNativeCapacitor()) {
+      return {
+        reply: cmdReply("Opening your profile.", "प्रोफाइल खोल रहे हैं।", trimmed, speechLang),
+        actions: [{ kind: "open_url", url: "neo-app:/profile" }],
+      };
+    }
+    return {
+      reply: cmdReply("Opening profile.", "प्रोफाइल खोल रहे हैं।", trimmed, speechLang),
+      actions: [{ kind: "open_url", url: "/profile" }],
+    };
+  }
+
   const ytMatch = trimmed.match(
     /\b(?:play|listen(?:\s+to)?|start)\b\s*(?:song|music)?\s*(?:on\s+youtube)?\s*(.+)?$/i,
   );
   const asksYoutube =
     /\b(youtube|you tube|song|music|singer)\b/i.test(trimmed) ||
-    /(यूट्यूब|गाना|सॉन्ग|म्यूजिक|सिंगर)/i.test(trimmed);
+    /(यूट्यूब|गाना|गाने|संगीत|सॉन्ग|म्यूजिक|सिंगर)/i.test(trimmed);
   if (ytMatch || asksYoutube) {
     const candidate = (ytMatch?.[1] || trimmed)
       .replace(/\b(on|in)\s+youtube\b/gi, "")
       .replace(/\b(play|listen(?:\s+to)?|start|song|music)\b/gi, "")
+      .replace(
+        /यूट्यूब|गाना|गाने|संगीत|सॉन्ग|म्यूजिक|सिंगर|चलाओ|चला दो|बजाओ|सुनाओ|सुना दो|खोलो|खोल/gu,
+        " ",
+      )
       .trim();
     const query = candidate.length > 1 ? candidate : trimmed;
     const url = isNativeCapacitor()
@@ -417,43 +470,11 @@ export function runNeoIntents(
     /\b(volume|sound)\b/i.test(trimmed) || /(वॉल्यूम|आवाज़|आवाज)/i.test(trimmed);
   if (volumeIntent) {
     return {
-      reply: silentReplies
-        ? ""
-        : cmdReply(
-            "Volume control is available in the Android APK background listener.",
-            "आवाज़ कम-ज़्यादा एपीके की पृष्ठभूमि सुनने वाली सुविधा में मिलेगी।",
-            trimmed,
-            speechLang,
-          ),
-      actions: [],
-    };
-  }
-
-  const micToggleIntent =
-    /\b(mic|microphone)\b.*\b(on|off|start|stop|mute|unmute)\b/i.test(trimmed) ||
-    /\b(on|off|start|stop|mute|unmute)\b.*\b(mic|microphone)\b/i.test(trimmed) ||
-    /(माइक|माइक्रोफोन).*(चालू|बंद|ऑन|ऑफ|शुरू|रोक)/i.test(trimmed);
-  if (micToggleIntent) {
-    return {
       reply: cmdReply(
-        "Mic on/off voice control is not available from command yet. Please use the mic button.",
-        "माइक ऑन/ऑफ कमांड अभी उपलब्ध नहीं है। कृपया माइक बटन का उपयोग करें।",
-        trimmed,
-        speechLang,
-      ),
-      actions: [],
-    };
-  }
-
-  const micOnOffIntent =
-    /\b(mic|microphone)\b.*\b(on|off|mute|unmute|start|stop)\b/i.test(trimmed) ||
-    /\b(on|off|mute|unmute|start|stop)\b.*\b(mic|microphone)\b/i.test(trimmed) ||
-    /(माइक|माइक्रोफोन).*(चालू|बंद|ऑन|ऑफ|म्यूट|अनम्यूट)/i.test(trimmed);
-  if (micOnOffIntent) {
-    return {
-      reply: cmdReply(
-        "Mic control works from the on-screen mic button or the Profile toggle. Say Neo and then your command after mic is on.",
-        "माइक कंट्रोल स्क्रीन के माइक बटन या प्रोफाइल टॉगल से होता है। माइक ऑन करके नियो बोलें, फिर कमांड दें।",
+        isNativeCapacitor()
+          ? "Volume control is available in the Android APK background listener."
+          : "Volume is controlled by your device or browser — use the volume keys or system mixer.",
+        "आवाज़ कम-ज़्यादा एपीके की पृष्ठभूमि सुनने वाली सुविधा में मिलेगी।",
         trimmed,
         speechLang,
       ),
@@ -531,14 +552,12 @@ export function runNeoIntents(
 
   if (/\bcall\s+[a-zA-Z\u0900-\u097F]{2,}\b/u.test(trimmed) && !/\d{5,}/.test(trimmed)) {
     return {
-      reply: silentReplies
-        ? ""
-        : cmdReply(
-            "I don't have that contact's number saved. Say the full number with country code.",
-            "उस संपर्क का नंबर यहाँ सेव नहीं मिला। देश कोड सहित पूरा नंबर बोलिए।",
-            trimmed,
-            speechLang,
-          ),
+      reply: cmdReply(
+        "I don't have that contact's number saved. Say the full number with country code.",
+        "उस संपर्क का नंबर यहाँ सेव नहीं मिला। देश कोड सहित पूरा नंबर बोलिए।",
+        trimmed,
+        speechLang,
+      ),
       actions: [],
     };
   }
@@ -547,14 +566,14 @@ export function runNeoIntents(
   if (flexWeb) return flexWeb;
 
   return {
-    reply: silentReplies
-      ? ""
-      : cmdReply(
-          "Try something like: open WhatsApp, open Telegram, or call plus nine one and your number.",
-          "जैसे बोलें—WhatsApp खोलो, Telegram खोलो, या नौ एक और नंबर बोलकर कॉल।",
-          trimmed,
-          speechLang,
-        ),
+    reply: cmdReply(
+      silentReplies
+        ? "I didn't match that to a command. Try: open WhatsApp, open YouTube, what's the time, or open Gmail."
+        : "Try something like: open WhatsApp, open Telegram, or call plus nine one and your number.",
+      "जैसे बोलें—WhatsApp खोलो, Telegram खोलो, या नौ एक और नंबर बोलकर कॉल।",
+      trimmed,
+      speechLang,
+    ),
     actions: [],
   };
 }
@@ -745,8 +764,35 @@ export function isVoiceGeneralHelpReply(reply: string): boolean {
   return (
     t.includes("Try something like:") ||
     t.includes("जैसे बोलें") ||
-    t.includes("Say Neo, then your command")
+    t.includes("Say Neo, then your command") ||
+    t.includes("I didn't match that to a command")
   );
+}
+
+/** APK WebView: navigating to `whatsapp://`, `tel:`, etc. often shows “invalid link”; use native {@link NeoNativeRouter}. */
+function openNativeExternalUri(url: string): void {
+  const u = url.trim();
+  if (!u) return;
+  const lower = u.toLowerCase();
+  const needsActivityIntent =
+    lower.startsWith("whatsapp:") ||
+    lower.startsWith("tg:") ||
+    lower.startsWith("intent:") ||
+    lower.startsWith("vnd.youtube:") ||
+    lower.startsWith("tel:") ||
+    (lower.startsWith("content://") && lower.includes("contacts"));
+  if (!needsActivityIntent) {
+    openNativeDeepLink(u);
+    return;
+  }
+  void import("@/lib/neoNativeRouter")
+    .then(({ NeoNativeRouter }) => NeoNativeRouter.openDeepLink({ url: u }))
+    .then((r) => {
+      if (r && r.opened === false) openNativeDeepLink(u);
+    })
+    .catch(() => {
+      openNativeDeepLink(u);
+    });
 }
 
 export function executeNeoActions(actions: NeoAction[]): void {
@@ -772,12 +818,20 @@ export function executeNeoActions(actions: NeoAction[]): void {
   for (const a of actions) {
     if (a.kind === "open_url") {
       if (isNativeCapacitor()) {
-        const raw = (a.url || "").trim().toLowerCase();
-        if (raw.startsWith("http://") || raw.startsWith("https://")) {
+        const raw = (a.url || "").trim();
+        const lower = raw.toLowerCase();
+        if (lower.startsWith("neo-app:")) {
+          const path = raw.slice("neo-app:".length).trim() || "/profile";
+          void import("@/lib/neoNativeRouter")
+            .then(({ NeoNativeRouter }) => NeoNativeRouter.openAppPath({ path }))
+            .catch(() => {});
+          continue;
+        }
+        if (lower.startsWith("http://") || lower.startsWith("https://")) {
           /* APK voice: only native / app schemes — skip accidental web URLs. */
           continue;
         }
-        openNativeDeepLink(a.url);
+        openNativeExternalUri(a.url);
         continue;
       }
       const raw = (a.url || "").trim().toLowerCase();
@@ -792,7 +846,7 @@ export function executeNeoActions(actions: NeoAction[]): void {
       }
     } else if (a.kind === "tel") {
       if (isNativeCapacitor()) {
-        openNativeDeepLink(a.href);
+        openNativeExternalUri(a.href);
       } else {
         window.location.href = a.href;
       }

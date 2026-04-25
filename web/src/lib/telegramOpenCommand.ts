@@ -7,7 +7,7 @@ export const TELEGRAM_WEB_URL = "https://web.telegram.org/a/";
 export function mentionsTelegram(text: string): boolean {
   const lower = text.toLowerCase();
   if (/\btelegram\b/.test(lower)) return true;
-  return /टेलीग्राम|टेली ग्राम|टेलिग्राम/i.test(text);
+  return /टेलीग्राम|टेली\s*ग्राम|टेलिग्राम/i.test(text);
 }
 
 function negated(text: string): boolean {
@@ -33,7 +33,10 @@ export function shouldOpenTelegramFromCommand(text: string): boolean {
     if (/^\s*my\s+telegram\s*[.!,]?\s*$/i.test(s)) return true;
     if (/^\s*(please\s+)?(open|show)\s+my\s+telegram\s*[.!,]?\s*$/i.test(s)) return true;
   }
-  if (/टेलीग्राम\s*खोलो|खोलो\s*टेलीग्राम|टेलीग्राम\s*ओपन|ओपन\s*टेलीग्राम/i.test(s)) {
+  if (
+    /टेलीग्राम\s*खोलो|खोलो\s*टेलीग्राम|टेलीग्राम\s*ओपन|ओपन\s*टेलीग्राम/i.test(s) ||
+    /टेली\s*ग्राम\s*(खोलो|खोल|ओपन)|खोलो\s*टेली\s*ग्राम/i.test(s)
+  ) {
     return true;
   }
   return false;

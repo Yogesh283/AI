@@ -1,18 +1,34 @@
-# Build a sideloadable RELEASE APK with WebView pointing at your live Next site.
+# Build RELEASE APK(s) with WebView pointing at your live Next site.
 # Usage (from repo):  cd web
 #   powershell -ExecutionPolicy Bypass -File .\scripts\build-release-apk.ps1
-# Optional override:
-#   $env:CAP_SERVER_URL="https://your-domain.com"; powershell ...\build-release-apk.ps1
+# Optional:
+#   -Flavor sideload | play | both   (default: both - matches npm run apk:release)
+#   -AllowDebugSigning                 (only if web/android/keystore.properties is missing)
+#   $env:CAP_SERVER_URL="https://your-domain.com"
+
+param(
+  [switch]$AllowDebugSigning,
+  [ValidateSet('sideload', 'play', 'both')]
+  [string]$Flavor = 'both'
+)
 
 $ErrorActionPreference = "Stop"
 $WebDir = Split-Path $PSScriptRoot -Parent
 $RootDir = Split-Path $WebDir -Parent
 Set-Location $WebDir
 
+$ksProps = Join-Path $WebDir "android\keystore.properties"
+if (-not $AllowDebugSigning -and -not (Test-Path -LiteralPath $ksProps)) {
+  Write-Host "ERROR: Release keystore required for production APK." -ForegroundColor Red
+  Write-Host "Create $ksProps (see android\keystore.properties.example). Or pass -AllowDebugSigning for a local test build only." -ForegroundColor Yellow
+  exit 1
+}
+
 if (-not $env:CAP_SERVER_URL -or -not $env:CAP_SERVER_URL.Trim()) {
   $env:CAP_SERVER_URL = "https://myneoxai.com"
 }
 Write-Host "CAP_SERVER_URL=$($env:CAP_SERVER_URL)" -ForegroundColor Cyan
+Write-Host "Flavor=$Flavor" -ForegroundColor Cyan
 
 & node.exe "$PSScriptRoot\apply-google-signin-patch.cjs"
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -21,16 +37,37 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Set-Location (Join-Path $WebDir "android")
-# sideload flavor = package com.neo.assistant.sideload — installs even if Play Store has com.neo.assistant
-& .\gradlew.bat clean assembleSideloadRelease
+
+$tasks = @('clean')
+if ($Flavor -eq 'sideload') { $tasks += 'assembleSideloadRelease' }
+elseif ($Flavor -eq 'play') { $tasks += 'assemblePlayRelease' }
+else { $tasks += 'assembleSideloadRelease', 'assemblePlayRelease' }
+
+& .\gradlew.bat @tasks
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-$apk = Join-Path $WebDir "android\app\build\outputs\apk\sideload\release\app-sideload-release.apk"
-$out = Join-Path $RootDir "NeoAssistant-sideload-install.apk"
-Copy-Item -LiteralPath $apk -Destination $out -Force
+if ($Flavor -eq 'sideload' -or $Flavor -eq 'both') {
+  $apkSd = Join-Path $WebDir "android\app\build\outputs\apk\sideload\release\app-sideload-release.apk"
+  $outSd = Join-Path $RootDir "NeoAssistant-sideload-install.apk"
+  Copy-Item -LiteralPath $apkSd -Destination $outSd -Force
+  Write-Host ""
+  Write-Host "OK -> $outSd" -ForegroundColor Green
+  Write-Host "  Package: com.neo.assistant.sideload (Play Store Neo ke saath side-by-side install ho sakta hai.)" -ForegroundColor Cyan
+}
+
+if ($Flavor -eq 'play' -or $Flavor -eq 'both') {
+  $apkPlay = Join-Path $WebDir "android\app\build\outputs\apk\play\release\app-play-release.apk"
+  $outPlay = Join-Path $RootDir "NeoAssistant-release-install.apk"
+  Copy-Item -LiteralPath $apkPlay -Destination $outPlay -Force
+  Write-Host ""
+  Write-Host "OK -> $outPlay" -ForegroundColor Green
+  Write-Host "  Package: com.neo.assistant (Play Store jaisa hi package ID)." -ForegroundColor Cyan
+  Write-Host "  Hindi: Agar App not installed / install fail - pehle Settings -> Apps -> NeoAssistant (ya NeoXAI) -> Uninstall." -ForegroundColor Yellow
+  Write-Host "         Purana app alag signing key se ho (Play / purani APK) to nayi APK update nahi ho sakti; uninstall ke baad hi install hogi." -ForegroundColor Yellow
+  Write-Host "  Sideload APK alag package: NeoAssistant-sideload-install.apk -> com.neo.assistant.sideload (Play ke saath side-by-side)." -ForegroundColor Yellow
+  Write-Host ('  PC par error dekhne ke liye: adb install -r "{0}"' -f $outPlay) -ForegroundColor DarkGray
+}
+
 Write-Host ""
-Write-Host "OK -> $out" -ForegroundColor Green
-Write-Host "Package: com.neo.assistant.sideload (can install alongside Play Store Neo)." -ForegroundColor Cyan
-Write-Host ""
-Write-Host "If install still fails: Files app, free space, Play Protect; Google Sign-In needs OAuth for this package+SHA1." -ForegroundColor Yellow
-Write-Host "Store build: cd android; .\gradlew.bat assemblePlayRelease" -ForegroundColor DarkGray
+Write-Host "Play Protect sideload par kabhi-kabhi warning de sakta hai; guarantee nahi. Release keystore + Play testing kam friction." -ForegroundColor DarkGray
+Write-Host 'Store build path: android\app\build\outputs\apk\play\release\' -ForegroundColor DarkGray

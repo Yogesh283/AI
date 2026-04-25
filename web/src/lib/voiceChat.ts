@@ -305,6 +305,32 @@ export function writeHelloNeoTtsSpeedPreset(p: TtsSpeedPreset): void {
   }
 }
 
+/** Try Neo / Hello Neo tap + command path: extra spoken cues vs visual-only mic UX. */
+export type NeoVoiceCommandAudioFeedback = "silent" | "spoken";
+
+const NEO_VOICE_COMMAND_AUDIO_FEEDBACK_KEY = "neo-voice-command-audio-feedback";
+
+/** Default `silent` — mic on/off without tap greeting or “one moment” ack TTS (replies still speak). */
+export function readNeoVoiceCommandAudioFeedback(): NeoVoiceCommandAudioFeedback {
+  if (typeof window === "undefined") return "silent";
+  try {
+    const v = localStorage.getItem(NEO_VOICE_COMMAND_AUDIO_FEEDBACK_KEY);
+    if (v === "silent" || v === "spoken") return v;
+  } catch {
+    /* ignore */
+  }
+  return "silent";
+}
+
+export function writeNeoVoiceCommandAudioFeedback(m: NeoVoiceCommandAudioFeedback): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(NEO_VOICE_COMMAND_AUDIO_FEEDBACK_KEY, m);
+  } catch {
+    /* ignore */
+  }
+}
+
 const HELLO_NEO_TTS_TONE_KEY = "neo-hello-neo-tts-tone";
 
 /** Tone for Hello Neo strip only. Default warm = softer spoken replies. */

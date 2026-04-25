@@ -1,11 +1,8 @@
 apply plugin: 'com.android.application'
 
-/* Optional stable sideload signing: create web/android/keystore.properties (gitignored) with:
-   storeFile=../path/to/your.jks
-   storePassword=...
-   keyAlias=...
-   keyPassword=...
-   Otherwise release uses debug keystore (fine for one machine; Play-installed build needs uninstall first). */
+/* Production: copy web/android/keystore.properties.example → keystore.properties (gitignored).
+   web/scripts/build-release-apk.ps1 requires it unless you pass -AllowDebugSigning.
+   If keystore.properties is missing, release still signs with debug (local iteration only). */
 def neoKeystoreProps = new Properties()
 def neoKeystoreFile = rootProject.file("keystore.properties")
 if (neoKeystoreFile.exists()) {
@@ -23,6 +20,8 @@ android {
     productFlavors {
         play {
             dimension "channel"
+            /* Without this, the IDE often targets a non-existent plain "debug" redirect path; default = playDebug. */
+            isDefault true
         }
         sideload {
             dimension "channel"
@@ -31,7 +30,17 @@ android {
         }
     }
     signingConfigs {
+        debug {
+            /* v1–v3: broader OEM / sideload installer compatibility than v2-only */
+            enableV1Signing true
+            enableV2Signing true
+            enableV3Signing true
+        }
         neoSideload {
+            enableV1Signing true
+            enableV2Signing true
+            enableV3Signing true
+            enableV4Signing true
             if (neoKeystoreFile.exists()) {
                 storeFile file(neoKeystoreProps["storeFile"])
                 storePassword neoKeystoreProps["storePassword"]
@@ -60,6 +69,12 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    /* Was android:extractNativeLibs=true in manifest; AGP wants this in DSL. Compressed .so → extracted at install. */
+    packaging {
+        jniLibs {
+            useLegacyPackaging true
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
@@ -71,12 +86,6 @@ android {
                 signingConfig signingConfigs.debug
             }
         }
-    }
-}
-
-repositories {
-    flatDir{
-        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
     }
 }
 
@@ -103,4 +112,25 @@ try {
     }
 } catch(Exception e) {
     logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}
+
+/*
+ * Android Studio "Run app" sometimes looks for intermediates/.../apk_ide_redirect_file/debug/...
+ * even when the only debug variants are playDebug / sideloadDebug. Copy the real redirect so Run works.
+ */
+afterEvaluate {
+    def mirror = { String fromSuffix ->
+        def src = file("${buildDir}/intermediates/apk_ide_redirect_file/${fromSuffix}/redirect.txt")
+        def destDir = file("${buildDir}/intermediates/apk_ide_redirect_file/debug/createDebugApkListingFileRedirect")
+        if (src.exists()) {
+            destDir.mkdirs()
+            copy { from src; into destDir }
+        }
+    }
+    tasks.matching { it.name == "createPlayDebugApkListingFileRedirect" }.configureEach {
+        it.doLast { mirror("playDebug/createPlayDebugApkListingFileRedirect") }
+    }
+    tasks.matching { it.name == "createSideloadDebugApkListingFileRedirect" }.configureEach {
+        it.doLast { mirror("sideloadDebug/createSideloadDebugApkListingFileRedirect") }
+    }
 }

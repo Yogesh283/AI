@@ -333,24 +333,41 @@ Phone ko USB se PC se jodo, **USB debugging** on. WebView ko **`http://localhost
    cd D:\AI\web
    npm run dev
    ```
-3. **ADB reverse** (teesra terminal, cable ke baad dubara chalao agar device reconnect ho):
-   ```powershell
-   adb reverse tcp:3000 tcp:3000
-   ```
-4. **Capacitor local URL** (Capacitor config mein `server.url` = localhost):
-   ```powershell
-   cd D:\AI\web
-   npm run cap:sync:android:local
-   ```
-5. **Android Studio**: `D:\AI\web\android` open karo → USB device select → **Run** ▶.
+3. **Capacitor local URL + port reverse:** `npm run cap:sync:android:local` ab **khud `adb reverse tcp:3000`** try karta hai (agar `Android\Sdk\platform-tools\adb.exe` mile). Cable replug par ye script dubara chalao.
+   - Agar sirf **Next** se sab chal raha hai ( `/neo-api` proxy), bas yahi kaafi.
+   - Agar phone **seedha 8010** bhi chuye: `npm run cap:sync:android:local:api` (3000 + 8010 reverse).
+   - Manual: `adb reverse tcp:3000 tcp:3000` (aur zarurat ho to `8010`).
+4. **Android Studio**: `D:\AI\web\android` open karo → USB device select → **Run** ▶ (debug build phone par seedha live WebView kholta hai).
+   - **Build Variants** (left edge / View → Tool Windows): `app` ke liye **`playDebug`** (ya **`sideloadDebug`**) select karo — plain `debug` variant nahi hai.
+   - Agar Android Studio phir bhi `apk_ide_redirect_file\debug\...\redirect.txt` maange: `app/build.gradle` ab Gradle se **playDebug/sideloadDebug redirect ko `debug/...` par mirror** karta hai; **Sync Gradle** karke **Run** dubara chalao. Phir bhi ho to **Build → Clean / Rebuild**.
 
 **Check:** `adb devices` mein device `device` dikhna chahiye (unauthorized ho to phone par allow karo).
 
 **Live site test** (USB ke bina): `npm run cap:sync:android:prod` phir Gradle build — WebView `https://myneoxai.com` load karega.
 
+### APK release signing & permissions (production)
+
+1. **Release keystore:** `web/android/keystore.properties.example` ko copy karke `web/android/keystore.properties` banao (ye file gitignored hai). `storeFile` path `web/android/app/` se relative hai (example me `../neo-release.jks` = `web/android/neo-release.jks`).
+2. **Script:** `web/scripts/build-release-apk.ps1` production ke liye **`keystore.properties` zaroori** maangta hai. Sirf local test ke liye `-AllowDebugSigning` do — warna release **debug key** se sign ho sakti hai (Play Protect / install-over-Play zyada problem).
+3. **SHA-1 (Google Sign-In Android client):** `cd D:\AI\web\android` → `.\gradlew.bat signingReport` → **sideloadRelease** / **playRelease** variant ka SHA-1 (jo keystore use ho rahi ho). **Sideload** package name: `com.neo.assistant.sideload`. **Play** flavor: `com.neo.assistant`.
+4. **Declared permissions (high level):** `INTERNET`, `RECORD_AUDIO`, `MODIFY_AUDIO_SETTINGS` (sirf volume voice commands), foreground service + `microphone` type, `POST_NOTIFICATIONS`, `WAKE_LOCK`. **No** `CALL_PHONE`, SMS, contacts read, or broad storage. **Dial:** voice “call” commands sirf **`ACTION_DIAL`** (system dialer) kholte hain. **Play flavor:** optional **notification listener** service manifest me hai (user system settings me enable kare tabhi). **Sideload flavor (`NeoAssistant-sideload-install.apk`):** merge manifest se ye service **hata di** gayi hai taake Play Protect / sideload heuristic kam trigger ho (WhatsApp preview feature sideload me nahi rahega).
+
+In-app copy for permission text lives in `web/android/app/src/main/res/values/strings.xml` (`neo_perm_*`).
+
+### “App not installed” / ऐप इंस्टॉल नहीं हो रहा (`NeoAssistant-release-install.apk`)
+
+Ye file **Play flavor** hai: package **`com.neo.assistant`** (Play Store listing jaisa). Android **alag signing key** wali nayi APK ko purane app ke **upar update** nahi karne deta — sirf generic **“App not installed”** dikhata hai.
+
+1. **Sabse common fix:** **Settings → Apps → NeoAssistant** (jo bhi naam dikh raha ho) → **Uninstall** → phir APK dubara install karo. (Pehle se Play Store se install hai aur tum debug/local APK se update kar rahe ho — uninstall zaroori.)
+2. **Play ke saath test bina uninstall:** `NeoAssistant-sideload-install.apk` use karo — package **`com.neo.assistant.sideload`**, Play wale ke **saath** install ho sakta hai.
+3. **CPU:** Is build me sirf **ARM** (`arm64-v8a`, `armeabi-v7a`) hai. **x86 emulator / kuch purane x86 tablet** par install fail ho sakta hai — real ARM phone par try karo.
+4. **ADB se exact error:** PC par `adb install -r D:\AI\NeoAssistant-release-install.apk` — message me `INSTALL_FAILED_*` code aayega (signature / ABI / storage).
+
+**`npm run apk:release`** ab **release keystore** maangta hai (`web/android/keystore.properties`). Bina keystore local test: **`npm run apk:dev`** (debug-signed; production phone par Play ke saath clash ho sakta hai).
+
 ### Google Play Protect — “App blocked to protect your device”
 
-Jab APK **Play Store se nahi** aati (WhatsApp / Files / Drive se sideload), **Google Play Protect** aksar **install rok deta hai** — message me “sensitive data” / “identity theft” jaisa generic text hota hai. NeoAssistant me **mic**, **phone call**, **notification access** jaise permissions honay se scan **aur strict** ho sakta hai. **Ye build error nahi hai** — user / distribution trust ka step hai.
+Jab APK **Play Store se nahi** aati (WhatsApp / Files / Drive se sideload), **Google Play Protect** aksar **install rok deta hai** — message me “sensitive data” / “identity theft” jaisa generic text hota hai. NeoAssistant me **mic**, foreground notification, Google Sign-In / WebView, aur (purane sideload par) notification listener jaise signals heuristic ko **strict** bana sakte hain. **Latest sideload build** notification listener service **manifest se strip** karta hai; phir bhi kabhi-kabhi sirf **OK** wala block aa sakta hai — **koi 100% sideload guarantee nahi**.
 
 **Kya karein (order me try karo):**
 
@@ -369,13 +386,12 @@ Jab APK **Play Store se nahi** aati (WhatsApp / Files / Drive se sideload), **Go
 3. **Backend:** `.env` mein `GOOGLE_CLIENT_IDS` (comma-separated) mein **usi Web client** ka ID hona chahiye jo frontend token ke liye use ho.
 4. **Build:** Web bundle mein client ID empty na ho — prod build se pehle env verify karo.
 5. **Android OAuth (APK / Credential Manager — zaroori):** Sirf “Web client” kaafi nahi. Google Cloud → **Credentials → Create credentials → OAuth client ID → Application type: Android**:
-   - **Package name:** `com.neo.assistant` (same as `web/android/app/build.gradle` `applicationId`).
-   - **SHA-1 certificate fingerprint:** isi machine se jo **debug APK** sign ho rahi hai uska SHA-1. Command (repo root se):
+   - **Package name:** `assemblePlayRelease` ke liye `com.neo.assistant`. **Sideload APK** (`NeoAssistant-sideload-install.apk` / `assembleSideloadRelease`) ke liye `com.neo.assistant.sideload` — alag Android OAuth client (ya extra fingerprint policy ke hisaab se) add karo.
+   - **SHA-1 certificate fingerprint:** `.\gradlew.bat signingReport` se **usi variant / signing config** ka SHA-1 lo jo user install karega (**release** keystore, debug nahi agar production ho). Google multiple fingerprints allow karta hai.
      ```powershell
      cd D:\AI\web\android
      .\gradlew.bat signingReport
      ```
-     Output mein `Variant: debug` → `Config: debug` → **SHA1** line copy karke Google form mein paste karo. **Release / Play** ke liye alag signing key ho to us key ka SHA-1 bhi alag Android OAuth client ya same client mein add karo (Google allows multiple fingerprints).
    - Save ke baad **5–15 minute** wait, phir APK dubara install / try karo.
 
 ### Chat / Voice — OpenAI `ConnectError` ya TTS 503
@@ -395,7 +411,7 @@ This answers the common product spec: **wake phrase** (e.g. “Hello Neo”) →
 | Wake + command | **Keyword in transcript**: “hello neo”, “neo”, “नियो”, “हेलो नियो” — then **rest of same string** is routed as the command (so wake + command can be one recognition pass). After each pass the service waits **~1.8–5.5s** before listening again (longer after a real command or wake-only) so the mic is not immediately hot again. | `extractWakeCommand()` + `pendingRelistenMs` in `WakeWordForegroundService.java` |
 | App integration | **Intents / URIs**: WhatsApp (`whatsapp://`), Telegram (`tg://`), YouTube search, contacts, `tel:` digits, volume, time. Short **TTS** then open (so the user hears the next step). | `NeoCommandRouter.java` |
 | Mic when screen off | Default: **stop** listening on `ACTION_SCREEN_OFF` to reduce pocket noise. Optional **listen while locked** via prefs / Profile (see `NeoPrefs.KEY_WAKE_SCREEN_OFF`, `MainActivity.onPause`). | `WakeWordForegroundService.java`, `MainActivity.java` |
-| Boot | `NeoBootReceiver` exists, but **auto-start wake on boot** was disabled in the manifest on purpose (battery / surprise mic). Wake starts when the user turns it on in the app. | `AndroidManifest.xml` (comment) |
+| Boot | Wake **does not** auto-start on boot; user starts it from the app. Boot receiver entry was removed so no unused `RECEIVE_BOOT_COMPLETED` permission. | `AndroidManifest.xml` |
 
 **Important limitation:** `SpeechRecognizer` is **not** a true always-on, low-power **wake word** engine (unlike dedicated SDKs). It runs **recognition sessions** in a loop with small delays after each result/error. For a stricter “mic only after wake” product, consider **Picovoice Porcupine**, **Snowboy** (deprecated), or **on-device hotword** APIs, then open the mic for a **second** `SpeechRecognizer` pass for the command only.
 
@@ -419,35 +435,27 @@ This answers the common product spec: **wake phrase** (e.g. “Hello Neo”) →
 
 Neo’s service already **stops** each recognition when the engine ends the session and **restarts** after a short delay for the next wake/command cycle; tightening Phase D or splitting **wake** vs **command** recognizers is the main upgrade path for “no repeated mic toggling sound.”
 
+#### Server git hard-reset (emergency only)
 
+Yeh snippet **saari local changes hata** kar repo ko `origin/main` jaisa kar deta hai. Sirf tab chalao jab tum samajh rahe ho kya delete ho raha hai.
 
-
-
-
-`
-
+```bash
 export APP_ROOT=/home/myneoxai/apps/neoxai
 cd "$APP_ROOT"
 
-# 1) Backend env backup (zaroori)
 cp backend/.env /root/backend.env.backup-$(date +%Y%m%d%H%M) 2>/dev/null || true
 
-# 2) Jo untracked Java files merge rok rahi thi — side pe rakh do (chaaho to baad mein dekho)
 mkdir -p /root/neo-android-java-backup
-mv web/android/app/src/main/java/com/neo/assistant/NeoBootReceiver.java /root/neo-android-java-backup/ 2>/dev/null || true
 mv web/android/app/src/main/java/com/neo/assistant/NeoCommandRouter.java /root/neo-android-java-backup/ 2>/dev/null || true
 mv web/android/app/src/main/java/com/neo/assistant/WakeWordForegroundService.java /root/neo-android-java-backup/ 2>/dev/null || true
 
-# 3) Repo ko bilkul GitHub main jaisa karo (saari local file edits hata deta hai)
 git fetch origin
 git reset --hard origin/main
 git clean -fd
 
-# 4) Confirm same commit as GitHub
 git log -1 --oneline
 
-# 5) Phir deploy
 cd "$APP_ROOT/web" && rm -rf .next && npm ci && npm run build
 cd "$APP_ROOT/backend" && . .venv/bin/activate && pip install -r requirements.txt
 pm2 restart neo-api neo-web
-
+```

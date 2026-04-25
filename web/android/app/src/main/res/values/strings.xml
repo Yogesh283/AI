@@ -5,8 +5,14 @@
     <string name="package_name">com.neo.assistant</string>
     <string name="custom_url_scheme">com.neo.assistant</string>
     <string name="neo_wake_channel_name">Neo</string>
-    <string name="neo_wake_channel_desc">Runs only while you turned assistant on in the app</string>
+    <string name="neo_wake_channel_desc">Wake listening is on only because you started it in Neo; Android requires this notification when the mic may be active.</string>
     <string name="neo_wake_notification_title">Neo</string>
     <string name="neo_wake_notification_text">Ready when you need it</string>
     <string name="neo_wake_stop">Stop</string>
+    <!-- In-app / Play Console “Data safety” copy: why each permission exists -->
+    <string name="neo_perm_mic_explain">Microphone is used only when you use voice chat, wake word, or speech in the app — not for background recording.</string>
+    <string name="neo_perm_fgs_explain">A short foreground notification appears while wake listening is on, as required by Android when the microphone may be active.</string>
+    <string name="neo_perm_post_notifications_explain">Notifications show when wake listening is running so you always know the mic-related feature is on.</string>
+    <string name="neo_perm_notification_listener_explain">Optional: if you turn on notification access in system settings, Neo can read notification text for features you enable (e.g. message previews). You can revoke this anytime in Android settings.</string>
+    <string name="neo_perm_modify_audio_explain">Used only so voice commands can adjust media ringtone volume through the same controls as your volume keys.</string>
 </resources>

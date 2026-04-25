@@ -17,7 +17,9 @@ export function mentionsWhatsApp(text: string): boolean {
   if (/\bwatsapp\b/.test(lower)) return true;
   if (/\bwotsa?pp\b/.test(lower)) return true;
   if (/\bwattsapp\b/.test(lower)) return true;
-  return /व्हाट्सएप|व्हाट्सप|व्हाटसप|वाट्सऐप|व्हाट्सऐप/i.test(text);
+  return (
+    /व्हाट्सएप|व्हाट्सप|व्हाटसप|वाट्सऐप|व्हाट्सऐप|व्हाट्स\s*एप|वाट्स\s*ऐप|व्हाट्स\s*ऐप/i.test(text)
+  );
 }
 
 function isNegatedOpenIntent(text: string): boolean {
@@ -48,6 +50,9 @@ export function shouldOpenWhatsAppFromCommand(text: string): boolean {
   }
 
   if (!isNegatedOpenIntent(s)) {
+    /* ASR spacing: "व्हाट्स एप खोलो" */
+    if (/व्हाट्स\s*एप|वाट्स\s*ऐप|व्हाट्स\s*ऐप/i.test(s) && /खोल|ओपन|open|launch/i.test(s)) return true;
+
     if (/^\s*my\s+whatsapp\s*[.!,]?\s*$/i.test(s)) return true;
     if (/^\s*(please\s+)?(open|show)\s+my\s+whatsapp\s*[.!,]?\s*$/i.test(s)) return true;
     if (/\bmy\s+whatsapp\s+(open|launch|start|please|now)\b/i.test(lower)) return true;

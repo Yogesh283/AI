@@ -172,7 +172,7 @@ public final class PorcupineStreamWake {
                         continue;
                     }
                     long now = System.currentTimeMillis();
-                    if (now - lastKeywordMs < 900L) {
+                    if (now - lastKeywordMs < 1200L) {
                         continue;
                     }
                     lastKeywordMs = now;

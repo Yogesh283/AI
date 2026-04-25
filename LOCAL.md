@@ -56,4 +56,13 @@ Set-Location D:\AI\web
 npm run apk:release
 ```
 
-Output: `D:\AI\NeoAssistant-release-install.apk` — install se pehle purana **NeoAssistant** uninstall kar lena (signature / version clash se “App not installed” aata hai).
+Output (dono rebuild hote hain):
+
+| File | Package | Kab use karein |
+|------|---------|----------------|
+| `D:\AI\NeoAssistant-sideload-install.apk` | `com.neo.assistant.sideload` | **Sideload / WhatsApp se install** — Play Store wale Neo ke **saath** bhi install ho sakta hai; “App not installed” yahan kam. |
+| `D:\AI\NeoAssistant-release-install.apk` | `com.neo.assistant` | Store jaisa package ID — **purana NeoAssistant uninstall** karo agar pehle Play / doosri key se install tha; warna signature clash → **App not installed**. |
+
+**“App not installed” fix checklist:** (1) Purani app uninstall (same package). (2) **Downgrade mat** — naya APK purane se chhota `versionCode` ho to install fail. (3) **x86 emulator** par mat try karo — sirf **ARM phone** (APK me `arm64-v8a` / `armeabi-v7a`). (4) Files app se install karo, WhatsApp se direct nahi.
+
+Production signing: `web/android/keystore.properties` banao; script se **`-AllowDebugSigning` hatao** (`package.json` me sirf dev ke liye hai). `npm run apk:sideload` / `npm run apk:play` sirf ek flavor.

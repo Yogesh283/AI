@@ -9,6 +9,9 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.media.AudioAttributes;
+import android.media.AudioFocusRequest;
+import android.media.AudioManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
@@ -17,8 +20,10 @@ import android.os.PowerManager;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
+import android.util.Log;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
+import androidx.core.content.ContextCompat;
 import java.util.ArrayList;
 import java.util.Locale;
 import java.util.regex.Matcher;
@@ -28,6 +33,8 @@ import java.util.regex.Pattern;
  * Foreground “Hello Neo” wake listener: one {@link SpeechRecognizer}, short relisten delays, no per-phrase
  * destroy/recreate. Commands run only after wake phrase + tail (see {@link #consumeRecognizerResults}).
  * While {@link NeoCommandRouter} TTS plays, {@link NeoCommandRouter#isAISpeaking()} blocks feedback.
+ * Background routing uses {@link NeoCommandRouter#beginSilentWakeRouting()} — no assistant TTS; OEM mic/UI sounds
+ * are not fully suppressible from app code.
  * Optional {@link PorcupineStreamWake} path: raw {@link android.media.AudioRecord} + Picovoice Porcupine
  * (see {@link NeoPrefs#isWakePorcupineStreamEnabled}); command tail still uses one {@link SpeechRecognizer} pass.
  */
@@ -39,6 +46,7 @@ public class WakeWordForegroundService extends Service {
 
     private static final String CHANNEL_ID = "neo_wake_channel_silent_v2";
     private static final int NOTIFICATION_ID = 9001;
+    private static final String TAG = "NeoWakeService";
 
     private SpeechRecognizer recognizer;
     private Intent recognizerIntent;
@@ -65,16 +73,38 @@ public class WakeWordForegroundService extends Service {
      * Gap before the next {@link SpeechRecognizer#startListening}. Too aggressive → OEM “tun” / audio-focus churn on
      * many devices; one recognizer is still reused (no destroy/create per phrase).
      */
-    private static final int RELISTEN_MS_QUICK = 550;
-    private static final int RELISTEN_MS_ERROR = 900;
+    /** Wider gaps → fewer back‑to‑back {@code startListening} calls on OEM devices (“tun” / focus cues). */
+    private static final int RELISTEN_MS_QUICK = 1650;
+    private static final int RELISTEN_MS_ERROR = 2200;
     /** Wake heard with no command tail — brief pause so the user can finish the phrase (Alexa-like beat). */
-    private static final int RELISTEN_MS_AFTER_WAKE_ONLY = 1150;
+    private static final int RELISTEN_MS_AFTER_WAKE_ONLY = 2600;
+    /** After Porcupine releases {@link AudioRecord}, wait before {@link SpeechRecognizer} grabs mic (one handoff). */
+    private static final int STT_AFTER_PORCUPINE_STOP_MS = 720;
+    /** Hard guard: never hit back-to-back {@link SpeechRecognizer#startListening} calls. */
+    private static final long MIN_MS_BETWEEN_STT_STARTS = 1800L;
+    /** If other app audio/video is active, stay idle and retry later. */
+    private static final int MEDIA_ACTIVE_RECHECK_MS = 3000;
+    private static final int MEDIA_ACTIVE_RECHECK_MAX_MS = 5200;
+
+    /** True after {@link RecognitionListener#onReadyForSpeech}; prevents duplicate starts. */
+    private volatile boolean isListening = false;
+    /** True between startListening() call and callback state transition. */
+    private volatile boolean startInFlight = false;
+    private long lastStartListeningMs = 0L;
+    private int mediaBackoffMs = MEDIA_ACTIVE_RECHECK_MS;
+    private AudioManager audioManager;
+    private AudioFocusRequest micAudioFocusRequest;
 
     private final Runnable resumeListeningRunnable =
         () -> {
             if (!shouldListen) return;
             if (!mayUseMicNow()) return;
             if (NeoCommandRouter.isAISpeaking()) return;
+            if (isMediaPlaybackActive()) {
+                schedulePassiveRelisten(nextMediaBackoffMs());
+                return;
+            }
+            mediaBackoffMs = MEDIA_ACTIVE_RECHECK_MS;
             resumePassiveMic();
         };
 
@@ -83,6 +113,7 @@ public class WakeWordForegroundService extends Service {
         super.onCreate();
         createChannel();
         acquirePartialWakeLock();
+        audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
         initRecognizer();
         porcupineMode = NeoPrefs.isWakePorcupineStreamEnabled(this) && PorcupineStreamWake.canInit(this);
         if (porcupineMode) {
@@ -118,7 +149,7 @@ public class WakeWordForegroundService extends Service {
                         stopListeningSilently();
                     }
                 } else if (Intent.ACTION_SCREEN_ON.equals(intent.getAction()) && shouldListen) {
-                    schedulePassiveRelisten(900);
+                    schedulePassiveRelisten(1900);
                 }
             }
         };
@@ -137,6 +168,8 @@ public class WakeWordForegroundService extends Service {
     }
 
     private void stopListeningSilently() {
+        clearRecognizerListeningState();
+        releaseMicAudioFocus();
         try {
             if (recognizer != null) {
                 recognizer.stopListening();
@@ -168,11 +201,16 @@ public class WakeWordForegroundService extends Service {
         if (NeoCommandRouter.isAISpeaking()) {
             return;
         }
+        if (isMediaPlaybackActive()) {
+            schedulePassiveRelisten(nextMediaBackoffMs());
+            return;
+        }
+        mediaBackoffMs = MEDIA_ACTIVE_RECHECK_MS;
         if (capturingAfterPorcupineWake) {
             return;
         }
         long now = System.currentTimeMillis();
-        if (now - lastPorcupineKeywordMs < 900L) {
+        if (now - lastPorcupineKeywordMs < 1200L) {
             return;
         }
         lastPorcupineKeywordMs = now;
@@ -180,7 +218,18 @@ public class WakeWordForegroundService extends Service {
         if (porcupineWake != null) {
             porcupineWake.stopRelease();
         }
-        startListeningSafe();
+        mainHandler.postDelayed(
+            () -> {
+                if (!shouldListen || !mayUseMicNow()) {
+                    capturingAfterPorcupineWake = false;
+                    return;
+                }
+                if (!capturingAfterPorcupineWake) {
+                    return;
+                }
+                startListeningSafe();
+            },
+            STT_AFTER_PORCUPINE_STOP_MS);
     }
 
     @Override
@@ -198,11 +247,33 @@ public class WakeWordForegroundService extends Service {
             listenScreenOff = NeoPrefs.isWakeListenScreenOff(this);
         }
 
+        if (!hasRecordAudioPermission()) {
+            shouldListen = false;
+            Log.w(TAG, "Wake start skipped: RECORD_AUDIO not granted.");
+            stopSelf();
+            return START_NOT_STICKY;
+        }
         Notification notification = buildNotification();
-        startForeground(NOTIFICATION_ID, notification);
+        try {
+            startForeground(NOTIFICATION_ID, notification);
+        } catch (SecurityException se) {
+            /*
+             * Android 14/15 can throw when microphone FGS is started while app isn't in eligible foreground state.
+             * Avoid crash/restart loop; user can retry from app UI after bringing app to foreground.
+             */
+            shouldListen = false;
+            Log.w(TAG, "Wake FGS start blocked by system eligibility; skipping restart loop.", se);
+            stopSelf();
+            return START_NOT_STICKY;
+        }
         shouldListen = true;
         resumePassiveMic();
         return START_STICKY;
+    }
+
+    private boolean hasRecordAudioPermission() {
+        return ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO)
+            == android.content.pm.PackageManager.PERMISSION_GRANTED;
     }
 
     @Override
@@ -222,6 +293,8 @@ public class WakeWordForegroundService extends Service {
         } catch (Exception ignored) {
         }
         screenReceiver = null;
+        clearRecognizerListeningState();
+        releaseMicAudioFocus();
         try {
             if (recognizer != null) {
                 recognizer.stopListening();
@@ -249,30 +322,52 @@ public class WakeWordForegroundService extends Service {
         /* Single recognizer for the foreground lifetime — only startListening again after each final result / error. */
         recognizer = SpeechRecognizer.createSpeechRecognizer(this);
         recognizer.setRecognitionListener(new RecognitionListener() {
-            @Override public void onReadyForSpeech(android.os.Bundle params) {}
+            @Override
+            public void onReadyForSpeech(android.os.Bundle params) {
+                isListening = true;
+                startInFlight = false;
+                mediaBackoffMs = MEDIA_ACTIVE_RECHECK_MS;
+            }
             @Override public void onBeginningOfSpeech() {}
             @Override public void onRmsChanged(float rmsdB) {}
             @Override public void onBufferReceived(byte[] buffer) {}
-            @Override public void onEndOfSpeech() {}
+            @Override
+            public void onEndOfSpeech() {
+                isListening = false;
+                startInFlight = false;
+                releaseMicAudioFocus();
+            }
             @Override public void onEvent(int eventType, android.os.Bundle params) {}
 
             @Override
             public void onError(int error) {
+                clearRecognizerListeningState();
+                releaseMicAudioFocus();
                 if (!shouldListen) return;
                 if (porcupineMode && capturingAfterPorcupineWake) {
                     capturingAfterPorcupineWake = false;
                     if (!mayUseMicNow()) return;
                     if (NeoCommandRouter.isAISpeaking()) return;
+                    if (isMediaPlaybackActive()) {
+                        schedulePassiveRelisten(nextMediaBackoffMs());
+                        return;
+                    }
                     schedulePassiveRelisten(RELISTEN_MS_ERROR);
                     return;
                 }
                 if (!mayUseMicNow()) return;
                 if (NeoCommandRouter.isAISpeaking()) return;
+                if (isMediaPlaybackActive()) {
+                    schedulePassiveRelisten(nextMediaBackoffMs());
+                    return;
+                }
                 schedulePassiveRelisten(RELISTEN_MS_ERROR);
             }
 
             @Override
             public void onResults(android.os.Bundle results) {
+                clearRecognizerListeningState();
+                releaseMicAudioFocus();
                 if (!shouldListen || !mayUseMicNow()) return;
                 if (NeoCommandRouter.isAISpeaking()) {
                     if (porcupineMode) {
@@ -287,6 +382,11 @@ public class WakeWordForegroundService extends Service {
                 int delayMs = consumeRecognizerResults(results);
                 if (!shouldListen || !mayUseMicNow()) return;
                 if (NeoCommandRouter.isAISpeaking()) return;
+                if (isMediaPlaybackActive()) {
+                    schedulePassiveRelisten(nextMediaBackoffMs());
+                    return;
+                }
+                mediaBackoffMs = MEDIA_ACTIVE_RECHECK_MS;
                 if (delayMs != RELISTEN_DEFERRED) {
                     schedulePassiveRelisten(delayMs);
                 }
@@ -304,8 +404,9 @@ public class WakeWordForegroundService extends Service {
         recognizerIntent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
         recognizerIntent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
         /* Slightly longer end windows reduce rapid stop/start of the same session (fewer focus beeps on some devices). */
-        recognizerIntent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1100L);
-        recognizerIntent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 750L);
+        /* Longer end-of-speech windows → fewer stop/start cycles and less OEM mic “tun” on many phones. */
+        recognizerIntent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2200L);
+        recognizerIntent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1550L);
     }
 
     /**
@@ -328,11 +429,7 @@ public class WakeWordForegroundService extends Service {
         }
 
         if (command.isEmpty()) {
-            /* Wake only — prompt user; defer STT restart until TTS ends (avoids speaker→mic overlap). */
-            NeoCommandRouter.speakWakeListeningAck(this, rawForTts);
-            if (NeoCommandRouter.isAISpeaking()) {
-                return RELISTEN_DEFERRED;
-            }
+            /* Wake only — no TTS in background listener (silent operation; no speaker→mic overlap). */
             return RELISTEN_MS_AFTER_WAKE_ONLY;
         }
 
@@ -344,7 +441,16 @@ public class WakeWordForegroundService extends Service {
         lastHandledCommandKey = key;
         lastHandledCommandMs = now;
 
-        NeoCommandRouter.execute(this, command);
+        boolean handled;
+        NeoCommandRouter.beginSilentWakeRouting();
+        try {
+            handled = NeoCommandRouter.execute(this, command);
+        } finally {
+            NeoCommandRouter.endSilentWakeRouting();
+        }
+        if (!handled) {
+            Log.v(TAG, "wake command unmatched");
+        }
         if (NeoCommandRouter.isAISpeaking()) {
             return RELISTEN_DEFERRED;
         }
@@ -415,11 +521,30 @@ public class WakeWordForegroundService extends Service {
     private void startListeningSafe() {
         if (!shouldListen || recognizer == null || recognizerIntent == null) return;
         if (!mayUseMicNow()) return;
+        if (isListening || startInFlight) return;
+        if (isMediaPlaybackActive()) {
+            schedulePassiveRelisten(nextMediaBackoffMs());
+            return;
+        }
+        long now = System.currentTimeMillis();
+        long elapsed = now - lastStartListeningMs;
+        if (elapsed < MIN_MS_BETWEEN_STT_STARTS) {
+            schedulePassiveRelisten((int) (MIN_MS_BETWEEN_STT_STARTS - elapsed));
+            return;
+        }
+        if (!requestMicAudioFocus()) {
+            schedulePassiveRelisten(nextMediaBackoffMs());
+            return;
+        }
         try {
+            startInFlight = true;
+            lastStartListeningMs = now;
             recognizer.startListening(recognizerIntent);
         } catch (Exception ignored) {
+            clearRecognizerListeningState();
+            releaseMicAudioFocus();
             if (mayUseMicNow()) {
-                schedulePassiveRelisten(700);
+                schedulePassiveRelisten(1400);
             }
         }
     }
@@ -428,6 +553,77 @@ public class WakeWordForegroundService extends Service {
     private void schedulePassiveRelisten(long ms) {
         mainHandler.removeCallbacks(resumeListeningRunnable);
         mainHandler.postDelayed(resumeListeningRunnable, ms);
+    }
+
+    private void clearRecognizerListeningState() {
+        isListening = false;
+        startInFlight = false;
+    }
+
+    private int nextMediaBackoffMs() {
+        int out = mediaBackoffMs;
+        mediaBackoffMs = Math.min(MEDIA_ACTIVE_RECHECK_MAX_MS, mediaBackoffMs + 650);
+        return out;
+    }
+
+    private boolean isMediaPlaybackActive() {
+        AudioManager am = audioManager;
+        if (am == null) return false;
+        try {
+            return am.isMusicActive();
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private boolean requestMicAudioFocus() {
+        AudioManager am = audioManager;
+        if (am == null) return true;
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                AudioFocusRequest req =
+                    new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
+                        .setAudioAttributes(
+                            new AudioAttributes.Builder()
+                                .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                                .build())
+                        .setAcceptsDelayedFocusGain(false)
+                        .setWillPauseWhenDucked(false)
+                        .setOnAudioFocusChangeListener((change) -> {})
+                        .build();
+                int r = am.requestAudioFocus(req);
+                if (r == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+                    micAudioFocusRequest = req;
+                    return true;
+                }
+                return false;
+            }
+            int r =
+                am.requestAudioFocus(
+                    null,
+                    AudioManager.STREAM_MUSIC,
+                    AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE);
+            return r == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private void releaseMicAudioFocus() {
+        AudioManager am = audioManager;
+        if (am == null) return;
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                if (micAudioFocusRequest != null) {
+                    am.abandonAudioFocusRequest(micAudioFocusRequest);
+                    micAudioFocusRequest = null;
+                }
+                return;
+            }
+            am.abandonAudioFocus(null);
+        } catch (Exception ignored) {
+        }
     }
 
     private Notification buildNotification() {
@@ -478,7 +674,8 @@ public class WakeWordForegroundService extends Service {
             if (pm == null) return;
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "NeoAssistant:WakeWord");
             wakeLock.setReferenceCounted(false);
-            wakeLock.acquire(10 * 60 * 1000L);
+            /* Timed acquire was expiring (~10 min) while FGS still ran — mic/listen could feel “auto off”. Hold until onDestroy. */
+            wakeLock.acquire();
         } catch (Exception ignored) {
         }
     }

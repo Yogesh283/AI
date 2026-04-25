@@ -10,8 +10,12 @@
     "lint": "eslint",
     "test:voice": "npx --yes tsx scripts/test-voice-commands.ts",
     "cap:sync:android:local": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/cap-sync-local.ps1",
+    "cap:sync:android:local:api": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/cap-sync-local.ps1 -ReverseBackend",
     "cap:sync:android:prod": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/cap-sync-production.ps1",
-    "apk:release": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-release-apk.ps1"
+    "apk:release": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-release-apk.ps1 -Flavor both",
+    "apk:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-release-apk.ps1 -AllowDebugSigning -Flavor both",
+    "apk:sideload": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-release-apk.ps1 -AllowDebugSigning -Flavor sideload",
+    "apk:play": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-release-apk.ps1 -AllowDebugSigning -Flavor play"
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "^7.0.1",

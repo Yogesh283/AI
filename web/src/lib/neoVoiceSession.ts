@@ -1,7 +1,7 @@
 /**
  * After "Neo" / "Hello Neo" with no command, the assistant speaks a short wake ack, then this window is active
- * so the user can say the command **without** repeating the wake (a few seconds — not always-on listening).
- * Web only — resets on navigation.
+ * so the user can say the command **without** repeating the wake (a few seconds). Not opened on every mic tap —
+ * only after the wake phrase was recognized. Resets on navigation.
  */
 
 /** ~9.5s: follow-up without repeating the wake (similar to smart-speaker command windows). */

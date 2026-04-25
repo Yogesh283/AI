@@ -10,12 +10,16 @@ import android.webkit.CookieManager;
 import android.webkit.PermissionRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
+import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import com.getcapacitor.Bridge;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.BridgeWebChromeClient;
 
 public class MainActivity extends BridgeActivity {
+
+    /** Voice / plugin: navigate the WebView to this path on the current origin (e.g. {@code /profile}). */
+    public static final String EXTRA_NEO_NAV_PATH = "neo_nav_path";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -28,7 +32,8 @@ public class MainActivity extends BridgeActivity {
          * Google's Credential Manager and surface as "The user canceled the sign-in flow."
          * Mic is requested when the user actually uses voice / speech features (or grant from system Settings).
          */
-        maybeStopWakeService();
+        /* Do not stop wake here — onCreate runs on cold start and on activity recreate; stopping killed voice before
+         * the WebView could call NeoNativeRouter.startWakeListener again. Stop only from onPause policy or plugin. */
         // Bridge may exist before first resume — allow media playback ASAP for TTS MP3.
         View decor = getWindow().getDecorView();
         decor.post(this::configureWebViewForVoice);
@@ -36,8 +41,15 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+    }
+
+    @Override
     public void onResume() {
         super.onResume();
+        flushVoiceNavigationPath();
         /*
          * Do not start RECORD_AUDIO (or other) permission flows here — returning from Google Sign-In
          * runs onResume; overlapping dialogs surface as "The user canceled the sign-in flow."
@@ -47,6 +59,60 @@ public class MainActivity extends BridgeActivity {
         View decor = getWindow().getDecorView();
         decor.post(this::configureWebViewForVoice);
         decor.postDelayed(this::configureWebViewForVoice, 400);
+        /* READ_CONTACTS: delayed so it does not stack on top of Google Sign-In on cold start; one prompt only. */
+        decor.postDelayed(this::maybeRequestReadContactsOnce, 1600);
+    }
+
+    private void maybeRequestReadContactsOnce() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return;
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CONTACTS)
+                == PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+        if (NeoPrefs.hasPromptedReadContacts(this)) {
+            return;
+        }
+        NeoPrefs.setPromptedReadContacts(this, true);
+        ActivityCompat.requestPermissions(this, new String[] {Manifest.permission.READ_CONTACTS}, 4401);
+    }
+
+    /** Applies {@link #EXTRA_NEO_NAV_PATH} from the launch intent (voice “open my profile”). */
+    private void flushVoiceNavigationPath() {
+        Intent i = getIntent();
+        if (i == null) return;
+        String path = i.getStringExtra(EXTRA_NEO_NAV_PATH);
+        if (path == null || path.trim().isEmpty()) return;
+        i.removeExtra(EXTRA_NEO_NAV_PATH);
+        String p = path.trim();
+        if (!p.startsWith("/")) {
+            p = "/" + p;
+        }
+        if (!p.matches("^/[a-zA-Z0-9/_-]+$")) {
+            p = "/profile";
+        }
+        final String dest = p;
+        View decor = getWindow().getDecorView();
+        Runnable go =
+            () -> {
+                try {
+                    Bridge bridge = getBridge();
+                    if (bridge == null) return;
+                    WebView wv = bridge.getWebView();
+                    if (wv == null) return;
+                    String q = org.json.JSONObject.quote(dest);
+                    wv.evaluateJavascript(
+                        "(function(){try{var p="
+                            + q
+                            + ";window.location.assign(window.location.origin+p);}catch(e){}})();",
+                        null
+                    );
+                } catch (Throwable ignored) {
+                }
+            };
+        decor.post(go);
+        decor.postDelayed(go, 450);
     }
 
     /** TTS (no gesture) + Google Sign-In iframe (accounts.google.com cookies in WebView). */

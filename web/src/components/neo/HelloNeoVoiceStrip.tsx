@@ -11,6 +11,7 @@ import {
   readHelloNeoTtsTonePreset,
   speakText,
   speechRecognitionErrorMessage,
+  readNeoVoiceCommandAudioFeedback,
   stopSpeaking,
   unlockWebAudioAndSpeechFromUserGesture,
 } from "@/lib/voiceChat";
@@ -27,15 +28,12 @@ import { isNativeCapacitor } from "@/lib/nativeAppLinks";
 import {
   executeNeoActions,
   extractHelloNeoCommand,
+  isMicControlCommand,
   isShortOpenActionReply,
   isVoiceGeneralHelpReply,
   processNeoCommandLine,
 } from "@/lib/neoVoiceCommands";
-import {
-  clearNeoFollowUpSession,
-  isNeoFollowUpActive,
-  startNeoFollowUpSession,
-} from "@/lib/neoVoiceSession";
+import { clearNeoFollowUpSession, isNeoFollowUpActive } from "@/lib/neoVoiceSession";
 import {
   readNeoAlexaListen,
   readNeoAssistantActive,
@@ -79,7 +77,7 @@ type Props = {
 /**
  * Tap-to-talk + optional Hello Neo wake. **Browser (Profile):** Web Speech + same command router as typed chat.
  * **Android:** native wake service when installed; tap path can forward to {@link NeoNativeRouter}.
- * **Tap:** after the greeting, a follow-up window opens so commands can run **without** repeating the wake phrase.
+ * **Tap:** follow-up (no repeated wake) opens **only after** the app hears Hello Neo / Neo — not on every tap.
  * **Wake listen:** say **Neo** / **Hello Neo** / **हेलो नियो** first (unless already in that window).
  */
 export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
@@ -90,6 +88,8 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
   const [hint, setHint] = useState<string | null>(null);
   /** True while the post–wake command window is active (after “Hello Neo” only, or after Try Neo greeting). */
   const [neoFollowUpOpen, setNeoFollowUpOpen] = useState(false);
+  /** After mic capture ends, until command routing + reply TTS finish. */
+  const [pipelineBusy, setPipelineBusy] = useState(false);
   const recRef = useRef<SpeechRecognition | null>(null);
   const finalBuf = useRef("");
   /** DOM timers are numeric handles in browsers (Node typings use `Timeout`). */
@@ -98,11 +98,7 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
   const wakeRecRef = useRef<SpeechRecognition | null>(null);
   const wakeRestartTimerRef = useRef<number | null>(null);
   const wakeDebounceTimerRef = useRef<number | null>(null);
-  const wakeBufRef = useRef("");
-  /** Latest interim slice from the wake recognizer — combined with finals so “Hello Neo” is heard before `isFinal`. */
-  const wakeInterimRef = useRef("");
   const listeningRef = useRef(false);
-  const lastWakeProcessedRef = useRef<{ t: string; at: number }>({ t: "", at: 0 });
 
   const clearTapIdle = useCallback(() => {
     if (tapIdleTimerRef.current !== null) {
@@ -145,8 +141,6 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
       clearTimeout(wakeDebounceTimerRef.current);
       wakeDebounceTimerRef.current = null;
     }
-    wakeBufRef.current = "";
-    wakeInterimRef.current = "";
     try {
       wakeRecRef.current?.abort?.();
     } catch {
@@ -182,224 +176,146 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
   }, [assistantActive, stopRec]);
 
   const runPipeline = useCallback(async (said: string) => {
+    const spokenExtras = readNeoVoiceCommandAudioFeedback() === "spoken";
+    setPipelineBusy(true);
     const lang = readStoredVoiceSpeechLang();
     const syncFollowUp = () => setNeoFollowUpOpen(isNeoFollowUpActive());
-    const trimmed = said.replace(/\s+/g, " ").trim();
-    if (!trimmed) {
-      syncFollowUp();
-      return;
-    }
-
-    const inFollowUp = isNeoFollowUpActive();
-    const { hadWake, rest } = extractHelloNeoCommand(trimmed);
-
-    /** Wake listen: need wake unless follow-up is active (after “Hello Neo” or after Try Neo greeting). */
-    if (!inFollowUp && !hadWake) {
-      syncFollowUp();
-      return;
-    }
-
-    if (!inFollowUp && hadWake && !rest.trim()) {
-      const { reply, actions } = processNeoCommandLine(trimmed, "voice", {
-        speechLang: lang,
-        displayName: getStoredUser()?.display_name,
-      });
-      if (reply.trim()) {
-        await speakReply(reply, lang);
+    try {
+      const trimmed = said.replace(/\s+/g, " ").trim();
+      if (!trimmed) {
+        syncFollowUp();
+        return;
       }
-      if (actions.length > 0) {
-        executeNeoActions(actions);
+
+      const inFollowUp = isNeoFollowUpActive();
+      const { hadWake, rest } = extractHelloNeoCommand(trimmed);
+
+      /**
+       * Mic-backed commands only after the wake phrase (or a short follow-up window right after “Hello Neo”).
+       * Tap-to-talk no longer opens that window by itself — avoids stray capture and extra mic churn.
+       */
+      if (!inFollowUp && !hadWake) {
+        syncFollowUp();
+        setHint(
+          "पहले «Hello Neo», «Hey Neo», या «नियो» बोलें, फिर कमांड (जैसे व्हाट्सऐप खोलो)। Say Hello Neo (or Neo) first, then your command.",
+        );
+        return;
       }
-      syncFollowUp();
-      return;
-    }
 
-    const commandText = inFollowUp ? trimmed : rest.trim();
-
-    if (isNativeCapacitor()) {
-      try {
-        const { NeoNativeRouter } = await import("@/lib/neoNativeRouter");
-        const t = commandText.toLowerCase();
-        const skipTapBusyLine =
-          /\b(what\s+)?(is\s+)?(the\s+)?time\b|\btime\s+now\b|\bcurrent\s+time\b|समय|टाइम\b/.test(t) ||
-          /\b(volume|mute|unmute|louder|softer|sound)\b|वॉल्यूम|आवाज|म्यूट/i.test(t);
-          /* Native wake uses calm delayed routing in `NeoCommandRouter`; tap path may speak a short line before routing. */
-        if (!skipTapBusyLine) {
-          await speakReply(neoWorkingAckPhrase(lang, readHelloNeoTtsGender()), lang);
+      if (!inFollowUp && hadWake && !rest.trim()) {
+        const { reply, actions } = processNeoCommandLine(trimmed, "voice", {
+          speechLang: lang,
+          displayName: getStoredUser()?.display_name,
+        });
+        if (reply.trim()) {
+          await speakReply(reply, lang);
         }
-        const { handled } = await NeoNativeRouter.tryRouteCommand({ text: commandText });
-        if (handled) {
+        if (actions.length > 0) {
+          executeNeoActions(actions);
+        }
+        syncFollowUp();
+        return;
+      }
+
+      const commandText = inFollowUp ? trimmed : rest.trim();
+
+      if (isNativeCapacitor()) {
+        try {
+          const { NeoNativeRouter } = await import("@/lib/neoNativeRouter");
+          const t = commandText.toLowerCase();
+          const skipTapBusyLine =
+            /\b(what\s+)?(is\s+)?(the\s+)?time\b|\btime\s+now\b|\bcurrent\s+time\b|समय|टाइम\b/.test(t) ||
+            /\b(volume|mute|unmute|louder|softer|sound)\b|वॉल्यूम|आवाज|म्यूट/i.test(t) ||
+            isMicControlCommand(commandText);
+          /* Native wake uses calm delayed routing in `NeoCommandRouter`; tap path may speak a short line before routing. */
+          if (spokenExtras && !skipTapBusyLine) {
+            await speakReply(neoWorkingAckPhrase(lang, readHelloNeoTtsGender()), lang);
+          }
+          const { handled } = await NeoNativeRouter.tryRouteCommand({ text: commandText });
+          if (handled) {
+            clearNeoFollowUpSession();
+            syncFollowUp();
+            return;
+          }
+          await speakReply("I can only open installed phone apps in APK mode. Please say the exact app name.", lang);
+          clearNeoFollowUpSession();
+          syncFollowUp();
+          return;
+        } catch {
+          await speakReply("Native app command service is not available right now.", lang);
           clearNeoFollowUpSession();
           syncFollowUp();
           return;
         }
-        await speakReply("I can only open installed phone apps in APK mode. Please say the exact app name.", lang);
-        clearNeoFollowUpSession();
-        syncFollowUp();
-        return;
-      } catch {
-        await speakReply("Native app command service is not available right now.", lang);
-        clearNeoFollowUpSession();
-        syncFollowUp();
-        return;
       }
-    }
 
-    let { reply, actions } = processNeoCommandLine(trimmed, "voice", {
-      speechLang: lang,
-      displayName: getStoredUser()?.display_name,
-    });
-    const willAct = actions.length > 0;
-    if (
-      !isNativeCapacitor() &&
-      !willAct &&
-      reply.trim() &&
-      isVoiceGeneralHelpReply(reply) &&
-      getStoredToken() &&
-      commandText.replace(/\s+/g, " ").trim().length >= 2
-    ) {
-      try {
-        const uid = getStoredUser()?.id ?? "default";
-        const j = await postChat(
-          [
-            {
-              role: "system",
-              content:
-                "You are Neo, a warm human-like assistant. The user used a short voice phrase (maybe mixed Hindi/English). Reply in at most 3 short sentences — conversational, calm, no bullet points or numbered lists. If they asked to open a site or app, you may suggest the closest helpful step for a browser. Never sound rushed.",
-            },
-            { role: "user", content: commandText.replace(/\s+/g, " ").trim().slice(0, 1400) },
-          ],
-          uid,
-          { source: "voice", speechLang: lang },
-        );
-        const ai = (j.reply || "").trim();
-        if (ai.length > 24) reply = ai.slice(0, 1200);
-      } catch {
-        /* keep template reply */
+      const neoProcessed = processNeoCommandLine(trimmed, "voice", {
+        speechLang: lang,
+        displayName: getStoredUser()?.display_name,
+      });
+      let { reply } = neoProcessed;
+      const { actions } = neoProcessed;
+      const willAct = actions.length > 0;
+      if (
+        !isNativeCapacitor() &&
+        !willAct &&
+        reply.trim() &&
+        isVoiceGeneralHelpReply(reply) &&
+        getStoredToken() &&
+        commandText.replace(/\s+/g, " ").trim().length >= 2
+      ) {
+        try {
+          const uid = getStoredUser()?.id ?? "default";
+          const j = await postChat(
+            [
+              {
+                role: "system",
+                content:
+                  "You are Neo, a warm human-like assistant. The user used a short voice phrase (maybe mixed Hindi/English). Reply in at most 3 short sentences — conversational, calm, no bullet points or numbered lists. If they asked to open a site or app, you may suggest the closest helpful step for a browser. Never sound rushed.",
+              },
+              { role: "user", content: commandText.replace(/\s+/g, " ").trim().slice(0, 1400) },
+            ],
+            uid,
+            { source: "voice", speechLang: lang },
+          );
+          const ai = (j.reply || "").trim();
+          if (ai.length > 24) reply = ai.slice(0, 1200);
+        } catch {
+          /* keep template reply */
+        }
       }
-    }
-    if (willAct) {
-      /* Short “Opening …” lines were skipped → users heard nothing if working-ack TTS failed. Speak the concrete line. */
-      if (reply.trim() && isShortOpenActionReply(reply)) {
-        await speakReply(reply, lang);
-      } else {
-        await speakReply(neoWorkingAckPhrase(lang, readHelloNeoTtsGender()), lang);
-        if (reply.trim() && !isShortOpenActionReply(reply)) {
+      if (willAct) {
+        /* Short “Opening …” lines were skipped → users heard nothing if working-ack TTS failed. Speak the concrete line. */
+        if (reply.trim() && isShortOpenActionReply(reply)) {
+          await speakReply(reply, lang);
+        } else if (spokenExtras) {
+          await speakReply(neoWorkingAckPhrase(lang, readHelloNeoTtsGender()), lang);
+          if (reply.trim() && !isShortOpenActionReply(reply)) {
+            await speakReply(reply, lang);
+          }
+        } else if (reply.trim()) {
           await speakReply(reply, lang);
         }
+      } else if (reply.trim()) {
+        await speakReply(reply, lang);
       }
-    } else if (reply.trim()) {
-      await speakReply(reply, lang);
+      if (willAct) {
+        executeNeoActions(actions);
+      }
+      syncFollowUp();
+    } finally {
+      setPipelineBusy(false);
     }
-    if (willAct) {
-      executeNeoActions(actions);
-    }
-    syncFollowUp();
   }, []);
 
-  const flushWakeBuffer = useCallback(() => {
-    const said = `${wakeBufRef.current} ${wakeInterimRef.current}`.replace(/\s+/g, " ").trim();
-    wakeBufRef.current = "";
-    wakeInterimRef.current = "";
-    if (!said) return;
-    const now = Date.now();
-    if (
-      said === lastWakeProcessedRef.current.t &&
-      now - lastWakeProcessedRef.current.at < 2400
-    ) {
-      return;
-    }
-    lastWakeProcessedRef.current = { t: said, at: now };
-    void runPipeline(said);
-  }, [runPipeline]);
-
-  const scheduleWakeFlush = useCallback(() => {
-    if (wakeDebounceTimerRef.current !== null) clearTimeout(wakeDebounceTimerRef.current);
-    wakeDebounceTimerRef.current = window.setTimeout(() => {
-      wakeDebounceTimerRef.current = null;
-      flushWakeBuffer();
-    }, 500);
-  }, [flushWakeBuffer]);
-
-  /* Web Profile: continuous mic when “Hello Neo wake listen” is on (native uses foreground service). */
+  /**
+   * Browser: no always-on “wake listen” mic — it caused extra churn/noise. Use tap-to-talk and include Hello Neo in
+   * that clip (or speak your command in the short follow-up after Hello Neo). Android APK wake stays in
+   * {@link NeoWakeNativeSync} + native service when wake listen is on.
+   */
   useEffect(() => {
-    if (isNativeCapacitor() || !isProfile || !assistantActive || !alexaMode) {
-      stopWakeListen();
-      return;
-    }
-    if (listeningRef.current) {
-      stopWakeListen();
-      return;
-    }
-
-    const mayRunWake = () =>
-      !isNativeCapacitor() &&
-      readNeoAssistantActive() &&
-      readNeoAlexaListen() &&
-      !listeningRef.current;
-
-    const startWake = () => {
-      if (!mayRunWake()) return;
-      if (!isSpeechRecognitionSupported()) return;
-      try {
-        wakeRecRef.current?.abort?.();
-      } catch {
-        /* ignore */
-      }
-      wakeRecRef.current = null;
-      const lang = readStoredVoiceSpeechLang();
-      const rec = createSpeechRecognition(lang, { continuous: true });
-      if (!rec) return;
-      wakeRecRef.current = rec;
-      rec.onresult = (ev: SpeechRecognitionEvent) => {
-        let interimAll = "";
-        for (let i = ev.resultIndex; i < ev.results.length; i++) {
-          const piece = ev.results[i][0].transcript;
-          if (ev.results[i].isFinal) {
-            wakeBufRef.current = `${wakeBufRef.current} ${piece}`.trim();
-          }
-        }
-        for (let i = 0; i < ev.results.length; i++) {
-          if (!ev.results[i].isFinal) interimAll += ev.results[i][0].transcript;
-        }
-        wakeInterimRef.current = interimAll.trim();
-        const combined = `${wakeBufRef.current} ${wakeInterimRef.current}`.replace(/\s+/g, " ").trim();
-        if (combined) scheduleWakeFlush();
-      };
-      rec.onerror = () => {
-        try {
-          wakeRecRef.current?.abort?.();
-        } catch {
-          /* ignore */
-        }
-        wakeRecRef.current = null;
-        if (wakeRestartTimerRef.current !== null) clearTimeout(wakeRestartTimerRef.current);
-        if (!mayRunWake()) return;
-        const jitter = 200 + Math.floor(Math.random() * 500);
-        wakeRestartTimerRef.current = window.setTimeout(startWake, 2200 + jitter);
-      };
-      rec.onend = () => {
-        wakeRecRef.current = null;
-        if (wakeRestartTimerRef.current !== null) clearTimeout(wakeRestartTimerRef.current);
-        if (!mayRunWake()) return;
-        const jitter = 200 + Math.floor(Math.random() * 600);
-        wakeRestartTimerRef.current = window.setTimeout(startWake, 2000 + jitter);
-      };
-      try {
-        rec.start();
-      } catch {
-        if (wakeRestartTimerRef.current !== null) clearTimeout(wakeRestartTimerRef.current);
-        if (!mayRunWake()) return;
-        const jitter = 200 + Math.floor(Math.random() * 500);
-        wakeRestartTimerRef.current = window.setTimeout(startWake, 2600 + jitter);
-      }
-    };
-
-    startWake();
-    return () => {
-      stopWakeListen();
-    };
-  }, [assistantActive, alexaMode, isProfile, listening, stopWakeListen, scheduleWakeFlush]);
+    stopWakeListen();
+  }, [assistantActive, isProfile, stopWakeListen]);
 
   const startListen = useCallback(() => {
     void (async () => {
@@ -415,10 +331,11 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
       const tapInterimRef = { current: "" };
       const lang = readStoredVoiceSpeechLang();
       const name = getStoredUser()?.display_name;
-      await speakReply(neoVoiceCommandSessionGreeting(lang, name), lang);
-      /* Same window as after “Hello Neo” only — users expect “open WhatsApp” right after tapping, without saying Neo. */
-      startNeoFollowUpSession();
-      setNeoFollowUpOpen(true);
+      if (readNeoVoiceCommandAudioFeedback() === "spoken") {
+        await speakReply(neoVoiceCommandSessionGreeting(lang, name), lang);
+      }
+      /* Follow-up opens only after processNeoCommandLine hears a wake phrase — not on every tap. */
+      setNeoFollowUpOpen(isNeoFollowUpActive());
 
       const rec = createSpeechRecognition(lang);
       if (!rec) {
@@ -509,8 +426,8 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
           <div className="px-5 py-4">
             <p className="text-[13px] leading-relaxed text-black/75">
               <span className="font-semibold text-black">Neo</span> is set to Inactive above. Turn{" "}
-              <span className="font-semibold text-emerald-700">Status</span> to Active, then tap the mic or turn on Hello
-              Neo wake listen above.
+              <span className="font-semibold text-emerald-700">Status</span> to Active, then use Try Neo (tap mic — say
+              Hello Neo first).
             </p>
           </div>
         </section>
@@ -538,12 +455,14 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
         <div className="border-b border-slate-200/90 px-5 py-3.5">
           <h2 className="text-sm font-semibold text-black">Try Neo</h2>
           <p className="mt-0.5 text-xs text-black/70">
-            <span className="font-medium text-black">Tap the mic</span> — after the short greeting you can say your
-            command directly (e.g. open WhatsApp, YouTube, time) for ~10 seconds. You can still start with{" "}
-            <span className="font-medium text-black">Neo</span> or Hello Neo if you prefer.{" "}
+            <span className="font-medium text-black">Tap the mic</span> — indicator shows while Neo listens (~10s). In that
+            clip, say <span className="font-medium text-black">Hello Neo</span>, <span className="font-medium text-black">Neo</span>, or{" "}
+            <span className="font-medium text-black">नियो</span> first, then your command (e.g. open WhatsApp). Without the wake
+            phrase, nothing runs — the mic is not always on in the browser. Optional tap greeting / “one moment” cues:{" "}
+            <span className="font-medium text-black">Profile → Voice settings → Voice command audio</span>.{" "}
             {isNativeCapacitor()
-              ? "Hands-free wake listen (Profile): other speech is ignored until you say the wake phrase."
-              : "Hands-free wake listen on this page: say Neo or Hello Neo first, then your command."}
+              ? "Hands-free wake listen (Profile): native listener until you say the wake phrase."
+              : "Always-on page mic is off — only this tap session uses the microphone."}
           </p>
         </div>
         <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -564,26 +483,45 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
               </Link>
             </p>
           </div>
-          <button
-            type="button"
-            disabled={alexaMode && isNativeCapacitor()}
-            onClick={listening ? stopRec : startListen}
-            className={`flex w-full shrink-0 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-bold transition disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto ${
-              listening
-                ? "bg-red-600 text-white shadow-sm ring-2 ring-red-500/40 hover:bg-red-700"
-                : "bg-emerald-600 text-white shadow-sm hover:bg-emerald-700"
-            }`}
-            aria-pressed={listening}
-          >
-            <span className={`text-lg tabular-nums ${listening ? "text-white/90" : "text-white/80"}`} aria-hidden>
-              {listening ? "■" : "●"}
-            </span>
-            {alexaMode && isNativeCapacitor()
-              ? "Voice ready (off above)"
-              : listening
-                ? "Stop"
-                : "Tap — talk once"}
-          </button>
+          <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto sm:flex-row sm:items-center sm:justify-end">
+            {(listening || pipelineBusy) && (
+              <div
+                role="status"
+                aria-live="polite"
+                className="flex items-center justify-center gap-2 rounded-full border border-emerald-200/90 bg-emerald-50/90 px-3 py-1.5"
+              >
+                <span
+                  className={`h-2 w-2 shrink-0 rounded-full ${
+                    listening ? "animate-pulse bg-emerald-500" : "animate-pulse bg-amber-500"
+                  }`}
+                  aria-hidden
+                />
+                <span className="text-[11px] font-semibold text-emerald-950">
+                  {listening ? "Listening…" : "Working…"}
+                </span>
+              </div>
+            )}
+            <button
+              type="button"
+              disabled={alexaMode && isNativeCapacitor()}
+              onClick={listening ? stopRec : startListen}
+              className={`flex w-full shrink-0 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-bold transition disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto ${
+                listening
+                  ? "bg-red-600 text-white shadow-sm ring-2 ring-red-500/40 hover:bg-red-700"
+                  : "bg-emerald-600 text-white shadow-sm hover:bg-emerald-700"
+              }`}
+              aria-pressed={listening}
+            >
+              <span className={`text-lg tabular-nums ${listening ? "text-white/90" : "text-white/80"}`} aria-hidden>
+                {listening ? "■" : "●"}
+              </span>
+              {alexaMode && isNativeCapacitor()
+                ? "Voice ready (off above)"
+                : listening
+                  ? "Stop"
+                  : "Tap — talk once"}
+            </button>
+          </div>
         </div>
         {neoFollowUpOpen ? (
           <div
@@ -615,15 +553,14 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
           <div className="min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#00D4FF]/90">Neo</p>
             <p className="mt-1 text-[12px] leading-relaxed text-white/65">
-              <span className="text-white/88">Profile → Try Neo:</span> tap the mic; after the greeting say your command
-              directly (open WhatsApp, time, …) for ~10s, or start with{" "}
-              <span className="text-white/88">Neo / Hello Neo</span>. Hands-free{" "}
-              <span className="text-white/55">wake listen</span> needs the wake phrase first. If you only say the wake
-              phrase, Neo confirms, then you get a short window without repeating it. Wake listen (Profile) is only in{" "}
+              <span className="text-white/88">Profile → Try Neo:</span> tap the mic — include{" "}
+              <span className="text-white/88">Hello Neo</span> / <span className="text-white/88">Neo</span> in that clip
+              before your command; the browser mic is not always on. After wake-only, you get a short window without
+              repeating the phrase. Full toggles live in{" "}
               <Link href="/profile" className="text-[#00D4FF]/90 underline-offset-2 hover:underline">
                 Profile
               </Link>
-              . Turn the whole assistant off there too.
+              .
             </p>
             <p className="mt-1.5 text-[11px] leading-snug text-amber-300/80">
               This app cannot read WhatsApp or Telegram inboxes (same as Alexa with other companies&apos; apps). APK /
@@ -641,7 +578,24 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
               </Link>
             </p>
           </div>
-          <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+          <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
+            {(listening || pipelineBusy) && (
+              <div
+                role="status"
+                aria-live="polite"
+                className="flex items-center justify-center gap-2 rounded-full border border-white/[0.12] bg-white/[0.06] px-3 py-1.5"
+              >
+                <span
+                  className={`h-2 w-2 shrink-0 rounded-full ${
+                    listening ? "animate-pulse bg-emerald-400" : "animate-pulse bg-amber-400"
+                  }`}
+                  aria-hidden
+                />
+                <span className="text-[11px] font-semibold text-white/75">
+                  {listening ? "Listening…" : "Working…"}
+                </span>
+              </div>
+            )}
             <button
               type="button"
               disabled={alexaMode && isNativeCapacitor()}

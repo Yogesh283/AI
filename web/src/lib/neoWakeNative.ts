@@ -19,8 +19,8 @@ export function readWakeListenScreenOffStorage(): boolean {
     const raw = window.localStorage.getItem(NEO_WAKE_SCREEN_OFF_KEY);
     if (raw === "1") return true;
     if (raw === "0") return false;
-    /* APK default: keep wake active with screen off unless user explicitly turned it off. */
-    if (isNativeCapacitor()) return true;
+    /* APK default: keep screen-off wake OFF to avoid OEM mic on/off chirps in background. */
+    if (isNativeCapacitor()) return false;
     return false;
   } catch {
     return false;
@@ -31,7 +31,7 @@ export function writeWakeListenScreenOffStorage(on: boolean): void {
   if (typeof window === "undefined") return;
   try {
     if (on) window.localStorage.setItem(NEO_WAKE_SCREEN_OFF_KEY, "1");
-    else window.localStorage.removeItem(NEO_WAKE_SCREEN_OFF_KEY);
+    else window.localStorage.setItem(NEO_WAKE_SCREEN_OFF_KEY, "0");
   } catch {
     /* ignore */
   }
@@ -52,15 +52,22 @@ export function subscribeNeoWakeScreenOffListen(onChange: () => void): () => voi
   };
 }
 
-/** Start/stop native foreground wake from current localStorage flags. */
-export async function syncNativeWakeBridge(): Promise<void> {
+let wakeBridgeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function runWakeBridgeSyncOnce(): Promise<void> {
   if (!isNativeCapacitor()) return;
   const assistantActive = readNeoAssistantActive();
   const alexaListen = readNeoAlexaListen();
   const screenOff = readWakeListenScreenOffStorage();
+  const pageVisible =
+    typeof document === "undefined" ? true : document.visibilityState === "visible";
   try {
     const { NeoNativeRouter } = await import("@/lib/neoNativeRouter");
-    if (assistantActive && alexaListen) {
+    /*
+     * Only keep native wake in background when user explicitly enables screen-off listening.
+     * This reduces repeated mic start/stop and OEM "tun" sounds while other apps are in use.
+     */
+    if (assistantActive && alexaListen && (screenOff || pageVisible)) {
       await NeoNativeRouter.startWakeListener({ screenOffListen: screenOff });
     } else {
       await NeoNativeRouter.stopWakeListener();
@@ -70,8 +77,35 @@ export async function syncNativeWakeBridge(): Promise<void> {
   }
 }
 
+/**
+ * Coalesce rapid Profile toggles so Android doesn’t get overlapping start/stop foreground-service calls.
+ * @param immediate skip debounce (e.g. screen-off toggle should apply now)
+ */
+export async function syncNativeWakeBridge(immediate = false): Promise<void> {
+  if (!isNativeCapacitor()) return;
+  if (immediate) {
+    if (wakeBridgeDebounceTimer) {
+      clearTimeout(wakeBridgeDebounceTimer);
+      wakeBridgeDebounceTimer = null;
+    }
+    await runWakeBridgeSyncOnce();
+    return;
+  }
+  return new Promise<void>((resolve) => {
+    if (wakeBridgeDebounceTimer) clearTimeout(wakeBridgeDebounceTimer);
+    wakeBridgeDebounceTimer = setTimeout(async () => {
+      wakeBridgeDebounceTimer = null;
+      try {
+        await runWakeBridgeSyncOnce();
+      } finally {
+        resolve();
+      }
+    }, 300);
+  });
+}
+
 export async function persistWakeScreenOffNative(enabled: boolean): Promise<void> {
   writeWakeListenScreenOffStorage(enabled);
   if (!isNativeCapacitor()) return;
-  await syncNativeWakeBridge();
+  await syncNativeWakeBridge(true);
 }

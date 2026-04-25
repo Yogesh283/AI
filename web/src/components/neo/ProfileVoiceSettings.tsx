@@ -6,11 +6,14 @@ import { getStoredToken, patchVoicePersona, saveSession, type AuthUser } from "@
 import {
   readHelloNeoTtsGender,
   readHelloNeoTtsSpeedPreset,
+  readNeoVoiceCommandAudioFeedback,
   readTtsSpeedPreset,
   writeHelloNeoTtsGender,
   writeHelloNeoTtsSpeedPreset,
+  writeNeoVoiceCommandAudioFeedback,
   writeTtsGender,
   writeTtsSpeedPreset,
+  type NeoVoiceCommandAudioFeedback,
   type TtsSpeedPreset,
   type TtsVoiceGender,
 } from "@/lib/voiceChat";
@@ -40,11 +43,13 @@ export function ProfileVoiceSettings({ user, onUserUpdated, onMessage }: Props) 
   const [speed, setSpeed] = useState<TtsSpeedPreset>(() => readTtsSpeedPreset());
   const [helloNeoGender, setHelloNeoGender] = useState<TtsVoiceGender>("female");
   const [helloNeoSpeed, setHelloNeoSpeed] = useState<TtsSpeedPreset>("natural");
+  const [voiceCmdAudio, setVoiceCmdAudio] = useState<NeoVoiceCommandAudioFeedback>("silent");
   const [savingPersona, setSavingPersona] = useState(false);
 
   useEffect(() => {
     setHelloNeoGender(readHelloNeoTtsGender());
     setHelloNeoSpeed(readHelloNeoTtsSpeedPreset());
+    setVoiceCmdAudio(readNeoVoiceCommandAudioFeedback());
   }, []);
 
   const applyPersona = useCallback(
@@ -100,6 +105,20 @@ export function ProfileVoiceSettings({ user, onUserUpdated, onMessage }: Props) 
       writeHelloNeoTtsSpeedPreset(p);
       setHelloNeoSpeed(p);
       onMessage("Hello Neo command speed saved.", null);
+    },
+    [onMessage],
+  );
+
+  const applyVoiceCmdAudio = useCallback(
+    (m: NeoVoiceCommandAudioFeedback) => {
+      writeNeoVoiceCommandAudioFeedback(m);
+      setVoiceCmdAudio(m);
+      onMessage(
+        m === "silent"
+          ? "Try Neo: mic on/off stays quiet; replies still speak when needed."
+          : "Try Neo: short tap greeting and “one moment” cues are on.",
+        null,
+      );
     },
     [onMessage],
   );
@@ -216,6 +235,33 @@ export function ProfileVoiceSettings({ user, onUserUpdated, onMessage }: Props) 
                   {o.label}
                 </button>
               ))}
+            </div>
+          </div>
+          <div>
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-black">Voice command audio</p>
+            <p className="mb-2 text-[11px] text-black/65">
+              Try Neo tap-to-talk: default is quiet mic on/off. Replies (e.g. “Opening WhatsApp”) still play unless the
+              command has nothing to say.
+            </p>
+            <div className="flex max-w-md rounded-xl border border-slate-200 bg-white p-0.5">
+              <button
+                type="button"
+                onClick={() => applyVoiceCmdAudio("silent")}
+                className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition ${
+                  voiceCmdAudio === "silent" ? segOn : segOff
+                }`}
+              >
+                Quiet
+              </button>
+              <button
+                type="button"
+                onClick={() => applyVoiceCmdAudio("spoken")}
+                className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition ${
+                  voiceCmdAudio === "spoken" ? segOn : segOff
+                }`}
+              >
+                Spoken cues
+              </button>
             </div>
           </div>
         </div>

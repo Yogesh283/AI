@@ -20,13 +20,7 @@ import {
 } from "@/lib/chatStorage";
 import { ChatMarkdown } from "@/components/neo/ChatMarkdown";
 import { readStoredVoiceSpeechLang } from "@/lib/voiceLanguages";
-import {
-  buildWhatsAppWebUrl,
-  navigateToWhatsAppWeb,
-  shouldOpenWhatsAppFromCommand,
-  tryOpenWhatsAppPopup,
-  whatsAppOpenAck,
-} from "@/lib/whatsappOpenCommand";
+import { executeNeoActions, processNeoCommandLine } from "@/lib/neoVoiceCommands";
 
 type Msg = { role: "user" | "assistant"; content: string; imageDataUrl?: string };
 
@@ -254,7 +248,7 @@ export function DashboardChatPanel() {
     finalBuf.current = "";
     interimRef.current = "";
 
-    const rec = createSpeechRecognition("hi-IN");
+    const rec = createSpeechRecognition(readStoredVoiceSpeechLang());
     if (!rec) {
       setVoiceHint("Could not start speech recognition.");
       return;
@@ -335,18 +329,23 @@ export function DashboardChatPanel() {
     if (!trimmed && !attach) return;
     const cur = msgsRef.current;
 
-    if (trimmed && shouldOpenWhatsAppFromCommand(trimmed)) {
-      setInput("");
-      setPendingAttachment(null);
-      pendingAttachmentRef.current = null;
-      const waUrl = buildWhatsAppWebUrl(trimmed);
-      const popped = tryOpenWhatsAppPopup(waUrl);
-      const ack = whatsAppOpenAck(readStoredVoiceSpeechLang(), popped ? "new-tab" : "same-tab");
-      const next: Msg[] = [...cur, { role: "user", content: trimmed }, { role: "assistant", content: ack }];
-      setMsgs(next);
-      msgsRef.current = next;
-      if (!popped) navigateToWhatsAppWeb(waUrl);
-      return;
+    /* Same intent router as Profile voice (Hello Neo) — typed “Neo, open YouTube” behaves like spoken command. */
+    if (trimmed) {
+      const neo = processNeoCommandLine(trimmed, "text", {
+        speechLang: readStoredVoiceSpeechLang(),
+        displayName: getStoredUser()?.display_name ?? undefined,
+      });
+      if (neo.actions.length > 0) {
+        setInput("");
+        setPendingAttachment(null);
+        pendingAttachmentRef.current = null;
+        const ack = neo.reply.trim() || "Done.";
+        const next: Msg[] = [...cur, { role: "user", content: trimmed }, { role: "assistant", content: ack }];
+        setMsgs(next);
+        msgsRef.current = next;
+        executeNeoActions(neo.actions);
+        return;
+      }
     }
 
     setInput("");
