@@ -79,7 +79,12 @@ export function NeoGoogleSignIn({
 }) {
   const cid = clientId.trim();
   const androidCid = nativeClientId?.trim() ?? "";
-  const initId = (androidCid || cid).trim();
+  /**
+   * Google Android sign-in needs the Web OAuth client ID to mint ID tokens that backend verifies.
+   * Android OAuth client is still required in Google Cloud for package+SHA registration, but should
+   * not replace the Web client ID in `requestIdToken` initialization.
+   */
+  const initId = cid;
   const [nativeBusy, setNativeBusy] = useState(false);
   const onCredentialRef = useRef(onCredential);
   const onGoogleErrorRef = useRef(onGoogleError);
@@ -119,7 +124,7 @@ export function NeoGoogleSignIn({
         await onCredentialRef.current(result.idToken);
       } else {
         onGoogleErrorRef.current?.(
-          "Google sign-in did not return a token. Try again or use email and password.",
+          "Google sign-in did not return an ID token. Ensure this app uses Web client ID for sign-in init, and Android OAuth client has correct package + SHA-1.",
         );
       }
     } catch (e) {
@@ -133,15 +138,19 @@ export function NeoGoogleSignIn({
       if (code === "SIGN_IN_CANCELED" || /canceled|cancelled/i.test(raw)) {
         onGoogleErrorRef.current?.(
           "Google sign-in was interrupted (another dialog on screen, back button, or missing Android setup). " +
-            "Try again with no mic/notification popups. In Google Cloud Android OAuth, add SHA-1 for package com.neo.assistant (Play) or com.neo.assistant.sideload (sideload APK), and keep the same Web client ID as server GOOGLE_CLIENT_IDS.",
+            "Try again with no mic/notification popups. In Google Cloud Android OAuth, add SHA-1 for package com.neo.assistant (Play) or com.neo.assistant.sideload (sideload APK), and keep Web client ID in app/backend (GOOGLE_CLIENT_IDS).",
         );
         return;
       }
       const msg =
         e instanceof Error
           ? e.message
-          : "Google sign-in failed. If this is the first Android build, add your debug SHA-1 in Google Cloud Console for this package.";
-      onGoogleErrorRef.current?.(msg);
+          : "Google sign-in failed. Check Android OAuth package+SHA-1 and Web client ID mapping.";
+      const hint =
+        androidCid && androidCid !== cid
+          ? " (Android client ID is configured separately; keep Web client ID for token init.)"
+          : "";
+      onGoogleErrorRef.current?.(`${msg}${hint}`);
     } finally {
       if (resumeWake) {
         await resumeWake();
