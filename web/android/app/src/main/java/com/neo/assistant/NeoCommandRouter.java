@@ -367,9 +367,20 @@ public final class NeoCommandRouter {
     }
 
     private static void startTelIntent(Context context, String tel) {
-        /* ACTION_DIAL only — no CALL_PHONE permission; user confirms in the system dialer. */
-        Intent callIntent = new Intent(Intent.ACTION_DIAL, Uri.parse(tel));
-        startActivityCompat(context, callIntent);
+        Uri uri = Uri.parse(tel);
+        /*
+         * Prefer direct call when CALL_PHONE is granted.
+         * Fallback to dialer if permission is missing or blocked.
+         */
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CALL_PHONE)
+                == PackageManager.PERMISSION_GRANTED) {
+            Intent callIntent = new Intent(Intent.ACTION_CALL, uri);
+            if (startActivityCompat(context, callIntent)) {
+                return;
+            }
+        }
+        Intent dialIntent = new Intent(Intent.ACTION_DIAL, uri);
+        startActivityCompat(context, dialIntent);
     }
 
     /** In-app Web profile (/profile), same flags as {@link NeoNativeRouterPlugin#openAppPath}. */
@@ -439,7 +450,7 @@ public final class NeoCommandRouter {
     }
 
     private static String calmCallPhrase(String raw) {
-        return "ठीक है, कॉल लगा रहा हूँ। डायलर खुलेगा, आप कॉल जारी रखें।";
+        return "ठीक है, कॉल लगा रहा हूँ।";
     }
 
     private static String afterContactsOpenedPrompt(String raw) {
