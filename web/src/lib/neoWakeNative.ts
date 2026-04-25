@@ -19,8 +19,11 @@ export function readWakeListenScreenOffStorage(): boolean {
     const raw = window.localStorage.getItem(NEO_WAKE_SCREEN_OFF_KEY);
     if (raw === "1") return true;
     if (raw === "0") return false;
-    /* APK default: keep screen-off wake OFF to avoid OEM mic on/off chirps in background. */
-    if (isNativeCapacitor()) return false;
+    /*
+     * Policy: wake-word detection should work with screen ON and OFF by default.
+     * Mic for full command capture still turns on only after wake detection.
+     */
+    if (isNativeCapacitor()) return true;
     return false;
   } catch {
     return false;

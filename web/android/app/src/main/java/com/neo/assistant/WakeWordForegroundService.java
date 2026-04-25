@@ -115,7 +115,12 @@ public class WakeWordForegroundService extends Service {
         acquirePartialWakeLock();
         audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
         initRecognizer();
-        porcupineMode = NeoPrefs.isWakePorcupineStreamEnabled(this) && PorcupineStreamWake.canInit(this);
+        /*
+         * Mic-on-demand policy:
+         * Prefer passive low-power Porcupine wake in all cases where available.
+         * This keeps SpeechRecognizer off unless wake is detected and command tail must be captured.
+         */
+        porcupineMode = PorcupineStreamWake.canInit(this) && NeoPrefs.isWakePorcupineStreamEnabled(this);
         if (porcupineMode) {
             porcupineWake =
                 new PorcupineStreamWake(
@@ -241,11 +246,16 @@ public class WakeWordForegroundService extends Service {
         }
 
         if (intent != null && intent.hasExtra(EXTRA_SCREEN_OFF_LISTEN)) {
-            listenScreenOff = intent.getBooleanExtra(EXTRA_SCREEN_OFF_LISTEN, false);
-            NeoPrefs.setWakeListenScreenOff(this, listenScreenOff);
+            listenScreenOff = intent.getBooleanExtra(EXTRA_SCREEN_OFF_LISTEN, true);
         } else {
             listenScreenOff = NeoPrefs.isWakeListenScreenOff(this);
         }
+        /*
+         * Policy rule: wake-word detection stays active for both screen ON/OFF.
+         * Command capture mic still opens only after wake phrase detection.
+         */
+        listenScreenOff = true;
+        NeoPrefs.setWakeListenScreenOff(this, true);
 
         if (!hasRecordAudioPermission()) {
             shouldListen = false;
@@ -469,12 +479,6 @@ public class WakeWordForegroundService extends Service {
     }
 
     private int indexOfWake(String s) {
-        /* Lock-screen / screen-off listen: allow leading "hello …" as wake (not only "neo"). */
-        if (listenScreenOff && s.length() >= 5 && s.startsWith("hello")) {
-            if (!(s.startsWith("hello neo") || s.startsWith("hello new"))) {
-                return 0;
-            }
-        }
         String[] wakes = new String[] {"hello neo", "hello new", "neo", "नियो", "हेलो नियो"};
         int best = -1;
         for (String w : wakes) {
@@ -489,20 +493,6 @@ public class WakeWordForegroundService extends Service {
     }
 
     private int endOfWake(String s, int start) {
-        if (listenScreenOff && start == 0 && s.startsWith("hello")) {
-            if (s.startsWith("hello neo")) {
-                return Math.max(start, "hello neo".length());
-            }
-            if (s.startsWith("hello new")) {
-                return Math.max(start, "hello new".length());
-            }
-            if (s.startsWith("hello ")) {
-                return 6;
-            }
-            if (s.equals("hello")) {
-                return 5;
-            }
-        }
         String[] wakes = new String[] {"hello neo", "hello new", "neo", "नियो", "हेलो नियो"};
         int bestEnd = start;
         for (String w : wakes) {

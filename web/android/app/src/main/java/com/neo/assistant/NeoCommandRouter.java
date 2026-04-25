@@ -435,23 +435,23 @@ public final class NeoCommandRouter {
     }
 
     private static String afterContactsOpenedPrompt(String raw) {
-        return "सर, आपकी संपर्क सूची खुल गई है। अब बताइए—किसे फ़ोन लगाना है? नाम से बोलिए, जैसे—जसवंत जी को कॉल करो। व्हाट्सऐप, टेलीग्राम, संदेश, या यूट्यूब का काम भी बता सकते हैं।";
+        return "सर, संपर्क सूची खुल गई है। अब इसी में बताइए क्या करना है—किस नाम पर कॉल लगानी है, जैसे: अमन को कॉल करो।";
     }
 
     private static String afterWhatsAppOpenedPrompt(String raw) {
-        return "व्हाट्सऐप खुल गया है। किसे संदेश या कॉल करना है बोलिए, या कहिए—मेरे व्हाट्सऐप संदेश पढ़ो। टेलीग्राम, यूट्यूब, या सीधी कॉल भी चला सकते हैं।";
+        return "सर, व्हाट्सऐप खुल गया है। अब इसी में बताइए क्या करना है—किसे मैसेज भेजना है या किसे कॉल करनी है।";
     }
 
     private static String afterTelegramOpenedPrompt(String raw) {
-        return "टेलीग्राम खुल गया है। किसे लिखना है बोलिए। वरना व्हाट्सऐप, कॉल, संदेश, या संगीत—जो चाहिए।";
+        return "सर, टेलीग्राम खुल गया है। अब इसी में बताइए क्या करना है—किसे मैसेज भेजना है।";
     }
 
     private static String afterYouTubeOpenedPrompt(String raw) {
-        return "यूट्यूब पर खोज चल रही है। कई फ़ोनों पर पहला नतीजा खुद चल जाता है; नहीं तो पहला वीडियो चुन लीजिए। व्हाट्सऐप, टेलीग्राम, या कॉल भी कह सकते हैं।";
+        return "सर, यूट्यूब खुल गया है। अब इसी में बताइए क्या चलाना है—गाना, वीडियो, या सर्च क्वेरी बोलिए।";
     }
 
     private static String afterMusicAppOpenedPrompt(String raw) {
-        return "संगीत ऐप खुल गया है। क्या सुनना है बोलिए। यूट्यूब, व्हाट्सऐप, या कॉल भी चुन सकते हैं।";
+        return "सर, संगीत ऐप खुल गया है। अब इसी में बताइए क्या सुनना है।";
     }
 
     private static void speakThen(Context context, String phrase, long delayMs, Runnable action) {
