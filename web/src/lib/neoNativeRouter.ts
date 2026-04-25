@@ -19,7 +19,7 @@ export const NeoNativeRouter = registerPlugin<NeoNativeRouterPlugin>("NeoNativeR
   web: {
     tryRouteCommand: async () => ({ handled: false }),
     openAppPath: async () => {},
-    openDeepLink: async ({ url }) => {
+    openDeepLink: async ({ url }: { url: string }) => {
       if (typeof window !== "undefined" && url) {
         try {
           window.location.assign(url);
