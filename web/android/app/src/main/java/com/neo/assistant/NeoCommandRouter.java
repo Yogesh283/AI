@@ -1,6 +1,7 @@
 package com.neo.assistant;
 
 import android.Manifest;
+import android.app.Activity;
 import android.app.ActivityManager;
 import android.app.SearchManager;
 import android.content.ActivityNotFoundException;
@@ -14,6 +15,7 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.provider.ContactsContract;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.speech.tts.TextToSpeech;
@@ -1259,11 +1261,18 @@ public final class NeoCommandRouter {
         boolean looksCompose =
             text.contains("भेजो")
                 || text.contains("भेजें")
+                || text.contains("लिखो")
+                || text.contains("टाइप")
+                || text.contains("type")
                 || raw.matches("(?is).*(इसे|उसे)\\s+(?:ये\\s+)?(?:संदेश|मैसेज|मेसेज).*भेज.*")
                 || raw.matches("(?is).*\\bsend\\s+this\\s+message\\b.*")
                 || raw.matches("(?is).*\\btext\\s+them\\b.*")
+                || raw.matches("(?is).*\\btype\\b.*")
                 || raw.matches("(?is).*\\b(?:message|text)\\s+(?:him|her|them|me)\\b.*")
-                || (hasSavedChat && raw.matches("(?is).*\\bsend\\s+message\\s+.+"));
+                || (hasSavedChat
+                    && (raw.matches("(?is).*\\bsend\\s+message\\s+.+")
+                        || raw.matches("(?is)\\btype\\s+(.+)$")
+                        || raw.matches("(?is)(?:लिखो|टाइप\\s+करो)\\s+(.+)$")));
         if (!looksCompose) {
             return false;
         }
@@ -1333,10 +1342,12 @@ public final class NeoCommandRouter {
                 {"(?is)(इसे|उसे)\\s+(?:ये\\s+)?(?:संदेश|मेसेज|मैसेज)\\s+(?:भेजो|भेजें)\\s+(.+)"},
                 {"(?is)(?:ये\\s+)?(?:संदेश|मैसेज)\\s+(?:भेजो|भेजें)\\s+(.+)"},
                 {"(?is)(?:इसे|उसे)\\s+(?:ये\\s+)?(?:लिखो|लिखकर\\s+भेजो)\\s+(.+)"},
+                {"(?is)(?:लिखो|टाइप\\s+करो)\\s+(.+)"},
                 /* English */
                 {"(?is)\\b(?:send|text)\\s+(?:this\\s+)?(?:message|msg)\\s*(?:to\\s+them)?\\s*[:\\-]?\\s*(.+)"},
                 {"(?is)\\bsend\\s+message\\s+(.+)"},
                 {"(?is)\\b(?:message|text)\\s+(?:him|her|them|me)\\s+(.+)"},
+                {"(?is)\\btype\\s+(.+)$"},
             };
         for (String[] row : patterns) {
             Matcher m = Pattern.compile(row[0]).matcher(s);
@@ -1360,11 +1371,24 @@ public final class NeoCommandRouter {
                 || t.replace(" ", "").contains("वाट्सऐप")
                 || t.replace(" ", "").contains("व्हाट्सऐप");
         if (!hasWord) return false;
+        String tr = t.trim();
+        /* Follow-up turn: user often says only the app name. */
+        if (tr.matches("(?i)whatsapp!?")
+            || tr.replace(" ", "").equals("व्हाट्सएप")
+            || tr.replace(" ", "").equals("वाट्सऐप")
+            || tr.replace(" ", "").equals("व्हाट्सऐप")) {
+            return true;
+        }
         return t.matches(".*\\b(open|launch|start|show)\\b.*")
             || t.matches(".*\\bmy\\s+whatsapp\\b.*")
             || t.contains("ओपन")
             || t.contains("खोलो")
-            || t.contains("खोल");
+            || t.contains("खोल")
+            || t.contains("चलाओ")
+            || t.contains("चला")
+            || t.contains("दिखाओ")
+            || t.contains("दिखा")
+            || t.contains("जाओ");
     }
 
     private static boolean isTelegramIntent(String t) {
@@ -1375,11 +1399,22 @@ public final class NeoCommandRouter {
                 || t.replace(" ", "").contains("टेलीग्राम")
                 || t.replace(" ", "").contains("टेलिग्राम");
         if (!hasWord) return false;
+        String tr = t.trim();
+        if (tr.matches("(?i)telegram!?")
+            || tr.replace(" ", "").equals("टेलीग्राम")
+            || tr.replace(" ", "").equals("टेलिग्राम")) {
+            return true;
+        }
         return t.matches(".*\\b(open|launch|start|show)\\b.*")
             || t.matches(".*\\bmy\\s+telegram\\b.*")
             || t.contains("ओपन")
             || t.contains("खोलो")
-            || t.contains("खोल");
+            || t.contains("खोल")
+            || t.contains("चलाओ")
+            || t.contains("चला")
+            || t.contains("दिखाओ")
+            || t.contains("दिखा")
+            || t.contains("जाओ");
     }
 
     private static boolean isContactsIntent(String t) {
@@ -1885,11 +1920,60 @@ public final class NeoCommandRouter {
         return "tel:+" + digits;
     }
 
+    private static final String VOICE_EXT_PKGS = "neo_ext_pkgs";
+    private static final String VOICE_EXT_URI = "neo_ext_uri";
+    private static final String VOICE_EXT_STORE = "neo_ext_store";
+
+    /**
+     * {@link MainActivity#onResume()} — runs a deferred WA/TG/etc. launch from an {@link Activity} (Android 14+ BAL).
+     */
+    public static void consumeVoiceExternalLaunchSpec(Activity activity) {
+        if (activity == null) {
+            return;
+        }
+        Intent intent = activity.getIntent();
+        if (intent == null) {
+            return;
+        }
+        Bundle spec = intent.getBundleExtra(MainActivity.EXTRA_VOICE_EXTERNAL_SPEC);
+        if (spec == null) {
+            return;
+        }
+        intent.removeExtra(MainActivity.EXTRA_VOICE_EXTERNAL_SPEC);
+        String[] pkgs = spec.getStringArray(VOICE_EXT_PKGS);
+        String uriStr = spec.getString(VOICE_EXT_URI);
+        String store = spec.getString(VOICE_EXT_STORE);
+        if (pkgs == null || uriStr == null || store == null) {
+            return;
+        }
+        openPreferredAppThenStoreInternal(activity, pkgs, Uri.parse(uriStr), store);
+    }
+
     /**
      * Open deep link in an installed package variant (e.g. WhatsApp + WhatsApp Business), then chooser, then launcher,
      * then Play Store. Requires {@code <queries>} in the manifest on API 31+ or {@code getLaunchIntentForPackage} stays null.
+     *
+     * <p>When {@code context} is not an {@link Activity} (wake {@link android.app.Service} path), queues
+     * {@link MainActivity#requestVoiceExternalLaunch} so the system does not block the activity start (BAL).
      */
     private static void openPreferredAppThenStore(
+        Context context,
+        String[] candidatePkgs,
+        Uri appUri,
+        String playStorePackageId
+    ) {
+        if (!(context instanceof Activity)) {
+            Bundle spec = new Bundle();
+            spec.putStringArray(VOICE_EXT_PKGS, candidatePkgs);
+            spec.putString(VOICE_EXT_URI, appUri.toString());
+            spec.putString(VOICE_EXT_STORE, playStorePackageId);
+            MainActivity.requestVoiceExternalLaunch(context, spec);
+            return;
+        }
+        openPreferredAppThenStoreInternal(context, candidatePkgs, appUri, playStorePackageId);
+    }
+
+    private static void openPreferredAppThenStoreInternal(
         Context context,
         String[] candidatePkgs,
         Uri appUri,

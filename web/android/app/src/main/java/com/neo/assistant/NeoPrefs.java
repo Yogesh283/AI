@@ -26,6 +26,8 @@ public final class NeoPrefs {
     public static final String KEY_LAST_VOICE_APP_CONTEXT = "last_voice_app_context";
     /** One-time runtime prompt for {@link android.Manifest.permission#READ_CONTACTS} (call-by-name from voice). */
     public static final String KEY_PROMPTED_READ_CONTACTS = "prompted_read_contacts";
+    /** One-time runtime prompt for {@link android.Manifest.permission#CALL_PHONE} (direct call trigger). */
+    public static final String KEY_PROMPTED_CALL_PHONE = "prompted_call_phone";
     /** Relative to assets/ (Picovoice Console → Android keyword). */
     public static final String KEY_PORCUPINE_KEYWORD_ASSET = "porcupine_keyword_asset";
 
@@ -124,6 +126,20 @@ public final class NeoPrefs {
             .getSharedPreferences(FILE, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KEY_PROMPTED_READ_CONTACTS, prompted)
+            .apply();
+    }
+
+    public static boolean hasPromptedCallPhone(Context c) {
+        return c.getApplicationContext()
+            .getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .getBoolean(KEY_PROMPTED_CALL_PHONE, false);
+    }
+
+    public static void setPromptedCallPhone(Context c, boolean prompted) {
+        c.getApplicationContext()
+            .getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_PROMPTED_CALL_PHONE, prompted)
             .apply();
     }
 

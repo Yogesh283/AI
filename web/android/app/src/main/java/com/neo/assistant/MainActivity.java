@@ -1,6 +1,7 @@
 package com.neo.assistant;
 
 import android.Manifest;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Build;
@@ -20,6 +21,30 @@ public class MainActivity extends BridgeActivity {
 
     /** Voice / plugin: navigate the WebView to this path on the current origin (e.g. {@code /profile}). */
     public static final String EXTRA_NEO_NAV_PATH = "neo_nav_path";
+
+    /**
+     * Wake / FGS path: {@link NeoCommandRouter} cannot start other apps from a {@link android.app.Service} on
+     * Android 14+ (BAL). Spec is consumed in {@link #onResume} so the deep link runs from a resumed activity.
+     */
+    public static final String EXTRA_VOICE_EXTERNAL_SPEC = "neo_voice_external_spec";
+
+    /** Queue opening WA/TG/etc. from the foreground activity (BAL-safe). {@code spec} keys are owned by {@link NeoCommandRouter}. */
+    public static void requestVoiceExternalLaunch(Context from, Bundle spec) {
+        if (from == null || spec == null) {
+            return;
+        }
+        Intent i = new Intent(from, MainActivity.class);
+        i.putExtra(EXTRA_VOICE_EXTERNAL_SPEC, spec);
+        i.addFlags(
+            Intent.FLAG_ACTIVITY_NEW_TASK
+                | Intent.FLAG_ACTIVITY_SINGLE_TOP
+                | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+        i.setPackage(from.getPackageName());
+        try {
+            from.startActivity(i);
+        } catch (Throwable ignored) {
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -49,6 +74,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onResume() {
         super.onResume();
+        NeoCommandRouter.consumeVoiceExternalLaunchSpec(this);
         flushVoiceNavigationPath();
         /*
          * Do not start RECORD_AUDIO (or other) permission flows here — returning from Google Sign-In
@@ -61,6 +87,8 @@ public class MainActivity extends BridgeActivity {
         decor.postDelayed(this::configureWebViewForVoice, 400);
         /* READ_CONTACTS: delayed so it does not stack on top of Google Sign-In on cold start; one prompt only. */
         decor.postDelayed(this::maybeRequestReadContactsOnce, 1600);
+        /* CALL_PHONE: ask once so voice "call" can directly trigger without stopping at dialer fallback. */
+        decor.postDelayed(this::maybeRequestCallPhoneOnce, 2200);
         /* Bring wake listener back whenever app returns to foreground (after opening WhatsApp/Telegram/etc). */
         decor.post(this::maybeStartWakeServiceForForeground);
     }
@@ -78,6 +106,21 @@ public class MainActivity extends BridgeActivity {
         }
         NeoPrefs.setPromptedReadContacts(this, true);
         ActivityCompat.requestPermissions(this, new String[] {Manifest.permission.READ_CONTACTS}, 4401);
+    }
+
+    private void maybeRequestCallPhoneOnce() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return;
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE)
+                == PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+        if (NeoPrefs.hasPromptedCallPhone(this)) {
+            return;
+        }
+        NeoPrefs.setPromptedCallPhone(this, true);
+        ActivityCompat.requestPermissions(this, new String[] {Manifest.permission.CALL_PHONE}, 4402);
     }
 
     /** Applies {@link #EXTRA_NEO_NAV_PATH} from the launch intent (voice “open my profile”). */
@@ -212,8 +255,9 @@ public class MainActivity extends BridgeActivity {
         }
         Intent service = new Intent(this, WakeWordForegroundService.class);
         service.setAction(WakeWordForegroundService.ACTION_START);
-        /* Foreground use-case: keep command wake active while screen is ON. */
-        service.putExtra(WakeWordForegroundService.EXTRA_SCREEN_OFF_LISTEN, false);
+        /* Respect settings: screen-off wake only when user enabled it in the app. */
+        service.putExtra(
+            WakeWordForegroundService.EXTRA_SCREEN_OFF_LISTEN, NeoPrefs.isWakeListenScreenOff(this));
         service.putExtra(
             WakeWordForegroundService.EXTRA_VOICE_CHAT_MODE,
             NeoPrefs.isWakeVoiceChatModeEnabled(this));

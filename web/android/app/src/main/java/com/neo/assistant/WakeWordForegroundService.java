@@ -38,7 +38,9 @@ import org.json.JSONObject;
 
 /**
  * Foreground “Hello Neo” wake listener: one {@link SpeechRecognizer}, short relisten delays, no per-phrase
- * destroy/recreate. Commands run only after wake phrase + tail (see {@link #consumeRecognizerResults}).
+ * destroy/recreate. After wake + tail (see {@link #consumeRecognizerResults}): screen-off + voice-chat mode routes
+ * to OpenAI chat + TTS. Screen-on always tries {@link NeoCommandRouter} first (WhatsApp/call/etc.) then chat fallback;
+ * optional screen-off command routing can be enabled separately.
  * While {@link NeoCommandRouter} TTS plays, {@link NeoCommandRouter#isAISpeaking()} blocks feedback.
  * Background routing uses {@link NeoCommandRouter#beginSilentWakeRouting()} — no assistant TTS; OEM mic/UI sounds
  * are not fully suppressible from app code.
@@ -161,10 +163,13 @@ public class WakeWordForegroundService extends Service {
         registerScreenStateReceiver();
     }
 
-    /** Screen policy: screen ON -> command mode; screen OFF -> only wake voice-chat mode (if enabled). */
+    /**
+     * Mic policy: always when display is on; when display is off only if user enabled screen-off listen or voice-chat
+     * mode (otherwise we stop on {@link Intent#ACTION_SCREEN_OFF} to reduce pocket wake).
+     */
     private boolean mayUseMicNow() {
         if (isScreenInteractive()) return true;
-        return voiceChatMode;
+        return voiceChatMode || listenScreenOff;
     }
 
     private boolean isScreenInteractive() {
@@ -284,12 +289,6 @@ public class WakeWordForegroundService extends Service {
         } else {
             voiceChatMode = NeoPrefs.isWakeVoiceChatModeEnabled(this);
         }
-        /*
-         * Screen-on-only rule:
-         * keep wake/voice processing active only while display is ON.
-         */
-        listenScreenOff = false;
-        NeoPrefs.setWakeListenScreenOff(this, false);
 
         if (!hasRecordAudioPermission()) {
             shouldListen = false;
@@ -470,7 +469,7 @@ public class WakeWordForegroundService extends Service {
         if (said.isEmpty()) return RELISTEN_MS_QUICK;
 
         String command = extractWakeCommand(said);
-        if (command == null && isScreenInteractive()) {
+        if (command == null && (isScreenInteractive() || listenScreenOff)) {
             long now = System.currentTimeMillis();
             if (now <= followUpUntilMs) {
                 /* Follow-up turn: user can continue without saying "Hello Neo" again. */
@@ -488,10 +487,15 @@ public class WakeWordForegroundService extends Service {
 
         if (!isScreenInteractive()) {
             if (voiceChatMode) {
+                /* Screen off + voice-chat mode: “Hello Neo …” then OpenAI chat + TTS only (no app-command router). */
                 handleWakeVoiceChat(command);
+                followUpUntilMs = System.currentTimeMillis() + FOLLOWUP_WINDOW_MS;
                 return RELISTEN_DEFERRED;
             }
-            return RELISTEN_MS_AFTER_WAKE_ONLY;
+            if (!listenScreenOff) {
+                return RELISTEN_MS_AFTER_WAKE_ONLY;
+            }
+            /* Screen off + user opted in: same Neo commands as screen on (may bring activity/UI to front). */
         }
 
         String key = command.trim().toLowerCase(Locale.ROOT);
