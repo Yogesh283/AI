@@ -1,3 +1,47 @@
+# Deploy - only Local -> Git -> Server
+
+**Repo:** `https://github.com/Yogesh283/AI.git`  
+**Server path:** `/home/myneoxai/apps/neoxai`  
+**PM2 names:** `neo-api` (backend), `neo-web` (Next.js)
+
+---
+
+## 1) Local PC -> GitHub
+
+```bash
+cd /d/AI
+git add -A
+git commit -m "update"
+git push origin main
+```
+
+---
+
+## 2) Server deploy (Git pull + build + restart)
+
+```bash
+export APP_ROOT=/home/myneoxai/apps/neoxai
+
+cd "$APP_ROOT" && git pull origin main
+
+cd "$APP_ROOT/web" && rm -rf .next && npm ci && npm run build
+
+cd "$APP_ROOT/backend" && . .venv/bin/activate && pip install -r requirements.txt
+
+pm2 restart neo-api neo-web
+```
+
+---
+
+## 3) Verify (optional)
+
+```bash
+git -C /home/myneoxai/apps/neoxai log -1 --oneline
+curl -sS http://127.0.0.1:8010/health
+curl -sI http://127.0.0.1:3000 | head -5
+```
+
+Browser hard refresh: `Ctrl+Shift+R` (or Incognito).
 # Deploy — sirf commands (copy-paste)
 
 **Repo:** `https://github.com/Yogesh283/AI.git`  
@@ -459,3 +503,25 @@ cd "$APP_ROOT/web" && rm -rf .next && npm ci && npm run build
 cd "$APP_ROOT/backend" && . .venv/bin/activate && pip install -r requirements.txt
 pm2 restart neo-api neo-web
 ```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+cd /home/myneoxai/apps/neoxai && git pull origin main
+export APP_ROOT=/home/myneoxai/apps/neoxai
+cd "$APP_ROOT" && git pull origin main

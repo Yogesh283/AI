@@ -36,6 +36,29 @@ async function ensureNativeGoogleInitialized(clientId: string): Promise<void> {
 }
 
 /**
+ * Android sign-in can be canceled if another foreground dialog/service grabs attention
+ * (wake listener, notification permission sheets, etc.). Pause wake listener for this flow.
+ */
+async function pauseWakeListenerForGoogleSignIn(): Promise<() => Promise<void>> {
+  try {
+    const [{ NeoNativeRouter }, { syncNativeWakeBridge }] = await Promise.all([
+      import("@/lib/neoNativeRouter"),
+      import("@/lib/neoWakeNative"),
+    ]);
+    await NeoNativeRouter.stopWakeListener();
+    return async () => {
+      try {
+        await syncNativeWakeBridge(true);
+      } catch {
+        /* ignore */
+      }
+    };
+  } catch {
+    return async () => {};
+  }
+}
+
+/**
  * Web: `GoogleLogin` (GIS). **Android APK:** native Credential Manager so Google account
  * flow stays **inside the app** (no jumping out to Chrome).
  */
@@ -83,7 +106,9 @@ export function NeoGoogleSignIn({
   const runNativeSignIn = useCallback(async () => {
     if (!cid) return;
     setNativeBusy(true);
+    let resumeWake: (() => Promise<void>) | null = null;
     try {
+      resumeWake = await pauseWakeListenerForGoogleSignIn();
       await ensureNativeGoogleInitialized(cid);
       const result = await GoogleSignIn.signIn();
       if (result.idToken) {
@@ -104,7 +129,7 @@ export function NeoGoogleSignIn({
       if (code === "SIGN_IN_CANCELED" || /canceled|cancelled/i.test(raw)) {
         onGoogleErrorRef.current?.(
           "Google sign-in was interrupted (another dialog on screen, back button, or missing Android setup). " +
-            "Try again with no mic/notification popups. In Google Cloud, add this debug APK SHA-1 for package com.neo.assistant (Android OAuth client) and use the same Web client ID as the server.",
+            "Try again with no mic/notification popups. In Google Cloud Android OAuth, add SHA-1 for package com.neo.assistant (Play) or com.neo.assistant.sideload (sideload APK), and keep the same Web client ID as server GOOGLE_CLIENT_IDS.",
         );
         return;
       }
@@ -114,6 +139,9 @@ export function NeoGoogleSignIn({
           : "Google sign-in failed. If this is the first Android build, add your debug SHA-1 in Google Cloud Console for this package.";
       onGoogleErrorRef.current?.(msg);
     } finally {
+      if (resumeWake) {
+        await resumeWake();
+      }
       setNativeBusy(false);
     }
   }, [cid]);
