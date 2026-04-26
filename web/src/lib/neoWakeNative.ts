@@ -119,6 +119,11 @@ export async function setNativeWakeVoiceChatMode(enabled: boolean): Promise<void
   try {
     const { NeoNativeRouter } = await import("@/lib/neoNativeRouter");
     await NeoNativeRouter.setWakeVoiceChatMode({ enabled });
+    /*
+     * Critical: apply mode change immediately to WakeWordForegroundService start/stop policy.
+     * Without this, screen-off "Hello Neo" may stay stale until some unrelated bridge sync runs.
+     */
+    await syncNativeWakeBridge(true);
   } catch {
     /* ignore */
   }
