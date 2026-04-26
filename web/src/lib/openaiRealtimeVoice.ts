@@ -21,6 +21,24 @@ export function isOpenAiRealtimeVoiceSupported(): boolean {
   );
 }
 
+/**
+ * Call **synchronously** from a click/tap handler and pass the returned promise into
+ * {@link startOpenAiRealtimeVoiceSession} (with `localAudioStream` after await) so Android WebView
+ * keeps a valid mic grant for Live voice.
+ */
+export function createVoiceRealtimeMicStreamPromise(): Promise<MediaStream> {
+  if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+    return Promise.reject(new Error("Microphone API not available."));
+  }
+  return navigator.mediaDevices.getUserMedia({
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    },
+  });
+}
+
 export type OpenAiRealtimeVoiceCallbacks = {
   onConnection?: (state: "connecting" | "open" | "closed") => void;
   /** Streaming user text from OpenAI input-audio ASR (same source as {@link onUserTranscript}). */
@@ -170,6 +188,15 @@ export type OpenAiRealtimeVoiceSession = {
   ensureLocalMicLive: () => void;
 };
 
+export type StartOpenAiRealtimeVoiceOptions = {
+  /**
+   * Mic stream from a {@link navigator.mediaDevices.getUserMedia} call that began in the **same**
+   * user gesture as starting Live (e.g. mic button `onClick`). Some Android WebViews drop or weaken
+   * mic access when `getUserMedia` runs only after async token fetch — pass a pre-started stream here.
+   */
+  localAudioStream?: MediaStream;
+};
+
 /**
  * Connect mic → OpenAI Realtime (WebRTC). Caller must run after a user gesture
  * so getUserMedia / autoplay policies are satisfied.
@@ -177,6 +204,7 @@ export type OpenAiRealtimeVoiceSession = {
 export async function startOpenAiRealtimeVoiceSession(
   ephemeralClientSecret: string,
   callbacks: OpenAiRealtimeVoiceCallbacks = {},
+  opts?: StartOpenAiRealtimeVoiceOptions,
 ): Promise<OpenAiRealtimeVoiceSession> {
   callbacks.onConnection?.("connecting");
 
@@ -208,13 +236,15 @@ export async function startOpenAiRealtimeVoiceSession(
   };
 
   /* One mic stream for the whole Realtime session — tracks stay live until `close()` (no per-turn getUserMedia). */
-  const ms = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-    },
-  });
+  const ms =
+    opts?.localAudioStream ??
+    (await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    }));
   for (const track of ms.getTracks()) {
     pc.addTrack(track, ms);
   }

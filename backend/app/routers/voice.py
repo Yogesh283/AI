@@ -170,7 +170,8 @@ def _realtime_server_vad() -> dict[str, object]:
     """
     Reduce false “user is speaking” cuts from speaker bleed-through (phone mic hears assistant audio).
     interrupt_response=False: assistant audio is not cancelled on VAD start; user taps “interrupt” to cancel.
-    Slightly longer silence + higher threshold so Hindi pauses / room noise do not clip replies.
+    Slightly longer silence + moderate threshold so Hindi pauses / room noise do not clip replies, while quiet
+    close-mic speech still registers (input noise reduction uses near_field for handset capture).
 
     create_response=False: the browser sends response.create only after live web context is fetched
     (see voice page). If True, the server auto-starts a response while that fetch runs and the client
@@ -179,7 +180,8 @@ def _realtime_server_vad() -> dict[str, object]:
     return {
         "type": "server_vad",
         # Shorter silence = faster “user finished” → transcript + live-web injection + reply (trade-off: long mid-sentence pauses may end turn earlier).
-        "threshold": 0.56,
+        # Slightly lower threshold so quiet / phone-at-arm-length speech still trips VAD (far_field→near_field helps too).
+        "threshold": 0.48,
         "prefix_padding_ms": 480,
         "silence_duration_ms": 1600,
         "interrupt_response": False,
@@ -324,7 +326,8 @@ async def post_realtime_token(
         "max_output_tokens": max_out,
         "audio": {
             "input": {
-                "noise_reduction": {"type": "far_field"},
+                # Phone / headset mics are close-talking; far_field targets room/laptop mics and can thin user voice.
+                "noise_reduction": {"type": "near_field"},
                 "transcription": _realtime_input_transcription(body.speech_lang),
                 "turn_detection": _realtime_server_vad(),
             },
@@ -341,7 +344,7 @@ async def post_realtime_token(
             "max_output_tokens": max_out,
             "audio": {
                 "input": {
-                    "noise_reduction": {"type": "far_field"},
+                    "noise_reduction": {"type": "near_field"},
                     "turn_detection": _realtime_server_vad(),
                 },
                 "output": {"voice": out_voice},

@@ -160,7 +160,8 @@ sed -i '/^GOOGLE_CLIENT_IDS=$/d' /home/myneoxai/apps/neoxai/backend/.env
 ## C) Sirf **frontend** dubara build (backend same rakho)
 
 ```bash
-cd /home/myneoxai/apps/neoxai/web && rm -rf .next && npm ci && npm run build && pm2 restart neo-web
+
+
 ```
 
 ---

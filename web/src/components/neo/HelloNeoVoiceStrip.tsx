@@ -33,7 +33,11 @@ import {
   isVoiceGeneralHelpReply,
   processNeoCommandLine,
 } from "@/lib/neoVoiceCommands";
-import { clearNeoFollowUpSession, isNeoFollowUpActive } from "@/lib/neoVoiceSession";
+import {
+  clearNeoFollowUpSession,
+  isNeoFollowUpActive,
+  startNeoFollowUpSession,
+} from "@/lib/neoVoiceSession";
 import {
   readNeoAlexaListen,
   readNeoAssistantActive,
@@ -77,8 +81,9 @@ type Props = {
 /**
  * Tap-to-talk + optional Hello Neo wake. **Browser (Profile):** Web Speech + same command router as typed chat.
  * **Android:** native wake service when installed; tap path can forward to {@link NeoNativeRouter}.
- * **Tap:** follow-up (no repeated wake) opens **only after** the app hears Hello Neo / Neo — not on every tap.
- * **Wake listen:** say **Neo** / **Hello Neo** / **हेलो नियो** first (unless already in that window).
+ * **Tap:** arms a short command window so the same clip may be **wake-free** (e.g. “open WhatsApp”) or include **Neo** /
+ * **Hello Neo**; a follow-up window still applies after wake-only phrases.
+ * **Wake listen (native):** say **Neo** / **Hello Neo** / **हेलो नियो** first unless already in that window.
  */
 export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
   const isProfile = variant === "profile";
@@ -91,6 +96,8 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
   /** After mic capture ends, until command routing + reply TTS finish. */
   const [pipelineBusy, setPipelineBusy] = useState(false);
   const recRef = useRef<SpeechRecognition | null>(null);
+  /** True after tap opens a command window — cleared on pipeline start, empty capture, or stop so abort does not leave a stray window. */
+  const tapFollowUpArmedRef = useRef(false);
   const finalBuf = useRef("");
   /** DOM timers are numeric handles in browsers (Node typings use `Timeout`). */
   const tapIdleTimerRef = useRef<number | null>(null);
@@ -153,6 +160,10 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
     clearTapIdle();
     stopSpeaking();
     stopAvatarTtsAudio();
+    if (tapFollowUpArmedRef.current) {
+      clearNeoFollowUpSession();
+      tapFollowUpArmedRef.current = false;
+    }
     try {
       recRef.current?.abort?.();
     } catch {
@@ -176,6 +187,7 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
   }, [assistantActive, stopRec]);
 
   const runPipeline = useCallback(async (said: string) => {
+    tapFollowUpArmedRef.current = false;
     const spokenExtras = readNeoVoiceCommandAudioFeedback() === "spoken";
     setPipelineBusy(true);
     const lang = readStoredVoiceSpeechLang();
@@ -191,8 +203,8 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
       const { hadWake, rest } = extractHelloNeoCommand(trimmed);
 
       /**
-       * Mic-backed commands only after the wake phrase (or a short follow-up window right after “Hello Neo”).
-       * Tap-to-talk no longer opens that window by itself — avoids stray capture and extra mic churn.
+       * Continuous / ambient listen: still wake-gated. Tap-to-talk arms {@link startNeoFollowUpSession} before
+       * `rec.start()` so this clip runs as follow-up — user may say the command directly or include Hello Neo.
        */
       if (!inFollowUp && !hadWake) {
         syncFollowUp();
@@ -309,9 +321,8 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
   }, []);
 
   /**
-   * Browser: no always-on “wake listen” mic — it caused extra churn/noise. Use tap-to-talk and include Hello Neo in
-   * that clip (or speak your command in the short follow-up after Hello Neo). Android APK wake stays in
-   * {@link NeoWakeNativeSync} + native service when wake listen is on.
+   * Browser: no always-on wake mic (noise). Tap-to-talk arms a command window — speak a command directly or with
+   * Hello Neo. Android APK wake stays in {@link NeoWakeNativeSync} + native service when wake listen is on.
    */
   useEffect(() => {
     stopWakeListen();
@@ -334,14 +345,18 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
       if (readNeoVoiceCommandAudioFeedback() === "spoken") {
         await speakReply(neoVoiceCommandSessionGreeting(lang, name), lang);
       }
-      /* Follow-up opens only after processNeoCommandLine hears a wake phrase — not on every tap. */
-      setNeoFollowUpOpen(isNeoFollowUpActive());
-
       const rec = createSpeechRecognition(lang);
       if (!rec) {
         setHint("Could not start microphone.");
         return;
       }
+      /*
+       * Opening the command window on tap: same clip may be wake-free (e.g. “open WhatsApp”) or include Hello Neo.
+       * Session starts only after we have a recognizer so we do not leave a stray window if creation fails.
+       */
+      startNeoFollowUpSession();
+      tapFollowUpArmedRef.current = true;
+      setNeoFollowUpOpen(isNeoFollowUpActive());
       const armTapIdle = () => {
         clearTapIdle();
         tapIdleTimerRef.current = window.setTimeout(() => {
@@ -383,6 +398,10 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
           finalBuf.current = "";
           tapInterimRef.current = "";
           if (!said) {
+            if (tapFollowUpArmedRef.current) {
+              clearNeoFollowUpSession();
+              tapFollowUpArmedRef.current = false;
+            }
             setHint("I didn't quite hear that — tap again and speak clearly.");
             return;
           }
@@ -400,6 +419,10 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
         setListening(true);
         armTapIdle();
       } catch {
+        if (tapFollowUpArmedRef.current) {
+          clearNeoFollowUpSession();
+          tapFollowUpArmedRef.current = false;
+        }
         setHint("Mic busy — try again.");
       }
     })();
@@ -427,7 +450,7 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
             <p className="text-[13px] leading-relaxed text-black/75">
               <span className="font-semibold text-black">Neo</span> is set to Inactive above. Turn{" "}
               <span className="font-semibold text-emerald-700">Status</span> to Active, then use Try Neo (tap mic — say
-              Hello Neo first).
+              your command, or Hello Neo first if you prefer).
             </p>
           </div>
         </section>
@@ -455,10 +478,11 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
         <div className="border-b border-slate-200/90 px-5 py-3.5">
           <h2 className="text-sm font-semibold text-black">Try Neo</h2>
           <p className="mt-0.5 text-xs text-black/70">
-            <span className="font-medium text-black">Tap the mic</span> — indicator shows while Neo listens (~10s). In that
-            clip, say <span className="font-medium text-black">Hello Neo</span>, <span className="font-medium text-black">Neo</span>, or{" "}
-            <span className="font-medium text-black">नियो</span> first, then your command (e.g. open WhatsApp). Without the wake
-            phrase, nothing runs — the mic is not always on in the browser. Optional tap greeting / “one moment” cues:{" "}
+            <span className="font-medium text-black">Tap the mic</span> — indicator shows while Neo listens (~10s). You can
+            say your command directly (e.g. open WhatsApp), or start with{" "}
+            <span className="font-medium text-black">Hello Neo</span> / <span className="font-medium text-black">Neo</span> /{" "}
+            <span className="font-medium text-black">नियो</span>. After a wake phrase you get a short extra window without repeating
+            it. The page mic is only on while you hold a tap session. Optional tap greeting / “one moment” cues:{" "}
             <span className="font-medium text-black">Profile → Voice settings → Voice command audio</span>.{" "}
             {isNativeCapacitor()
               ? "Hands-free wake listen (Profile): native listener until you say the wake phrase."
@@ -553,10 +577,10 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
           <div className="min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#00D4FF]/90">Neo</p>
             <p className="mt-1 text-[12px] leading-relaxed text-white/65">
-              <span className="text-white/88">Profile → Try Neo:</span> tap the mic — include{" "}
-              <span className="text-white/88">Hello Neo</span> / <span className="text-white/88">Neo</span> in that clip
-              before your command; the browser mic is not always on. After wake-only, you get a short window without
-              repeating the phrase. Full toggles live in{" "}
+              <span className="text-white/88">Profile → Try Neo:</span> tap the mic — say your command directly, or say{" "}
+              <span className="text-white/88">Hello Neo</span> / <span className="text-white/88">Neo</span> first; the
+              browser mic is not always on. After wake-only, you get a short window without repeating the phrase. Full
+              toggles live in{" "}
               <Link href="/profile" className="text-[#00D4FF]/90 underline-offset-2 hover:underline">
                 Profile
               </Link>

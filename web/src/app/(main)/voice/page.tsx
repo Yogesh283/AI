@@ -39,6 +39,7 @@ import { useWakeLock } from "@/lib/useWakeLock";
 import { writeNeoAlexaListen } from "@/lib/neoAssistantActive";
 import { preferOpenAiTtsForVoiceUi } from "@/lib/voiceTtsPolicy";
 import {
+  createVoiceRealtimeMicStreamPromise,
   isOpenAiRealtimeVoiceSupported,
   startOpenAiRealtimeVoiceSession,
 } from "@/lib/openaiRealtimeVoice";
@@ -403,7 +404,7 @@ export default function VoicePage() {
     setListening(false);
   }, [stopBargeInRecognition, stopRecognitionOnly, stopVoiceOutput]);
 
-  const startLiveVoice = useCallback(async () => {
+  const startLiveVoice = useCallback(async (micPromise: Promise<MediaStream>) => {
     if (!sessionOnRef.current) return;
     if (!isOpenAiRealtimeVoiceSupported()) {
       setErr("Live voice needs HTTPS and WebRTC — update the app or use a device with a current WebView.");
@@ -418,14 +419,28 @@ export default function VoicePage() {
     setSpeaking(false);
     liveAssistStreamOpenRef.current = false;
     liveUserTranscriptOpenRef.current = false;
+    let acquiredMic: MediaStream | null = null;
     try {
       unlockWebAudioAndSpeechFromUserGesture();
       const pid = normalizeVoicePersonaId(personaId ?? readStoredVoicePersonaId());
+      /* Mic promise must be created in the mic-button click (transient activation); await only after that. */
+      try {
+        acquiredMic = await micPromise;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        setErr(msg.trim() ? msg : "Microphone access failed — allow mic for this app.");
+        setLiveConnecting(false);
+        sessionOnRef.current = false;
+        setSessionOn(false);
+        return;
+      }
       const tok = await postVoiceRealtimeToken({
         speech_lang: lang,
         persona_id: pid,
       });
-      const live = await startOpenAiRealtimeVoiceSession(tok.client_secret, {
+      const live = await startOpenAiRealtimeVoiceSession(
+        tok.client_secret,
+        {
         onConnection: (s) => {
           if (!sessionOnRef.current) return;
           if (s === "open") {
@@ -694,12 +709,25 @@ export default function VoicePage() {
           }
           setErr(msg);
         },
-      });
+        },
+        { localAudioStream: acquiredMic },
+      );
+      acquiredMic = null;
       liveCloseRef.current = live.close;
       liveCancelRef.current = live.cancelAssistant;
       liveSendClientEventRef.current = live.sendClientEvent;
       liveEnsureMicRef.current = live.ensureLocalMicLive;
     } catch (e) {
+      if (acquiredMic) {
+        for (const t of acquiredMic.getTracks()) {
+          try {
+            t.stop();
+          } catch {
+            /* ignore */
+          }
+        }
+        acquiredMic = null;
+      }
       liveCloseRef.current = null;
       liveCancelRef.current = null;
       liveSendClientEventRef.current = null;
@@ -742,10 +770,12 @@ export default function VoicePage() {
     stopVoiceOutput();
     stopBargeInRecognition();
     setErr(null);
+    /* Start getUserMedia in this click tick so Android WebView keeps mic permission / non-silent capture. */
+    const micPromise = createVoiceRealtimeMicStreamPromise();
     sessionOnRef.current = true;
     setSessionOn(true);
     setMicSessionKey((k) => k + 1);
-    void startLiveVoice();
+    void startLiveVoice(micPromise);
   }, [stopBargeInRecognition, stopSession, stopRecognitionOnly, stopVoiceOutput, startLiveVoice]);
 
   useEffect(() => {
