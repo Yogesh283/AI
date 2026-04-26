@@ -14,6 +14,7 @@ export default function MainLayout({
 }) {
   const path = usePathname();
   const isChat = path === "/dashboard" || path === "/chat";
+  const pullToRefreshEnabled = !isChat && path !== "/profile";
   const mainRef = useRef<HTMLElement | null>(null);
   const pullStartYRef = useRef<number | null>(null);
   const pullActiveRef = useRef(false);
@@ -28,13 +29,13 @@ export default function MainLayout({
 
   const onTouchStart = useCallback(
     (e: React.TouchEvent<HTMLElement>) => {
-      if (isChat || refreshing || e.touches.length !== 1) return;
+      if (!pullToRefreshEnabled || refreshing || e.touches.length !== 1) return;
       const el = mainRef.current;
       if (!el || el.scrollTop > 0) return;
       pullActiveRef.current = true;
       pullStartYRef.current = e.touches[0]?.clientY ?? null;
     },
-    [isChat, refreshing]
+    [pullToRefreshEnabled, refreshing]
   );
 
   const onTouchMove = useCallback(
@@ -100,7 +101,7 @@ export default function MainLayout({
               : "overflow-y-auto overscroll-none"
           }`}
         >
-          {!isChat ? (
+          {pullToRefreshEnabled ? (
             <div
               aria-hidden
               className="pointer-events-none absolute left-1/2 top-2 z-20 -translate-x-1/2"
