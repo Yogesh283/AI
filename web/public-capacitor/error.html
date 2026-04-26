@@ -34,7 +34,15 @@
     </style>
   </head>
   <body>
-    <button type="button" id="refreshBtn">Refresh</button>
+    <p id="statusText" style="margin: 0 0 16px; font-size: 0.95rem; opacity: 0.9">
+      Connection failed. Try local refresh, or open production inside app.
+    </p>
+    <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center">
+      <button type="button" id="refreshBtn">Refresh</button>
+      <button type="button" id="prodBtn" style="background: #22c55e; color: #062a12">
+        Open Production
+      </button>
+    </div>
     <script>
       // Capacitor's bridge can be unavailable on errorPath pages.
       // Provide a tiny no-op shim so WebView console does not spam triggerEvent errors.
@@ -46,10 +54,32 @@
         window.Capacitor = cap;
       })();
 
+      function openInApp(url) {
+        try {
+          window.location.assign(url);
+        } catch (_) {
+          window.location.href = url;
+        }
+      }
+
       // In-app reload only (same WebView page), never opens Chrome.
       document.getElementById("refreshBtn").addEventListener("click", function () {
         location.reload();
       });
+
+      document.getElementById("prodBtn").addEventListener("click", function () {
+        openInApp("https://myneoxai.com");
+      });
+
+      // If APK is configured for localhost and local dev server is down, provide better hint.
+      try {
+        var statusEl = document.getElementById("statusText");
+        var current = String(window.location.href || "");
+        if (current.indexOf("localhost") !== -1) {
+          statusEl.textContent =
+            "Local server unreachable. Start `npm run dev` and run `adb reverse tcp:3000 tcp:3000`, or tap Open Production.";
+        }
+      } catch (_) {}
     </script>
   </body>
 </html>
