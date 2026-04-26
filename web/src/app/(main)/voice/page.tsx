@@ -112,6 +112,7 @@ function isVoiceUserStopIntent(text: string): boolean {
 }
 
 export default function VoicePage() {
+  const [hasMounted, setHasMounted] = useState(false);
   const [listening, setListening] = useState(false);
   const [sessionOn, setSessionOn] = useState(false);
   const [thinking, setThinking] = useState(false);
@@ -847,6 +848,12 @@ export default function VoicePage() {
     return "bg-gradient-to-br from-[#22D3EE] to-[#0F172A] shadow-[0_0_30px_rgba(34,211,238,0.22)] ring-[3px] ring-[#22D3EE]/45 neo-voice-mic-session-start neo-voice-mic-idle-live";
   }, [sessionOn, speaking, liveConnecting, liveWebFetching, userSpeaking, listening]);
 
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
+
+  const showRealtimeSupportWarning = hasMounted && !isOpenAiRealtimeVoiceSupported();
+
   return (
     <div className="relative z-[1] flex min-h-0 flex-1 flex-col bg-[#F5F7FA] md:min-h-0">
       <MainTopNav
@@ -885,7 +892,7 @@ export default function VoicePage() {
 
       <div className="mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col px-4 py-6 md:max-w-xl">
         <div className="neo-screen-card flex min-h-0 flex-1 flex-col items-center justify-center rounded-[16px] px-4 py-5">
-          {!isOpenAiRealtimeVoiceSupported() ? (
+          {showRealtimeSupportWarning ? (
             <p className="mb-6 max-w-sm text-center text-[11px] leading-relaxed text-amber-400/90">
               Live needs HTTPS and WebRTC. Update Android System WebView / Chrome on this device.
             </p>
