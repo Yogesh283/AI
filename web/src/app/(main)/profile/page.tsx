@@ -148,9 +148,9 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#F5F7FA]">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[#F5F7FA]">
         <MainTopNav center={navCenter} />
-        <div className="relative z-[1] min-h-0 flex-1 overflow-y-auto px-4 pb-10 pt-4 md:px-8">
+        <div className="relative z-[1] flex-1 px-4 pb-10 pt-4 md:px-8">
           <p className="text-center text-sm text-black">Loading profile…</p>
         </div>
       </div>
@@ -159,9 +159,9 @@ export default function ProfilePage() {
 
   if (!user) {
     return (
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#F5F7FA]">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[#F5F7FA]">
         <MainTopNav center={navCenter} />
-        <div className="relative z-[1] min-h-0 flex-1 overflow-y-auto px-4 pb-10 pt-4 md:px-8">
+        <div className="relative z-[1] flex-1 px-4 pb-10 pt-4 md:px-8">
           <div className="neo-screen-card mx-auto max-w-md rounded-[26px] p-8 text-center">
             <p className="text-black">Sign in to view and edit your profile.</p>
             <Link
@@ -190,8 +190,11 @@ export default function ProfilePage() {
           ← Back
         </button>
       </div>
-      <div className="relative z-[1] min-h-0 flex-1 overflow-y-auto px-4 pb-10 pt-4 md:px-8">
-      <div className="mx-auto max-w-3xl space-y-6">
+      <div
+        className="relative z-[1] min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 pb-10 pt-4 [touch-action:pan-y] md:px-8"
+        style={{ WebkitOverflowScrolling: "touch" }}
+      >
+      <div className="mx-auto max-w-3xl space-y-6 pb-[max(1rem,env(safe-area-inset-bottom,0px))]">
         <div className="neo-screen-card flex flex-col items-center rounded-[24px] px-5 py-6 text-center md:rounded-[12px]">
           <div className="relative mb-3 h-24 w-24 overflow-hidden rounded-full border-2 border-[#64bdff]/45 bg-[#0a0f18] shadow-[0_0_36px_rgba(35,136,255,0.35)] ring-2 ring-slate-200/50 max-md:ring-slate-200/40 md:ring-black/20">
             <Image

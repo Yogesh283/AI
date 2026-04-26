@@ -14,7 +14,8 @@ export default function MainLayout({
 }) {
   const path = usePathname();
   const isChat = path === "/dashboard" || path === "/chat";
-  const pullToRefreshEnabled = !isChat && path !== "/profile";
+  const isProfile = path === "/profile";
+  const pullToRefreshEnabled = !isChat && !isProfile;
   const mainRef = useRef<HTMLElement | null>(null);
   const pullStartYRef = useRef<number | null>(null);
   const pullActiveRef = useRef(false);
@@ -92,13 +93,15 @@ export default function MainLayout({
         <AppSidebar />
         <main
           ref={mainRef}
-          onTouchStart={onTouchStart}
-          onTouchMove={onTouchMove}
-          onTouchEnd={onTouchEnd}
+          onTouchStart={pullToRefreshEnabled ? onTouchStart : undefined}
+          onTouchMove={pullToRefreshEnabled ? onTouchMove : undefined}
+          onTouchEnd={pullToRefreshEnabled ? onTouchEnd : undefined}
           className={`relative flex min-h-0 min-w-0 flex-1 flex-col bg-transparent pb-[calc(5.25rem+env(safe-area-inset-bottom,0px))] pt-[env(safe-area-inset-top,0px)] md:pb-0 md:pt-0 ${
             isChat
               ? "h-full max-h-full overflow-hidden overscroll-none"
-              : "overflow-y-auto overscroll-none"
+              : isProfile
+                ? "overflow-hidden overscroll-none [touch-action:pan-y]"
+                : "overflow-y-auto overscroll-none"
           }`}
         >
           {pullToRefreshEnabled ? (
@@ -120,7 +123,13 @@ export default function MainLayout({
               </div>
             </div>
           ) : null}
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
+          <div
+            className={`flex min-h-0 min-w-0 flex-col ${
+              isChat ? "flex-1" : ""
+            }`}
+          >
+            {children}
+          </div>
         </main>
       </div>
       <NeoBottomDock />

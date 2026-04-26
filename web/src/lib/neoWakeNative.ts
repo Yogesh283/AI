@@ -66,11 +66,12 @@ async function runWakeBridgeSyncOnce(): Promise<void> {
     const voiceChatMode = !!(await NeoNativeRouter.getWakeVoiceChatMode()).enabled;
     /*
      * Keep wake service running while:
-     * - page is visible (screen ON command mode), or
-     * - screen-off listening is explicitly enabled, or
-     * - wake voice-chat mode is enabled (screen OFF Hello Neo -> OpenAI chat).
+     * - wake voice-chat mode is enabled (works independently for screen-OFF Hello Neo), or
+     * - assistant + wake listen are enabled and either page is visible or screen-off listen is enabled.
      */
-    if (assistantActive && alexaListen && (screenOff || pageVisible || voiceChatMode)) {
+    const shouldRunWake =
+      voiceChatMode || (assistantActive && alexaListen && (screenOff || pageVisible));
+    if (shouldRunWake) {
       await NeoNativeRouter.startWakeListener({ screenOffListen: screenOff || voiceChatMode });
     } else {
       await NeoNativeRouter.stopWakeListener();

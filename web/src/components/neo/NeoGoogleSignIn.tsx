@@ -45,6 +45,14 @@ async function pauseWakeListenerForGoogleSignIn(): Promise<() => Promise<void>> 
       import("@/lib/neoNativeRouter"),
       import("@/lib/neoWakeNative"),
     ]);
+    const vc = await NeoNativeRouter.getWakeVoiceChatMode().catch(() => ({ enabled: false }));
+    /*
+     * If wake voice-chat mode is enabled, do not stop wake service during sign-in helper initialization.
+     * Stopping here can unintentionally disable lock-screen "Hello Neo" until a later resync.
+     */
+    if (vc?.enabled) {
+      return async () => {};
+    }
     await NeoNativeRouter.stopWakeListener();
     return async () => {
       try {
