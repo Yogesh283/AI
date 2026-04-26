@@ -87,10 +87,11 @@ public class MainActivity extends BridgeActivity {
         View decor = getWindow().getDecorView();
         decor.post(this::configureWebViewForVoice);
         decor.postDelayed(this::configureWebViewForVoice, 400);
-        /* READ_CONTACTS: delayed so it does not stack on top of Google Sign-In on cold start; one prompt only. */
-        decor.postDelayed(this::maybeRequestReadContactsOnce, 1600);
-        /* CALL_PHONE: ask once so voice "call" can directly trigger without stopping at dialer fallback. */
-        decor.postDelayed(this::maybeRequestCallPhoneOnce, 2200);
+        /*
+         * Do not auto-pop runtime permission sheets on resume.
+         * Request READ_CONTACTS / CALL_PHONE only when the user invokes features that need them.
+         * This avoids pause/resume churn and WebView bridge instability on startup.
+         */
         /* Bring wake listener back whenever app returns to foreground (after opening WhatsApp/Telegram/etc). */
         decor.post(this::maybeStartWakeServiceForForeground);
     }
