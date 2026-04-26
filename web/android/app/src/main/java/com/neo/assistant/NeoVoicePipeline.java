@@ -18,6 +18,8 @@ import java.util.Arrays;
  */
 final class NeoVoicePipeline implements Runnable {
     private static final String TAG = "NeoVoicePipeline";
+    private static boolean loggedMissingPorcupineConfig = false;
+    private boolean wakeWordEnabled = true;
 
     /** ~500 ms pre-roll at 16 kHz (adjust if sample rate differs). */
     private static final int PREROLL_SAMPLES = 8000;
@@ -80,9 +82,10 @@ final class NeoVoicePipeline implements Runnable {
         if (threadStarted) {
             return;
         }
-        if (!PorcupineStreamWake.canInit(appCtx)) {
-            Log.w(TAG, "Porcupine assets / PV_ACCESS_KEY missing — pipeline not started.");
-            return;
+        wakeWordEnabled = PorcupineStreamWake.canInit(appCtx);
+        if (!wakeWordEnabled && !loggedMissingPorcupineConfig) {
+            loggedMissingPorcupineConfig = true;
+            Log.i(TAG, "Wake keyword unavailable (missing Porcupine config). Using speech-first fallback.");
         }
         running = true;
         threadStarted = true;
@@ -108,19 +111,21 @@ final class NeoVoicePipeline implements Runnable {
 
     @Override
     public void run() {
-        try {
-            porcupine =
-                new Porcupine.Builder()
-                    .setAccessKey(BuildConfig.PV_ACCESS_KEY.trim())
-                    .setKeywordPath(NeoPrefs.getPorcupineKeywordAssetPath(appCtx))
-                    .setSensitivity(0.55f)
-                    .build(appCtx);
-        } catch (PorcupineException e) {
-            Log.e(TAG, "Porcupine build failed", e);
-            return;
+        if (wakeWordEnabled) {
+            try {
+                porcupine =
+                    new Porcupine.Builder()
+                        .setAccessKey(BuildConfig.PV_ACCESS_KEY.trim())
+                        .setKeywordPath(NeoPrefs.getPorcupineKeywordAssetPath(appCtx))
+                        .setSensitivity(0.55f)
+                        .build(appCtx);
+            } catch (PorcupineException e) {
+                Log.e(TAG, "Porcupine build failed; switching to speech-first fallback.", e);
+                wakeWordEnabled = false;
+            }
         }
-        sampleRate = porcupine.getSampleRate();
-        frameLen = porcupine.getFrameLength();
+        sampleRate = wakeWordEnabled && porcupine != null ? porcupine.getSampleRate() : 16000;
+        frameLen = wakeWordEnabled && porcupine != null ? porcupine.getFrameLength() : 512;
         frameScratch = new short[frameLen];
         ring = new NeoVoiceRingBuffer(sampleRate * 15);
 
@@ -197,7 +202,17 @@ final class NeoVoicePipeline implements Runnable {
             }
             ring.append(readFrame, 0, n);
 
-            drainPorcupineOnRing();
+            if (wakeWordEnabled) {
+                drainPorcupineOnRing();
+            } else if (state == VoiceState.IDLE_WAKE && !host.ttsPlaying() && !host.chatBusy()) {
+                /*
+                 * Fallback when Porcupine is unavailable: detect speech onset and capture directly.
+                 * Command routing still runs in service-level policy.
+                 */
+                if (meanAbs(readFrame, n) > 700.0) {
+                    beginCaptureAtRingEnd();
+                }
+            }
 
             if (state == VoiceState.CAPTURE) {
                 processCaptureFrame(readFrame, n);

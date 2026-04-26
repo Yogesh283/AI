@@ -74,6 +74,7 @@ public class WakeWordForegroundService extends Service {
     /** If other app audio/video is active, stay idle and retry later. */
     private static final int MEDIA_ACTIVE_RECHECK_MS = 3000;
     private static final int MEDIA_ACTIVE_RECHECK_MAX_MS = 5200;
+    private boolean wakeKeywordAvailable = true;
     /**
      * Best-effort silent mode:
      * Repeated request/abandon of transient-exclusive audio focus can trigger OEM mic/focus cues ("tun").
@@ -107,6 +108,7 @@ public class WakeWordForegroundService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+        wakeKeywordAvailable = PorcupineStreamWake.canInit(this);
         createChannel();
         acquirePartialWakeLock();
         audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
@@ -345,6 +347,13 @@ public class WakeWordForegroundService extends Service {
         }
 
         String command = extractWakeCommand(said);
+        if (command == null && !wakeKeywordAvailable) {
+            /*
+             * Fallback mode when Porcupine keyword engine is not configured:
+             * allow direct spoken commands/chats without mandatory wake word.
+             */
+            command = said;
+        }
         if (command == null && (isScreenInteractive() || listenScreenOff)) {
             long now = System.currentTimeMillis();
             if (now <= followUpUntilMs) {

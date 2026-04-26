@@ -191,8 +191,16 @@ export default function ProfilePage() {
         </button>
       </div>
       <div
-        className="relative z-[1] min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 pb-10 pt-4 [touch-action:pan-y] md:px-8"
-        style={{ WebkitOverflowScrolling: "touch" }}
+        className="relative z-[1] overflow-y-auto overscroll-y-contain px-4 pb-10 pt-4 [touch-action:pan-y] md:px-8"
+        style={{
+          /*
+           * Hard mobile WebView fallback:
+           * give Profile its own explicit viewport scroll shell so parent flex sizing cannot block touch scroll.
+           */
+          height:
+            "calc(100dvh - 52px - 40px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))",
+          WebkitOverflowScrolling: "touch",
+        }}
       >
       <div className="mx-auto max-w-3xl space-y-6 pb-[max(1rem,env(safe-area-inset-bottom,0px))]">
         <div className="neo-screen-card flex flex-col items-center rounded-[24px] px-5 py-6 text-center md:rounded-[12px]">

@@ -21,6 +21,9 @@ export function useWakeLock(active: boolean) {
           sentinel.release().catch(() => {});
           return;
         }
+        sentinel.addEventListener("release", () => {
+          if (lockRef.current === sentinel) lockRef.current = null;
+        });
         lockRef.current = sentinel;
       })
       .catch(() => {
@@ -29,7 +32,10 @@ export function useWakeLock(active: boolean) {
 
     return () => {
       cancelled = true;
-      lockRef.current?.release().catch(() => {});
+      const held = lockRef.current;
+      if (held && !held.released) {
+        held.release().catch(() => {});
+      }
       lockRef.current = null;
     };
   }, [active]);
