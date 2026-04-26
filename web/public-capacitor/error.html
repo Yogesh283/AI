@@ -18,31 +18,38 @@
         color: #e6e6ea;
         text-align: center;
       }
-      h1 {
-        font-size: 1.25rem;
-        font-weight: 600;
-        margin: 0 0 12px;
+      button {
+        appearance: none;
+        border: 0;
+        border-radius: 999px;
+        background: #00d4ff;
+        color: #07121b;
+        font-weight: 700;
+        font-size: 1rem;
+        padding: 12px 24px;
       }
-      p {
-        margin: 0 0 16px;
-        color: #9a9aaa;
-        font-size: 0.95rem;
-        max-width: 320px;
-        line-height: 1.45;
-      }
-      a {
-        color: #00d4ff;
-        font-weight: 600;
-        text-decoration: none;
-      }
-      a:hover {
-        text-decoration: underline;
+      button:active {
+        transform: scale(0.98);
       }
     </style>
   </head>
   <body>
-    <h1>Could not load Neo</h1>
-    <p>Check Wi‑Fi or mobile data, then try again. If the site is updating, wait a minute and retry.</p>
-    <p><a href="javascript:location.reload()">Tap to retry</a></p>
+    <button type="button" id="refreshBtn">Refresh</button>
+    <script>
+      // Capacitor's bridge can be unavailable on errorPath pages.
+      // Provide a tiny no-op shim so WebView console does not spam triggerEvent errors.
+      (function () {
+        var cap = window.Capacitor || {};
+        if (typeof cap.triggerEvent !== "function") {
+          cap.triggerEvent = function () {};
+        }
+        window.Capacitor = cap;
+      })();
+
+      // In-app reload only (same WebView page), never opens Chrome.
+      document.getElementById("refreshBtn").addEventListener("click", function () {
+        location.reload();
+      });
+    </script>
   </body>
 </html>

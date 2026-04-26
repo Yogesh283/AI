@@ -27,6 +27,8 @@ public class MainActivity extends BridgeActivity {
      * Android 14+ (BAL). Spec is consumed in {@link #onResume} so the deep link runs from a resumed activity.
      */
     public static final String EXTRA_VOICE_EXTERNAL_SPEC = "neo_voice_external_spec";
+    /** Android allows only one runtime permission sheet at a time. */
+    private boolean permissionPromptInFlight = false;
 
     /** Queue opening WA/TG/etc. from the foreground activity (BAL-safe). {@code spec} keys are owned by {@link NeoCommandRouter}. */
     public static void requestVoiceExternalLaunch(Context from, Bundle spec) {
@@ -97,6 +99,9 @@ public class MainActivity extends BridgeActivity {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
             return;
         }
+        if (permissionPromptInFlight) {
+            return;
+        }
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CONTACTS)
                 == PackageManager.PERMISSION_GRANTED) {
             return;
@@ -105,11 +110,15 @@ public class MainActivity extends BridgeActivity {
             return;
         }
         NeoPrefs.setPromptedReadContacts(this, true);
+        permissionPromptInFlight = true;
         ActivityCompat.requestPermissions(this, new String[] {Manifest.permission.READ_CONTACTS}, 4401);
     }
 
     private void maybeRequestCallPhoneOnce() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return;
+        }
+        if (permissionPromptInFlight) {
             return;
         }
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE)
@@ -120,6 +129,7 @@ public class MainActivity extends BridgeActivity {
             return;
         }
         NeoPrefs.setPromptedCallPhone(this, true);
+        permissionPromptInFlight = true;
         ActivityCompat.requestPermissions(this, new String[] {Manifest.permission.CALL_PHONE}, 4402);
     }
 
@@ -240,6 +250,13 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 4401 || requestCode == 4402) {
+            permissionPromptInFlight = false;
+            View decor = getWindow().getDecorView();
+            /* Chain pending one-time prompts after the current sheet closes. */
+            decor.postDelayed(this::maybeRequestReadContactsOnce, 250);
+            decor.postDelayed(this::maybeRequestCallPhoneOnce, 500);
+        }
     }
 
     private void maybeStopWakeService() {
