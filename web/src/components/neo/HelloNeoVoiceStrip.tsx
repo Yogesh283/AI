@@ -106,6 +106,8 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
   const wakeRestartTimerRef = useRef<number | null>(null);
   const wakeDebounceTimerRef = useRef<number | null>(null);
   const listeningRef = useRef(false);
+  /** True after we stopped {@link NeoNativeRouter} wake for a Try Neo tap (must restart when tap ends). */
+  const wakePausedForTapRef = useRef(false);
 
   const clearTapIdle = useCallback(() => {
     if (tapIdleTimerRef.current !== null) {
@@ -156,6 +158,19 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
     wakeRecRef.current = null;
   }, []);
 
+  const resumeNativeWakeAfterTapIfNeeded = useCallback(async () => {
+    if (!wakePausedForTapRef.current) return;
+    wakePausedForTapRef.current = false;
+    if (!isNativeCapacitor()) return;
+    if (!readNeoAssistantActive() || !readNeoAlexaListen()) return;
+    try {
+      const { syncNativeWakeBridge } = await import("@/lib/neoWakeNative");
+      await syncNativeWakeBridge(true);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const stopRec = useCallback(() => {
     clearTapIdle();
     stopSpeaking();
@@ -172,7 +187,8 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
     recRef.current = null;
     listeningRef.current = false;
     setListening(false);
-  }, [clearTapIdle]);
+    void resumeNativeWakeAfterTapIfNeeded();
+  }, [clearTapIdle, resumeNativeWakeAfterTapIfNeeded]);
 
   useEffect(() => {
     listeningRef.current = listening;
@@ -317,8 +333,9 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
       syncFollowUp();
     } finally {
       setPipelineBusy(false);
+      await resumeNativeWakeAfterTapIfNeeded();
     }
-  }, []);
+  }, [resumeNativeWakeAfterTapIfNeeded]);
 
   /**
    * Browser: no always-on wake mic (noise). Tap-to-talk arms a command window — speak a command directly or with
@@ -349,6 +366,19 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
       if (!rec) {
         setHint("Could not start microphone.");
         return;
+      }
+      /*
+       * Native wake holds the device mic — pause it for this WebView STT tap so the user always gets a response path.
+       * {@link resumeNativeWakeAfterTapIfNeeded} runs from `runPipeline` finally, `stopRec`, or empty `onend`.
+       */
+      if (isNativeCapacitor() && readNeoAlexaListen()) {
+        try {
+          const { NeoNativeRouter } = await import("@/lib/neoNativeRouter");
+          await NeoNativeRouter.stopWakeListener();
+          wakePausedForTapRef.current = true;
+        } catch {
+          /* tap may still work if wake was not running */
+        }
       }
       /*
        * Opening the command window on tap: same clip may be wake-free (e.g. “open WhatsApp”) or include Hello Neo.
@@ -403,6 +433,7 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
               tapFollowUpArmedRef.current = false;
             }
             setHint("I didn't quite hear that — tap again and speak clearly.");
+            await resumeNativeWakeAfterTapIfNeeded();
             return;
           }
           try {
@@ -423,10 +454,11 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
           clearNeoFollowUpSession();
           tapFollowUpArmedRef.current = false;
         }
+        await resumeNativeWakeAfterTapIfNeeded();
         setHint("Mic busy — try again.");
       }
     })();
-  }, [runPipeline, stopRec, stopWakeListen, clearTapIdle]);
+  }, [runPipeline, resumeNativeWakeAfterTapIfNeeded, stopRec, stopWakeListen, clearTapIdle]);
 
   useEffect(() => {
     const onVis = () => {
@@ -485,7 +517,7 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
             it. The page mic is only on while you hold a tap session. Optional tap greeting / “one moment” cues:{" "}
             <span className="font-medium text-black">Profile → Voice settings → Voice command audio</span>.{" "}
             {isNativeCapacitor()
-              ? "Hands-free wake listen (Profile): native listener until you say the wake phrase."
+              ? "Hands-free wake listen (Profile): native listener until you say the wake phrase. Tap Try Neo anytime — wake pauses briefly so the app can hear you."
               : "Always-on page mic is off — only this tap session uses the microphone."}
           </p>
         </div>
@@ -527,9 +559,8 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
             )}
             <button
               type="button"
-              disabled={alexaMode && isNativeCapacitor()}
               onClick={listening ? stopRec : startListen}
-              className={`flex w-full shrink-0 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-bold transition disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto ${
+              className={`flex w-full shrink-0 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-bold transition sm:w-auto ${
                 listening
                   ? "bg-red-600 text-white shadow-sm ring-2 ring-red-500/40 hover:bg-red-700"
                   : "bg-emerald-600 text-white shadow-sm hover:bg-emerald-700"
@@ -539,11 +570,7 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
               <span className={`text-lg tabular-nums ${listening ? "text-white/90" : "text-white/80"}`} aria-hidden>
                 {listening ? "■" : "●"}
               </span>
-              {alexaMode && isNativeCapacitor()
-                ? "Voice ready (off above)"
-                : listening
-                  ? "Stop"
-                  : "Tap — talk once"}
+              {listening ? "Stop" : "Tap — talk once"}
             </button>
           </div>
         </div>
@@ -622,9 +649,8 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
             )}
             <button
               type="button"
-              disabled={alexaMode && isNativeCapacitor()}
               onClick={listening ? stopRec : startListen}
-              className={`flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-bold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+              className={`flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-bold transition ${
                 listening
                   ? "bg-rose-500/25 text-rose-100 ring-2 ring-rose-400/50"
                   : "neo-gradient-fill text-[#050912] shadow-[0_4px_24px_rgba(0,212,255,0.28),0_4px_40px_rgba(106,92,255,0.2)] hover:brightness-105"
@@ -634,11 +660,7 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
               <span className="text-lg tabular-nums text-white/50" aria-hidden>
                 {listening ? "■" : "●"}
               </span>
-              {alexaMode && isNativeCapacitor()
-                ? "Voice ready (toggle off for tap)"
-                : listening
-                  ? "Stop"
-                  : "Tap — talk once"}
+              {listening ? "Stop" : "Tap — talk once"}
             </button>
           </div>
         </div>
