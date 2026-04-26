@@ -115,7 +115,7 @@ public final class NeoCommandRouter {
     }
 
     /**
-     * Wake / foreground listener registers this to resume {@link android.speech.SpeechRecognizer} after TTS.
+     * Wake / foreground listener registers this to resume mic pipeline after TTS.
      * Do not perform heavy work on this runnable’s thread.
      */
     public static void setAssistantSpeechEndedRunnable(Runnable r) {

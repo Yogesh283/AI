@@ -17,9 +17,6 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.PowerManager;
-import android.speech.RecognitionListener;
-import android.speech.RecognizerIntent;
-import android.speech.SpeechRecognizer;
 import android.util.Log;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
@@ -29,7 +26,6 @@ import java.io.OutputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.util.ArrayList;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -37,15 +33,9 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 /**
- * Foreground “Hello Neo” wake listener: one {@link SpeechRecognizer}, short relisten delays, no per-phrase
- * destroy/recreate. After wake + tail (see {@link #consumeRecognizerResults}): screen-off + voice-chat mode routes
- * to OpenAI chat + TTS. Screen-on always tries {@link NeoCommandRouter} first (WhatsApp/call/etc.) then chat fallback;
- * optional screen-off command routing can be enabled separately.
- * While {@link NeoCommandRouter} TTS plays, {@link NeoCommandRouter#isAISpeaking()} blocks feedback.
- * Background routing uses {@link NeoCommandRouter#beginSilentWakeRouting()} — no assistant TTS; OEM mic/UI sounds
- * are not fully suppressible from app code.
- * Optional {@link PorcupineStreamWake} path: raw {@link android.media.AudioRecord} + Picovoice Porcupine
- * (see {@link NeoPrefs#isWakePorcupineStreamEnabled}); command tail still uses one {@link SpeechRecognizer} pass.
+ * Foreground “Hello Neo” wake: single {@link android.media.AudioRecord} pipeline ({@link NeoVoicePipeline}) with
+ * Picovoice Porcupine + ring buffer + Whisper (no {@link android.speech.SpeechRecognizer}). Screen-off + voice-chat
+ * routes to chat; screen-on runs {@link NeoCommandRouter} then chat fallback; optional screen-off commands if enabled.
  */
 public class WakeWordForegroundService extends Service {
     public static final String ACTION_START = "com.neo.assistant.action.START_WAKE";
@@ -59,16 +49,10 @@ public class WakeWordForegroundService extends Service {
     private static final int NOTIFICATION_ID = 9001;
     private static final String TAG = "NeoWakeService";
 
-    private SpeechRecognizer recognizer;
-    private Intent recognizerIntent;
     private boolean shouldListen = false;
     /** When false, pause mic when display is off (default). When true, try to keep wake for lock-screen use. */
     private boolean listenScreenOff = false;
-    private PorcupineStreamWake porcupineWake;
-    private boolean porcupineMode;
-    /** After Porcupine fires, one {@link SpeechRecognizer} pass captures the command tail. */
-    private boolean capturingAfterPorcupineWake;
-    private long lastPorcupineKeywordMs;
+    private NeoVoicePipeline voicePipeline;
     private PowerManager.WakeLock wakeLock;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private BroadcastReceiver screenReceiver;
@@ -79,23 +63,14 @@ public class WakeWordForegroundService extends Service {
     private long followUpUntilMs = 0L;
     private static final long FOLLOWUP_WINDOW_MS = 14000L;
     /**
-     * Return value from {@link #consumeRecognizerResults(android.os.Bundle)}: do not schedule STT restart here —
+     * Return value from {@link #consumeVoiceTranscript(String)}: do not schedule STT restart here —
      * {@link NeoCommandRouter} will run {@link #resumeListeningRunnable} when TTS ends.
      */
     private static final int RELISTEN_DEFERRED = -1;
-    /**
-     * Gap before the next {@link SpeechRecognizer#startListening}. Too aggressive → OEM “tun” / audio-focus churn on
-     * many devices; one recognizer is still reused (no destroy/create per phrase).
-     */
-    /** Wider gaps → fewer back‑to‑back {@code startListening} calls on OEM devices (“tun” / focus cues). */
     private static final int RELISTEN_MS_QUICK = 1650;
     private static final int RELISTEN_MS_ERROR = 2200;
     /** Wake heard with no command tail — brief pause so the user can finish the phrase (Alexa-like beat). */
     private static final int RELISTEN_MS_AFTER_WAKE_ONLY = 2600;
-    /** After Porcupine releases {@link AudioRecord}, wait before {@link SpeechRecognizer} grabs mic (one handoff). */
-    private static final int STT_AFTER_PORCUPINE_STOP_MS = 720;
-    /** Hard guard: never hit back-to-back {@link SpeechRecognizer#startListening} calls. */
-    private static final long MIN_MS_BETWEEN_STT_STARTS = 1800L;
     /** If other app audio/video is active, stay idle and retry later. */
     private static final int MEDIA_ACTIVE_RECHECK_MS = 3000;
     private static final int MEDIA_ACTIVE_RECHECK_MAX_MS = 5200;
@@ -106,11 +81,6 @@ public class WakeWordForegroundService extends Service {
      */
     private static final boolean ENABLE_MIC_AUDIO_FOCUS = false;
 
-    /** True after {@link RecognitionListener#onReadyForSpeech}; prevents duplicate starts. */
-    private volatile boolean isListening = false;
-    /** True between startListening() call and callback state transition. */
-    private volatile boolean startInFlight = false;
-    private long lastStartListeningMs = 0L;
     private int mediaBackoffMs = MEDIA_ACTIVE_RECHECK_MS;
     private AudioManager audioManager;
     private AudioFocusRequest micAudioFocusRequest;
@@ -140,19 +110,45 @@ public class WakeWordForegroundService extends Service {
         createChannel();
         acquirePartialWakeLock();
         audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
-        initRecognizer();
-        /*
-         * Mic-on-demand policy:
-         * Prefer passive low-power Porcupine wake in all cases where available.
-         * This keeps SpeechRecognizer off unless wake is detected and command tail must be captured.
-         */
-        porcupineMode = PorcupineStreamWake.canInit(this) && NeoPrefs.isWakePorcupineStreamEnabled(this);
-        if (porcupineMode) {
-            porcupineWake =
-                new PorcupineStreamWake(
-                    getApplicationContext(),
-                    () -> mainHandler.post(this::onPorcupineKeywordMain));
-        }
+        voicePipeline =
+            new NeoVoicePipeline(
+                getApplicationContext(),
+                new NeoVoicePipeline.Host() {
+                    @Override
+                    public boolean shouldRun() {
+                        return shouldListen;
+                    }
+
+                    @Override
+                    public boolean mayUseMic() {
+                        return WakeWordForegroundService.this.mayUseMicNow();
+                    }
+
+                    @Override
+                    public boolean mediaBlocking() {
+                        return isMediaPlaybackActive();
+                    }
+
+                    @Override
+                    public boolean chatBusy() {
+                        return chatRequestInFlight;
+                    }
+
+                    @Override
+                    public boolean ttsPlaying() {
+                        return NeoCommandRouter.isAISpeaking();
+                    }
+
+                    @Override
+                    public void onTranscript(String raw) {
+                        WakeWordForegroundService.this.onVoicePipelineTranscript(raw);
+                    }
+
+                    @Override
+                    public void requestRelistenMs(int ms) {
+                        schedulePassiveRelisten(ms);
+                    }
+                });
         NeoCommandRouter.setAssistantSpeechEndedRunnable(
             () -> {
                 if (!shouldListen) return;
@@ -206,37 +202,22 @@ public class WakeWordForegroundService extends Service {
     }
 
     private void stopListeningSilently() {
-        clearRecognizerListeningState();
         releaseMicAudioFocus();
-        try {
-            if (recognizer != null) {
-                recognizer.stopListening();
-            }
-        } catch (Exception ignored) {
-        }
-        if (porcupineMode && porcupineWake != null && !capturingAfterPorcupineWake) {
-            porcupineWake.stopRelease();
-        }
     }
 
     private void resumePassiveMic() {
-        if (porcupineMode) {
-            if (capturingAfterPorcupineWake) {
-                return;
-            }
-            if (porcupineWake != null) {
-                porcupineWake.ensureStarted();
-            }
-            return;
-        }
-        startListeningSafe();
+        schedulePassiveRelisten(RELISTEN_MS_QUICK);
     }
 
-    private void onPorcupineKeywordMain() {
+    /** Whisper / pipeline delivered final user text on main thread. */
+    private void onVoicePipelineTranscript(String raw) {
         if (!shouldListen || !mayUseMicNow()) {
             return;
         }
         if (NeoCommandRouter.isAISpeaking()) {
+            return;
+        }
+        if (chatRequestInFlight) {
             return;
         }
         if (isMediaPlaybackActive()) {
@@ -244,30 +225,23 @@ public class WakeWordForegroundService extends Service {
             return;
         }
         mediaBackoffMs = MEDIA_ACTIVE_RECHECK_MS;
-        if (capturingAfterPorcupineWake) {
+        int delayMs = consumeVoiceTranscript(raw);
+        if (!shouldListen || !mayUseMicNow()) {
             return;
         }
-        long now = System.currentTimeMillis();
-        if (now - lastPorcupineKeywordMs < 1200L) {
+        if (NeoCommandRouter.isAISpeaking()) {
             return;
         }
-        lastPorcupineKeywordMs = now;
-        capturingAfterPorcupineWake = true;
-        if (porcupineWake != null) {
-            porcupineWake.stopRelease();
+        if (chatRequestInFlight) {
+            return;
         }
-        mainHandler.postDelayed(
-            () -> {
-                if (!shouldListen || !mayUseMicNow()) {
-                    capturingAfterPorcupineWake = false;
-                    return;
-                }
-                if (!capturingAfterPorcupineWake) {
-                    return;
-                }
-                startListeningSafe();
-            },
-            STT_AFTER_PORCUPINE_STOP_MS);
+        if (isMediaPlaybackActive()) {
+            schedulePassiveRelisten(nextMediaBackoffMs());
+            return;
+        }
+        if (delayMs != RELISTEN_DEFERRED) {
+            schedulePassiveRelisten(delayMs);
+        }
     }
 
     @Override
@@ -310,6 +284,9 @@ public class WakeWordForegroundService extends Service {
             return START_NOT_STICKY;
         }
         shouldListen = true;
+        if (voicePipeline != null) {
+            voicePipeline.start();
+        }
         resumePassiveMic();
         return START_STICKY;
     }
@@ -326,9 +303,9 @@ public class WakeWordForegroundService extends Service {
         NeoCommandRouter.setAssistantSpeechEndedRunnable(null);
         mainHandler.removeCallbacks(resumeListeningRunnable);
         mainHandler.removeCallbacksAndMessages(null);
-        if (porcupineWake != null) {
-            porcupineWake.shutdown();
-            porcupineWake = null;
+        if (voicePipeline != null) {
+            voicePipeline.shutdown();
+            voicePipeline = null;
         }
         try {
             if (screenReceiver != null) {
@@ -337,17 +314,7 @@ public class WakeWordForegroundService extends Service {
         } catch (Exception ignored) {
         }
         screenReceiver = null;
-        clearRecognizerListeningState();
         releaseMicAudioFocus();
-        try {
-            if (recognizer != null) {
-                recognizer.stopListening();
-                recognizer.cancel();
-                recognizer.destroy();
-            }
-        } catch (Exception ignored) {
-        }
-        recognizer = null;
         if (wakeLock != null && wakeLock.isHeld()) {
             wakeLock.release();
         }
@@ -361,112 +328,21 @@ public class WakeWordForegroundService extends Service {
         return null;
     }
 
-    private void initRecognizer() {
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) return;
-        /* Single recognizer for the foreground lifetime — only startListening again after each final result / error. */
-        recognizer = SpeechRecognizer.createSpeechRecognizer(this);
-        recognizer.setRecognitionListener(new RecognitionListener() {
-            @Override
-            public void onReadyForSpeech(android.os.Bundle params) {
-                isListening = true;
-                startInFlight = false;
-                mediaBackoffMs = MEDIA_ACTIVE_RECHECK_MS;
-            }
-            @Override public void onBeginningOfSpeech() {}
-            @Override public void onRmsChanged(float rmsdB) {}
-            @Override public void onBufferReceived(byte[] buffer) {}
-            @Override
-            public void onEndOfSpeech() {
-                isListening = false;
-                startInFlight = false;
-                releaseMicAudioFocus();
-            }
-            @Override public void onEvent(int eventType, android.os.Bundle params) {}
-
-            @Override
-            public void onError(int error) {
-                clearRecognizerListeningState();
-                releaseMicAudioFocus();
-                if (!shouldListen) return;
-                if (porcupineMode && capturingAfterPorcupineWake) {
-                    capturingAfterPorcupineWake = false;
-                    if (!mayUseMicNow()) return;
-                    if (NeoCommandRouter.isAISpeaking()) return;
-                    if (isMediaPlaybackActive()) {
-                        schedulePassiveRelisten(nextMediaBackoffMs());
-                        return;
-                    }
-                    schedulePassiveRelisten(RELISTEN_MS_ERROR);
-                    return;
-                }
-                if (!mayUseMicNow()) return;
-                if (NeoCommandRouter.isAISpeaking()) return;
-                if (isMediaPlaybackActive()) {
-                    schedulePassiveRelisten(nextMediaBackoffMs());
-                    return;
-                }
-                schedulePassiveRelisten(RELISTEN_MS_ERROR);
-            }
-
-            @Override
-            public void onResults(android.os.Bundle results) {
-                clearRecognizerListeningState();
-                releaseMicAudioFocus();
-                if (!shouldListen || !mayUseMicNow()) return;
-                if (NeoCommandRouter.isAISpeaking()) {
-                    if (porcupineMode) {
-                        capturingAfterPorcupineWake = false;
-                    }
-                    /* Drop finals captured while assistant TTS is playing (feedback loop). */
-                    return;
-                }
-                if (porcupineMode) {
-                    capturingAfterPorcupineWake = false;
-                }
-                int delayMs = consumeRecognizerResults(results);
-                if (!shouldListen || !mayUseMicNow()) return;
-                if (NeoCommandRouter.isAISpeaking()) return;
-                if (chatRequestInFlight) return;
-                if (isMediaPlaybackActive()) {
-                    schedulePassiveRelisten(nextMediaBackoffMs());
-                    return;
-                }
-                mediaBackoffMs = MEDIA_ACTIVE_RECHECK_MS;
-                if (delayMs != RELISTEN_DEFERRED) {
-                    schedulePassiveRelisten(delayMs);
-                }
-            }
-
-            @Override
-            public void onPartialResults(android.os.Bundle partialResults) {
-                /* Do not route commands from partials — each update re-fired TTS (“on it…”) and felt broken. */
-            }
-        });
-
-        recognizerIntent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-        recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-        recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault());
-        recognizerIntent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false);
-        recognizerIntent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
-        /* Slightly longer end windows reduce rapid stop/start of the same session (fewer focus beeps on some devices). */
-        /* Longer end-of-speech windows → fewer stop/start cycles and less OEM mic “tun” on many phones. */
-        recognizerIntent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2200L);
-        recognizerIntent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1550L);
-    }
-
     /**
      * Parses wake + command and runs {@link NeoCommandRouter#execute}.
      *
-     * @return ms to wait before {@link #startListeningSafe}, or {@link #RELISTEN_DEFERRED} if TTS owns the next start.
+     * @return ms to wait before relisten, or {@link #RELISTEN_DEFERRED} if TTS owns the next start.
      */
-    private int consumeRecognizerResults(android.os.Bundle bundle) {
+    private int consumeVoiceTranscript(String rawForTts) {
         if (!mayUseMicNow()) return RELISTEN_MS_QUICK;
-        if (bundle == null) return RELISTEN_MS_QUICK;
-        ArrayList<String> matches = bundle.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
-        if (matches == null || matches.isEmpty()) return RELISTEN_MS_QUICK;
-        String rawForTts = matches.get(0);
         String said = normalize(rawForTts);
         if (said.isEmpty()) return RELISTEN_MS_QUICK;
+
+        if (!isScreenInteractive() && voiceChatMode) {
+            handleWakeVoiceChat(said);
+            followUpUntilMs = System.currentTimeMillis() + FOLLOWUP_WINDOW_MS;
+            return RELISTEN_DEFERRED;
+        }
 
         String command = extractWakeCommand(said);
         if (command == null && (isScreenInteractive() || listenScreenOff)) {
@@ -486,12 +362,6 @@ public class WakeWordForegroundService extends Service {
         }
 
         if (!isScreenInteractive()) {
-            if (voiceChatMode) {
-                /* Screen off + voice-chat mode: “Hello Neo …” then OpenAI chat + TTS only (no app-command router). */
-                handleWakeVoiceChat(command);
-                followUpUntilMs = System.currentTimeMillis() + FOLLOWUP_WINDOW_MS;
-                return RELISTEN_DEFERRED;
-            }
             if (!listenScreenOff) {
                 return RELISTEN_MS_AFTER_WAKE_ONLY;
             }
@@ -652,46 +522,9 @@ public class WakeWordForegroundService extends Service {
         return s == null ? "" : s.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").trim();
     }
 
-    private void startListeningSafe() {
-        if (!shouldListen || recognizer == null || recognizerIntent == null) return;
-        if (!mayUseMicNow()) return;
-        if (isListening || startInFlight) return;
-        if (isMediaPlaybackActive()) {
-            schedulePassiveRelisten(nextMediaBackoffMs());
-            return;
-        }
-        long now = System.currentTimeMillis();
-        long elapsed = now - lastStartListeningMs;
-        if (elapsed < MIN_MS_BETWEEN_STT_STARTS) {
-            schedulePassiveRelisten((int) (MIN_MS_BETWEEN_STT_STARTS - elapsed));
-            return;
-        }
-        if (!requestMicAudioFocus()) {
-            schedulePassiveRelisten(nextMediaBackoffMs());
-            return;
-        }
-        try {
-            startInFlight = true;
-            lastStartListeningMs = now;
-            recognizer.startListening(recognizerIntent);
-        } catch (Exception ignored) {
-            clearRecognizerListeningState();
-            releaseMicAudioFocus();
-            if (mayUseMicNow()) {
-                schedulePassiveRelisten(1400);
-            }
-        }
-    }
-
-    /** One debounced “open mic again” pass — same {@link SpeechRecognizer} instance, no destroy/recreate. */
     private void schedulePassiveRelisten(long ms) {
         mainHandler.removeCallbacks(resumeListeningRunnable);
         mainHandler.postDelayed(resumeListeningRunnable, ms);
-    }
-
-    private void clearRecognizerListeningState() {
-        isListening = false;
-        startInFlight = false;
     }
 
     private int nextMediaBackoffMs() {
