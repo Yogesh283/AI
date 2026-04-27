@@ -103,17 +103,30 @@ final class NeoVoicePipeline implements Runnable {
     synchronized void shutdown() {
         running = false;
         Thread w = worker;
-        worker = null;
-        threadStarted = false;
+        /*
+         * IMPORTANT:
+         * Do not release AudioRecord/Porcupine from this thread while worker may still be inside
+         * AudioRecord.read()/pause()/resume(). Releasing native objects concurrently can trigger
+         * "pthread_mutex_lock called on a destroyed mutex" aborts on some OEM builds.
+         */
+        if (audioRecord != null) {
+            try {
+                audioRecord.stop(); // best-effort: unblock read() so worker can exit quickly
+            } catch (Exception ignored) {
+            }
+        }
         if (w != null) {
             try {
-                w.join(6000L);
+                w.join(7000L);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
         }
-        releaseAudio();
-        releasePorcupine();
+        worker = null;
+        threadStarted = false;
+        /*
+         * Worker thread owns native cleanup at end of run(). Avoid double/concurrent release here.
+         */
     }
 
     @Override
