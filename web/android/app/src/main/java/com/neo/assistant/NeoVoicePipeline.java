@@ -31,9 +31,9 @@ final class NeoVoicePipeline implements Runnable {
     /** Slightly longer pause tolerance so Hinglish / short gaps do not cut the clip early. */
     private static final long SILENCE_END_MS_FALLBACK = 420;
     private static final long WAKE_DEBOUNCE_MS = 1200L;
-    /** Mean abs PCM per sample; lower = quieter speech still starts capture (fallback, no Porcupine). */
-    private static final double FALLBACK_START_THRESHOLD = 260.0;
-    private static final double FALLBACK_SPEECH_THRESHOLD = 190.0;
+    /** Mean abs PCM per sample; keep conservative to avoid ambient false-captures when wake keyword is unavailable. */
+    private static final double FALLBACK_START_THRESHOLD = 620.0;
+    private static final double FALLBACK_SPEECH_THRESHOLD = 360.0;
 
     public interface Host {
         boolean shouldRun();
