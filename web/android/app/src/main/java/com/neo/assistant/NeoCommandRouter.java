@@ -300,6 +300,10 @@ public final class NeoCommandRouter {
             }
         }
 
+        if (handleYoutubeContextFollowUp(context, text, raw)) {
+            return true;
+        }
+
         String ytQuery = extractYouTubeQuery(text);
         if (ytQuery != null) {
             final String q = ytQuery;
@@ -994,8 +998,59 @@ public final class NeoCommandRouter {
             .replaceAll("\\b(of|by|ka|ki|ke)\\b", "")
             .replaceAll("\\s+", " ")
             .trim();
+        if (isGenericPronounOnlyQuery(q)) {
+            return null;
+        }
         if (q.isEmpty()) q = "latest songs";
         return q;
+    }
+
+    private static boolean isGenericPronounOnlyQuery(String q) {
+        if (q == null) return true;
+        String s = q.trim().toLowerCase(Locale.ROOT);
+        if (s.isEmpty()) return true;
+        return s.matches("(?i)^(this|that|it|ye|yeh|isko|iskoe|isko|is|iss|usko|us|wo|woh|वो|ये|यह)$");
+    }
+
+    /**
+     * After YouTube is already open, allow quick follow-up lines such as
+     * "yeh gaana play karo" / "is song ko chalao" by prompting for an explicit title
+     * when the query is ambiguous, instead of searching meaningless pronouns.
+     */
+    private static boolean handleYoutubeContextFollowUp(Context context, String text, String raw) {
+        if (!"youtube".equals(NeoPrefs.getLastVoiceAppContext(context))) {
+            return false;
+        }
+        boolean ytFollowUp =
+            text.contains("youtube")
+                || text.contains("you tube")
+                || text.contains("यूट्यूब")
+                || text.contains("यूटूब")
+                || text.contains("गाना")
+                || text.contains("गाने")
+                || text.contains("song")
+                || text.contains("music")
+                || text.contains("play")
+                || text.contains("चलाओ")
+                || text.contains("बजाओ")
+                || text.contains("सर्च")
+                || text.contains("search");
+        if (!ytFollowUp) {
+            return false;
+        }
+        String q = extractYouTubeQuery(text);
+        if (q == null || q.trim().isEmpty()) {
+            speak(context, "कौन सा गाना या वीडियो चलाना है? नाम बोलिए।");
+            NeoPrefs.armYoutubeVoiceQueryPending(context, 90_000L);
+            return true;
+        }
+        final String finalQ = q;
+        speakThen(
+            context,
+            "ठीक है, अभी चलाता हूँ।",
+            220,
+            () -> openYouTubeSearchForPlayback(context, finalQ));
+        return true;
     }
 
     private static boolean prefersWhatsAppBusiness(String t) {

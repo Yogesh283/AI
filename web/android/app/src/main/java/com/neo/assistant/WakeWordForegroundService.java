@@ -472,6 +472,10 @@ public class WakeWordForegroundService extends Service {
      * Keeps this mode independent from app-intent command router behavior.
      */
     private void handleWakeVoiceChat(String userText) {
+        /* Safety guard: wake voice-chat belongs to screen-off flow only. */
+        if (isScreenInteractive()) {
+            return;
+        }
         final String q = userText == null ? "" : userText.trim();
         if (q.isEmpty()) {
             return;
@@ -496,8 +500,16 @@ public class WakeWordForegroundService extends Service {
                                 NeoCommandRouter.speakVoiceChatReply(this, out);
                                 return;
                             }
-                            if (NeoCommandRouter.isAISpeaking()) return;
-                            schedulePassiveRelisten(RELISTEN_MS_ERROR);
+                            /*
+                             * Always respond audibly after wake+query, even on transient backend failures.
+                             * Keeps the assistant feeling present and trustworthy.
+                             */
+                            NeoCommandRouter.speakVoiceChatReply(
+                                this,
+                                "मैं सुन रही हूँ। नेटवर्क थोड़ा धीमा है, कृपया एक बार फिर बोलिए।");
+                            if (!NeoCommandRouter.isAISpeaking()) {
+                                schedulePassiveRelisten(RELISTEN_MS_ERROR);
+                            }
                         });
                 },
                 "neo-wake-chat")
