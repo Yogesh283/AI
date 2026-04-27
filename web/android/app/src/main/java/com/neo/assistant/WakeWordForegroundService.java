@@ -373,26 +373,28 @@ public class WakeWordForegroundService extends Service {
         boolean screenOnNow = isScreenInteractive();
         String command = extractWakeCommand(said, screenOnNow);
         if (command == null) {
-            if (isSpeechFirstFallbackMode()) {
+            if (screenOnNow) {
+                /*
+                 * On-screen assistant mode: allow direct commands without forcing wake phrase every turn.
+                 * Off-screen path remains wake-gated ("Hello Neo").
+                 */
+                command = said;
+            } else if (isSpeechFirstFallbackMode()) {
                 /*
                  * Porcupine assets are unavailable in this build. Route transcript directly so multilingual
                  * wake mis-hears ("हलो/హలో/हैलो ...") still execute app commands or fall back to voice chat.
                  */
-                if (screenOnNow) {
-                    command = said;
-                } else {
-                    return RELISTEN_MS_QUICK;
-                }
+                return RELISTEN_MS_QUICK;
             } else {
-            Log.i(
-                TAG,
-                "voiceCommand ignored: no wake phrase match (Porcupine="
-                    + wakeKeywordAvailable
-                    + ") len="
-                    + said.length()
-                    + " text="
-                    + (said.length() > 160 ? said.substring(0, 160) + "..." : said));
-            return RELISTEN_MS_QUICK;
+                Log.i(
+                    TAG,
+                    "voiceCommand ignored: no wake phrase match (Porcupine="
+                        + wakeKeywordAvailable
+                        + ") len="
+                        + said.length()
+                        + " text="
+                        + (said.length() > 160 ? said.substring(0, 160) + "..." : said));
+                return RELISTEN_MS_QUICK;
             }
         }
 
