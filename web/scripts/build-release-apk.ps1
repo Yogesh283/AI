@@ -36,6 +36,9 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & npx.cmd cap sync android
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+& "$PSScriptRoot\verify-capacitor-live-url.ps1"
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
 Set-Location (Join-Path $WebDir "android")
 
 $tasks = @('clean')
