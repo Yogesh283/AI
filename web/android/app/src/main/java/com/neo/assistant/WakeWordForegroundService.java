@@ -64,8 +64,8 @@ public class WakeWordForegroundService extends Service {
      * {@link NeoCommandRouter} will run {@link #resumeListeningRunnable} when TTS ends.
      */
     private static final int RELISTEN_DEFERRED = -1;
-    private static final int RELISTEN_MS_QUICK = 480;
-    private static final int RELISTEN_MS_ERROR = 900;
+    private static final int RELISTEN_MS_QUICK = 260;
+    private static final int RELISTEN_MS_ERROR = 520;
     /** Wake heard with no command tail — brief pause so the user can finish the phrase (Alexa-like beat). */
     private static final int RELISTEN_MS_AFTER_WAKE_ONLY = 1200;
     /** Screen-off voice mode should feel snappier than the default wake-only pause. */
@@ -399,7 +399,14 @@ public class WakeWordForegroundService extends Service {
         }
 
         if (command.isEmpty()) {
-            /* Wake only — no TTS in background listener (silent operation; no speaker→mic overlap). */
+            /*
+             * User expectation: one "Hello Neo" should always produce an audible acknowledgment.
+             * Keep it short and let TTS completion drive the next relisten.
+             */
+            NeoCommandRouter.speakWakeListeningAck(this, rawForTts);
+            if (NeoCommandRouter.isAISpeaking()) {
+                return RELISTEN_DEFERRED;
+            }
             if (!isScreenInteractive()) {
                 return RELISTEN_MS_AFTER_WAKE_ONLY_SCREEN_OFF;
             }
@@ -419,7 +426,7 @@ public class WakeWordForegroundService extends Service {
 
         String key = command.trim().toLowerCase(Locale.ROOT);
         long now = System.currentTimeMillis();
-        long dedupeWindowMs = isScreenInteractive() ? 3200L : 1800L;
+        long dedupeWindowMs = isScreenInteractive() ? 1400L : 900L;
         if (key.equals(lastHandledCommandKey) && (now - lastHandledCommandMs) < dedupeWindowMs) {
             return RELISTEN_MS_QUICK;
         }
@@ -441,9 +448,12 @@ public class WakeWordForegroundService extends Service {
         boolean handled = NeoCommandRouter.execute(this, command);
         if (!handled) {
             /*
-             * Screen ON: "Hello Neo" is command-only. Voice chat remains owned by the
-             * dedicated voice chat page/session in the Web app.
+             * Always give audible feedback so the user knows Neo heard them.
              */
+            NeoCommandRouter.speakCommandNotUnderstood(this, rawForTts);
+            if (NeoCommandRouter.isAISpeaking()) {
+                return RELISTEN_DEFERRED;
+            }
             return RELISTEN_MS_QUICK;
         }
         if (NeoCommandRouter.isAISpeaking()) {

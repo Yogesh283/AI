@@ -111,7 +111,7 @@ public final class NeoCommandRouter {
     public static void speakCommandNotUnderstood(Context context, String rawHeard) {
         speak(
             context,
-            "समझ नहीं आया। जैसे बोलिए: संपर्क सूची खोलो, व्हाट्सऐप खोलो, या यूट्यूब पर गाना चलाओ।");
+            "माफ कीजिए, समझ नहीं आया। दोबारा बोलिए।");
     }
 
     /** @return true while Neo voice acknowledgement / reply TTS is active */
@@ -137,9 +137,7 @@ public final class NeoCommandRouter {
 
     /** Wake heard with no command tail — short, assistant-style prompt (Alexa-like: brief + one beat to speak). */
     public static void speakWakeListeningAck(Context context, String rawHeard) {
-        speak(
-            context,
-            "जी, सुन रहा हूँ। व्हाट्सऐप खोलकर किसी को ढूंढना, संदेश पढ़ना, इसे संदेश भेजना, कॉल, या यूट्यूब—जो चाहिए बोलिए।");
+        speak(context, "जी, बोलिए।");
     }
 
     /** Wake voice-chat mode: speak backend/OpenAI chat text reply via the same TTS channel. */
@@ -170,6 +168,12 @@ public final class NeoCommandRouter {
             return true;
         }
         if (handlePendingCallDisambiguation(context, text, raw)) {
+            return true;
+        }
+        if (handleGenericCallPromptIntent(context, text)) {
+            return true;
+        }
+        if (handleFollowUpCallIntent(context, text, raw)) {
             return true;
         }
         /* UI-only — no TTS (avoids speaker→mic loop and “bar bar” prompts). */
@@ -1096,13 +1100,19 @@ public final class NeoCommandRouter {
                     speakThen(
                         context,
                         "आपकी आखिरी व्हाट्सऐप सूचना: " + snippet,
-                        2000,
+                        420,
                         () ->
                             openPreferredAppThenStore(
                                 context,
                                 new String[] {"com.whatsapp", "com.whatsapp.w4b"},
                                 Uri.parse("whatsapp://send"),
                                 "com.whatsapp"));
+                    busyAckHandler.postDelayed(
+                        () ->
+                            speak(
+                                context,
+                                "किसे मैसेज करना है? नाम बोलिए, मैं चैट खोलकर मैसेज तैयार कर दूंगा।"),
+                        820L);
                     return true;
                 }
             }
@@ -1120,7 +1130,7 @@ public final class NeoCommandRouter {
         speakThen(
             context,
             ("wa".equals(app) ? "व्हाट्सऐप" : "टेलीग्राम") + " की सूचना: " + speakLine,
-            2200,
+            420,
             () -> {
                 if (openWa) {
                     openPreferredAppThenStore(
@@ -1136,6 +1146,12 @@ public final class NeoCommandRouter {
                         "org.telegram.messenger");
                 }
             });
+        busyAckHandler.postDelayed(
+            () ->
+                speak(
+                    context,
+                    "अब बताइए किसे मैसेज करना है। नाम बोलिए, मैं मैसेज तैयार कर दूंगा।"),
+            820L);
         return true;
     }
 
@@ -1725,6 +1741,52 @@ public final class NeoCommandRouter {
         }
         String name = extractCallName(t);
         return name != null && name.length() >= 2;
+    }
+
+    /** Generic call with no target (e.g. "call karo") should prompt immediately for contact name/number. */
+    private static boolean handleGenericCallPromptIntent(Context context, String text) {
+        boolean wantsCall =
+            text.matches(".*\\b(call|dial|phone|ring)\\b.*") || text.contains("कॉल") || text.contains("फोन");
+        if (!wantsCall) {
+            return false;
+        }
+        if (extractTel(text) != null) {
+            return false;
+        }
+        if (extractCallName(text) != null) {
+            return false;
+        }
+        speak(context, "किसे कॉल करना है? नाम या नंबर बोलिए।");
+        return true;
+    }
+
+    /**
+     * "Usko call karo" follow-up: if the user already selected/found a target earlier,
+     * reuse that phone number for a quick dial command.
+     */
+    private static boolean handleFollowUpCallIntent(Context context, String text, String raw) {
+        boolean wantsCall =
+            text.matches(".*\\b(call|dial|phone|ring)\\b.*") || text.contains("कॉल") || text.contains("फोन");
+        if (!wantsCall) {
+            return false;
+        }
+        boolean pronounTarget =
+            text.matches(".*\\b(usko|uskoe|isko|iskoe|him|her|them|that|this)\\b.*")
+                || text.contains("उसको")
+                || text.contains("उसे")
+                || text.contains("इसको")
+                || text.contains("इसे");
+        if (!pronounTarget) {
+            return false;
+        }
+        String digits = NeoPrefs.getVoiceComposePhoneDigits(context);
+        if (digits == null || digits.length() < 11) {
+            speak(context, "किसे कॉल करना है? नाम या नंबर बोलिए।");
+            return true;
+        }
+        final String tel = "tel:+" + digits.replaceAll("\\D", "");
+        speakThen(context, calmCallPhrase(raw), 260, () -> startTelIntent(context, tel));
+        return true;
     }
 
     /**
