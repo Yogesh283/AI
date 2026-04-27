@@ -64,7 +64,7 @@ public class WakeWordForegroundService extends Service {
      * {@link NeoCommandRouter} will run {@link #resumeListeningRunnable} when TTS ends.
      */
     private static final int RELISTEN_DEFERRED = -1;
-    private static final int RELISTEN_MS_QUICK = 1050;
+    private static final int RELISTEN_MS_QUICK = 720;
     private static final int RELISTEN_MS_ERROR = 1500;
     /** Wake heard with no command tail — brief pause so the user can finish the phrase (Alexa-like beat). */
     private static final int RELISTEN_MS_AFTER_WAKE_ONLY = 1850;
@@ -84,8 +84,8 @@ public class WakeWordForegroundService extends Service {
     private AudioFocusRequest micAudioFocusRequest;
     private volatile boolean voiceChatMode = false;
     private volatile boolean chatRequestInFlight = false;
-    private static final int CHAT_CONNECT_TIMEOUT_MS = 5500;
-    private static final int CHAT_READ_TIMEOUT_MS = 9000;
+    private static final int CHAT_CONNECT_TIMEOUT_MS = 4200;
+    private static final int CHAT_READ_TIMEOUT_MS = 7200;
     /** Same-origin Next proxy as the WebView — not bare {@code /api/chat} on the public host. */
     private static final String CHAT_API_FALLBACK = "https://myneoxai.com/neo-api/api/chat";
     private static volatile boolean runningNow = false;
@@ -369,6 +369,13 @@ public class WakeWordForegroundService extends Service {
 
         String command = extractWakeCommand(said);
         if (command == null) {
+            if (isSpeechFirstFallbackMode()) {
+                /*
+                 * Porcupine assets are unavailable in this build. Route transcript directly so multilingual
+                 * wake mis-hears ("हलो/హలో/हैलो ...") still execute app commands or fall back to voice chat.
+                 */
+                command = said;
+            } else {
             Log.i(
                 TAG,
                 "voiceCommand ignored: no wake phrase match (Porcupine="
@@ -378,6 +385,7 @@ public class WakeWordForegroundService extends Service {
                     + " text="
                     + (said.length() > 160 ? said.substring(0, 160) + "..." : said));
             return RELISTEN_MS_QUICK;
+            }
         }
 
         if (command.isEmpty()) {
@@ -414,6 +422,11 @@ public class WakeWordForegroundService extends Service {
             return RELISTEN_DEFERRED;
         }
         return RELISTEN_MS_QUICK;
+    }
+
+    /** Speech-first fallback when Porcupine keyword model is unavailable but wake voice-chat mode is on. */
+    private boolean isSpeechFirstFallbackMode() {
+        return !wakeKeywordAvailable && voiceChatMode;
     }
 
     /**
@@ -552,7 +565,12 @@ public class WakeWordForegroundService extends Service {
         if (lower.contains("youtube") || lower.contains("you tube")) return true;
         if (s.contains("यूट्यूब") || s.contains("यूटूब")) return true;
         if (lower.contains("whatsapp")) return true;
-        if (s.contains("व्हाट्स") || s.contains("व्हाट्सऐप")) return true;
+        if (s.contains("व्हाट्स")
+                || s.contains("व्हाट्सऐप")
+                || s.contains("वटसप")
+                || s.contains("वॉट्सएप")
+                || s.contains("వాట్సాప్")
+                || s.contains("వర్చప్")) return true;
         if (lower.contains("telegram")) return true;
         if (s.contains("संपर्क") && (lower.contains("open") || s.contains("खोल"))) return true;
         if (lower.matches("(?is)^(open\\s+)?youtube\\s*$")) return true;
