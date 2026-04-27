@@ -26,11 +26,13 @@ final class NeoVoicePipeline implements Runnable {
     private static final int MAX_CAPTURE_SAMPLES = 16000 * 22;
     private static final long MIN_CAPTURE_SAMPLES = 4800;
     private static final long MIN_SPEECH_MS_FOR_TRANSCRIBE = 420;
-    private static final long MIN_SPEECH_MS_FOR_TRANSCRIBE_FALLBACK = 700;
+    private static final long MIN_SPEECH_MS_FOR_TRANSCRIBE_FALLBACK = 400;
     private static final long SILENCE_END_MS = 480;
-    private static final long SILENCE_END_MS_FALLBACK = 820;
+    /** Slightly longer pause tolerance so Hinglish / short gaps do not cut the clip early. */
+    private static final long SILENCE_END_MS_FALLBACK = 1050;
     private static final long WAKE_DEBOUNCE_MS = 1200L;
-    private static final double FALLBACK_START_THRESHOLD = 320.0;
+    /** Mean abs PCM per sample; lower = quieter speech still starts capture (fallback, no Porcupine). */
+    private static final double FALLBACK_START_THRESHOLD = 340.0;
     private static final double FALLBACK_SPEECH_THRESHOLD = 260.0;
 
     public interface Host {
@@ -144,6 +146,11 @@ final class NeoVoicePipeline implements Runnable {
         }
         int bufSize = Math.max(minBuf, frameLen * 6);
         try {
+            /*
+             * Always MIC: VOICE_RECOGNITION often yields much lower levels on OEM devices, so users had to
+             * shout for fallback (no Porcupine) capture; MIC matches the wake path and improves consistency.
+             */
+            final int audioSource = MediaRecorder.AudioSource.MIC;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 AudioFormat fmt =
                     new AudioFormat.Builder()
@@ -154,22 +161,19 @@ final class NeoVoicePipeline implements Runnable {
                 audioRecord =
                     new AudioRecord.Builder()
                         .setAudioFormat(fmt)
-                        /*
-                         * Some OEM ROMs (esp. MediaTek variants) feed very weak/blank audio on
-                         * VOICE_RECOGNITION in background capture. MIC is more reliable for wake pipeline.
-                         */
-                        .setAudioSource(MediaRecorder.AudioSource.MIC)
+                        .setAudioSource(audioSource)
                         .setBufferSizeInBytes(bufSize)
                         .build();
             } else {
                 audioRecord =
                     new AudioRecord(
-                        MediaRecorder.AudioSource.MIC,
+                        audioSource,
                         sampleRate,
                         AudioFormat.CHANNEL_IN_MONO,
                         AudioFormat.ENCODING_PCM_16BIT,
                         bufSize);
             }
+            Log.i(TAG, "Audio source selected=MIC wakeEnabled=" + wakeWordEnabled);
         } catch (Exception e) {
             Log.e(TAG, "AudioRecord create failed", e);
             releasePorcupine();
@@ -344,7 +348,7 @@ final class NeoVoicePipeline implements Runnable {
                             + spokenMs
                             + " samples="
                             + capturedSamples);
-            mainHandler.post(() -> host.requestRelistenMs(1200));
+            mainHandler.post(() -> host.requestRelistenMs(700));
             return;
         }
         Log.i(
@@ -374,7 +378,7 @@ final class NeoVoicePipeline implements Runnable {
         }
         final String out = text == null ? "" : text.trim();
         if (out.isEmpty()) {
-            mainHandler.post(() -> host.requestRelistenMs(1800));
+            mainHandler.post(() -> host.requestRelistenMs(1000));
             return;
         }
         mainHandler.post(() -> host.onTranscript(out));

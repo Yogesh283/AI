@@ -96,7 +96,12 @@ public final class NeoCommandRouter {
             ActivityManager.getMyMemoryState(info);
             int imp = info.importance;
             return imp == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
-                || imp == ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE;
+                || imp == ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE
+                /*
+                 * FGS + brief background: still allow routing to MainActivity / external VIEW so WhatsApp
+                 * opens after the queued activity intent (avoids “nothing happened” on some OEMs).
+                 */
+                || imp == ActivityManager.RunningAppProcessInfo.IMPORTANCE_PERCEPTIBLE;
         } catch (Exception ignored) {
             return false;
         }
@@ -208,7 +213,7 @@ public final class NeoCommandRouter {
                 context,
                 raw,
                 calmOpenContactsPhrase(raw),
-                1000,
+                520,
                 () -> openContactsApp(context),
                 afterContactsOpenedPrompt(raw));
             return true;
@@ -230,7 +235,7 @@ public final class NeoCommandRouter {
                     context,
                     raw,
                     calmOpenMusicPhrase(raw),
-                    1300,
+                    620,
                     () -> {
                         Intent launch =
                             context.getPackageManager()
@@ -266,7 +271,7 @@ public final class NeoCommandRouter {
                 context,
                 raw,
                 calmOpenYouTubePhrase(raw),
-                1400,
+                620,
                 () -> openYouTubeSearchForPlayback(context, q),
                 afterYouTubeOpenedPrompt(raw));
             return true;
@@ -288,7 +293,7 @@ public final class NeoCommandRouter {
                 context,
                 raw,
                 calmOpenWhatsAppPhrase(raw),
-                1400,
+                520,
                 () -> {
                     openPreferredAppThenStore(
                         context,
@@ -314,7 +319,7 @@ public final class NeoCommandRouter {
                 context,
                 raw,
                 calmOpenTelegramPhrase(raw),
-                1400,
+                520,
                 () -> {
                     openPreferredAppThenStore(
                         context,
@@ -479,7 +484,7 @@ public final class NeoCommandRouter {
         if (isSilentWakeRouting()) {
             isAISpeaking = true;
             /* Slightly longer than before so activity/audio focus settles before STT relisten (fewer OEM “tun”). */
-            long d = Math.min(Math.max(delayMs, 0L), 900L);
+            long d = Math.min(Math.max(delayMs, 0L), 650L);
             pendingBusyRunnable =
                 () -> {
                     pendingBusyRunnable = null;
@@ -519,7 +524,7 @@ public final class NeoCommandRouter {
     ) {
         if (isSilentWakeRouting()) {
             isAISpeaking = true;
-            long d = Math.min(Math.max(delayMs, 0L), 900L);
+            long d = Math.min(Math.max(delayMs, 0L), 650L);
             pendingBusyRunnable =
                 () -> {
                     pendingBusyRunnable = null;
@@ -543,7 +548,7 @@ public final class NeoCommandRouter {
                 } catch (Exception ignored) {
                 }
                 if (followUp != null && !followUp.isEmpty()) {
-                    busyAckHandler.postDelayed(() -> speak(context, followUp), 2350L);
+                    busyAckHandler.postDelayed(() -> speak(context, followUp), 1250L);
                 }
             });
     }
@@ -555,7 +560,7 @@ public final class NeoCommandRouter {
     private static void applyNeoAssistantVoiceProfile() {
         if (tts == null || !ttsReady) return;
         try {
-            tts.setSpeechRate(0.86f);
+            tts.setSpeechRate(0.93f);
             tts.setPitch(1.0f);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 Voice v = pickBestAssistantVoice(tts, ASSISTANT_TTS_LOCALE);
@@ -1194,7 +1199,7 @@ public final class NeoCommandRouter {
                 context,
                 raw,
                 "ठीक है, व्हाट्सऐप में " + name + " की चैट खोल रहा हूँ।",
-                1400,
+                520,
                 () ->
                     openPreferredAppThenStore(
                         context,
@@ -1208,7 +1213,7 @@ public final class NeoCommandRouter {
                 context,
                 raw,
                 "ठीक है, टेलीग्राम में " + name + " से जुड़ रहा हूँ।",
-                1400,
+                520,
                 () ->
                     openPreferredAppThenStore(
                         context,
@@ -1298,7 +1303,7 @@ public final class NeoCommandRouter {
                 context,
                 raw,
                 "ठीक है, व्हाट्सऐप में टाइप कर रहा हूँ। भेजने के लिए ज़रूरत पड़ने पर आप भेजें दबा दीजिएगा।",
-                1200,
+                480,
                 () ->
                     openPreferredAppThenStore(
                         context,
@@ -1315,7 +1320,7 @@ public final class NeoCommandRouter {
                 context,
                 raw,
                 "ठीक है, टेलीग्राम में मैसेज भर रहा हूँ। ज़रूरत पड़ने पर आप भेजें दबा दीजिएगा।",
-                1200,
+                480,
                 () ->
                     openPreferredAppThenStore(
                         context,
@@ -1733,7 +1738,7 @@ public final class NeoCommandRouter {
                 context,
                 raw,
                 "ठीक है, " + name + " को व्हाट्सऐप संदेश तैयार कर रहा हूँ।",
-                1200,
+                480,
                 () ->
                     openPreferredAppThenStore(
                         context,
@@ -1749,7 +1754,7 @@ public final class NeoCommandRouter {
             context,
             raw,
             "ठीक है, " + name + " को टेलीग्राम संदेश तैयार कर रहा हूँ।",
-            1200,
+            480,
             () ->
                 openPreferredAppThenStore(
                     context,
@@ -1973,6 +1978,24 @@ public final class NeoCommandRouter {
         openPreferredAppThenStoreInternal(context, candidatePkgs, appUri, playStorePackageId);
     }
 
+    /**
+     * When {@code whatsapp://} is ignored by the resolver, {@code https://api.whatsapp.com/send?…} often still
+     * hands off to the installed app (OEM / WebView-dependent).
+     */
+    private static Uri whatsappHttpsFallbackFrom(Uri appUri) {
+        if (appUri == null || appUri.getScheme() == null) {
+            return null;
+        }
+        if (!"whatsapp".equalsIgnoreCase(appUri.getScheme())) {
+            return null;
+        }
+        String q = appUri.getEncodedQuery();
+        if (q != null && !q.isEmpty()) {
+            return Uri.parse("https://api.whatsapp.com/send?" + q);
+        }
+        return Uri.parse("https://api.whatsapp.com/send");
+    }
+
     private static void openPreferredAppThenStoreInternal(
         Context context,
         String[] candidatePkgs,
@@ -2005,6 +2028,28 @@ public final class NeoCommandRouter {
         Intent viewNoPkg = new Intent(Intent.ACTION_VIEW, appUri);
         if (viewNoPkg.resolveActivity(pm) != null && startActivityCompat(context, viewNoPkg)) {
             return;
+        }
+
+        if ("com.whatsapp".equals(playStorePackageId)) {
+            Uri https = whatsappHttpsFallbackFrom(appUri);
+            if (https != null) {
+                for (String pkg : candidatePkgs) {
+                    if (pm.getLaunchIntentForPackage(pkg) == null) {
+                        continue;
+                    }
+                    Intent hi = new Intent(Intent.ACTION_VIEW, https);
+                    hi.setPackage(pkg);
+                    hi.addCategory(Intent.CATEGORY_BROWSABLE);
+                    if (startActivityCompat(context, hi)) {
+                        return;
+                    }
+                }
+                Intent hiOpen = new Intent(Intent.ACTION_VIEW, https);
+                hiOpen.addCategory(Intent.CATEGORY_BROWSABLE);
+                if (hiOpen.resolveActivity(pm) != null && startActivityCompat(context, hiOpen)) {
+                    return;
+                }
+            }
         }
 
         Uri storeUri = Uri.parse("market://details?id=" + playStorePackageId);

@@ -397,14 +397,22 @@ async def transcribe_audio_whisper(
     audio_bytes: bytes,
     filename: str,
     content_type: str | None,
+    language: str | None = None,
 ) -> str:
-    """Speech-to-text via OpenAI Whisper. Empty string if no API key."""
+    """Speech-to-text via OpenAI Whisper. Empty string if no API key.
+
+    Optional ISO-639-1 ``language`` (e.g. ``hi``) improves accuracy for non-English speech when auto-detect fails.
+    """
     key = _openai_api_key()
     if not key:
         return ""
     # Whisper accepts many types; default if missing
     mime = content_type or "application/octet-stream"
     safe_name = filename.strip() or "audio.webm"
+    data: dict[str, str] = {"model": "whisper-1"}
+    lang = (language or "").strip().lower()[:8]
+    if len(lang) == 2:
+        data["language"] = lang
     async with _openai_async_client() as client:
         try:
             r = await _post_openai_with_retries(
@@ -412,7 +420,7 @@ async def transcribe_audio_whisper(
                 "https://api.openai.com/v1/audio/transcriptions",
                 headers={"Authorization": f"Bearer {key}"},
                 files={"file": (safe_name, audio_bytes, mime)},
-                data={"model": "whisper-1"},
+                data=data,
             )
             r.raise_for_status()
         except httpx.RequestError as e:

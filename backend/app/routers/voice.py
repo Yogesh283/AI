@@ -4,7 +4,7 @@ import logging
 import os
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
 from pydantic import BaseModel, Field
 from zoneinfo import ZoneInfo
 
@@ -30,7 +30,10 @@ class TtsBody(BaseModel):
 
 
 @router.post("/transcribe")
-async def transcribe(audio: UploadFile | None = File(None)) -> dict:
+async def transcribe(
+    audio: UploadFile | None = File(None),
+    language: str | None = Form(None),
+) -> dict:
     """
     Optional upload → Whisper. **Hello Neo / wake listen does not use this route** — device mic STT runs in the
     browser or in `WakeWordForegroundService`. No server-side mic session for wake commands.
@@ -52,7 +55,12 @@ async def transcribe(audio: UploadFile | None = File(None)) -> dict:
         }
 
     ct = audio.content_type
-    text = await transcribe_audio_whisper(raw, audio.filename or "audio.webm", ct)
+    text = await transcribe_audio_whisper(
+        raw,
+        audio.filename or "audio.webm",
+        ct,
+        language=language,
+    )
     if not text:
         return {
             "text": "",

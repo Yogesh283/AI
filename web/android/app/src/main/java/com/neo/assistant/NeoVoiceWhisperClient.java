@@ -1,6 +1,7 @@
 package com.neo.assistant;
 
 import android.util.Log;
+import java.util.Locale;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -50,14 +51,27 @@ final class NeoVoiceWhisperClient {
             conn = (HttpURLConnection) new URL(endpoint).openConnection();
             conn.setRequestMethod("POST");
             conn.setDoOutput(true);
-            conn.setConnectTimeout(9000);
-            conn.setReadTimeout(60000);
+            conn.setConnectTimeout(7000);
+            conn.setReadTimeout(45000);
             /* Default Java HttpURLConnection user-agent is often blocked by CDNs / WAFs. */
             conn.setRequestProperty(
                     "User-Agent",
                     "NeoAssistant-Android/" + BuildConfig.VERSION_NAME + " (voice-transcribe)");
             conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
             conn.setRequestProperty("Accept", "application/json");
+            String lang = Locale.getDefault().getLanguage();
+            boolean sendLang =
+                    lang != null
+                            && lang.length() == 2
+                            && !lang.equalsIgnoreCase("en");
+            byte[] langPart =
+                    sendLang
+                            ? ("--" + boundary + "\r\n"
+                                            + "Content-Disposition: form-data; name=\"language\"\r\n\r\n"
+                                            + lang.toLowerCase(Locale.ROOT)
+                                            + "\r\n")
+                                    .getBytes(StandardCharsets.UTF_8)
+                            : null;
             byte[] partHeader =
                 ("--" + boundary + "\r\n"
                         + "Content-Disposition: form-data; name=\"audio\"; filename=\"audio.wav\"\r\n"
@@ -65,6 +79,9 @@ final class NeoVoiceWhisperClient {
                     .getBytes(StandardCharsets.UTF_8);
             byte[] partFooter = ("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8);
             try (OutputStream os = conn.getOutputStream()) {
+                if (langPart != null) {
+                    os.write(langPart);
+                }
                 os.write(partHeader);
                 os.write(wavBytes);
                 os.write(partFooter);

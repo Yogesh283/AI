@@ -147,6 +147,11 @@ public class MainActivity extends BridgeActivity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+        /*
+         * Voice → WhatsApp/Telegram is queued via EXTRA_VOICE_EXTERNAL_SPEC while this activity is already
+         * foreground (singleTop). onResume may not re-run before the user expects the app to open — consume here.
+         */
+        NeoCommandRouter.consumeVoiceExternalLaunchSpec(this);
     }
 
     @Override
