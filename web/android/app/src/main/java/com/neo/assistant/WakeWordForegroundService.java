@@ -369,6 +369,14 @@ public class WakeWordForegroundService extends Service {
 
         String command = extractWakeCommand(said);
         if (command == null) {
+            Log.i(
+                TAG,
+                "voiceCommand ignored: no wake phrase match (Porcupine="
+                    + wakeKeywordAvailable
+                    + ") len="
+                    + said.length()
+                    + " text="
+                    + (said.length() > 160 ? said.substring(0, 160) + "..." : said));
             return RELISTEN_MS_QUICK;
         }
 
@@ -495,41 +503,33 @@ public class WakeWordForegroundService extends Service {
         }
     }
 
+    /**
+     * Wake phrase + command tail. Uses one regex so delimiter offset bugs cannot clip the wake word
+     * (older code used {@code m.start()} on a pattern that included a leading space, so {@code endOfWake}
+     * often failed and the whole utterance was mis-parsed).
+     *
+     * <p>Includes common Whisper/ASR variants because Porcupine assets are often missing in dev APKs
+     * ({@code wakeKeywordAvailable=false}).
+     */
+    private static final Pattern WAKE_IN_UTTERANCE =
+        Pattern.compile(
+            "(?:^|[\\s,.!?])(?:"
+                + "hello\\s*neo|hello\\s*new|hello\\s*niyo|hello\\s*nio|"
+                + "hey\\s*neo|hi\\s*neo|halo\\s*neo|helo\\s*neo|hallo\\s*neo|yellow\\s*neo|"
+                + "हेलो\\s*नियो|हैलो\\s*नियो|नमस्ते\\s*नियो"
+                + ")(?=[\\s,.!?]|$)",
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+
     private String extractWakeCommand(String said) {
-        int i = indexOfWake(said);
-        if (i < 0) return null;
-        int end = endOfWake(said, i);
-        String rest = said.substring(Math.min(end, said.length())).trim();
+        Matcher m = WAKE_IN_UTTERANCE.matcher(said);
+        if (!m.find()) {
+            return null;
+        }
+        String rest = said.substring(m.end()).trim();
         if (rest.startsWith(",") || rest.startsWith(".")) {
             rest = rest.substring(1).trim();
         }
         return rest;
-    }
-
-    private int indexOfWake(String s) {
-        String[] wakes = new String[] {"hello neo", "हेलो नियो"};
-        int best = -1;
-        for (String w : wakes) {
-            Pattern p = Pattern.compile("(^|\\s|[,.!?])" + Pattern.quote(w) + "(\\s|[,.!?]|$)");
-            Matcher m = p.matcher(s);
-            if (m.find()) {
-                int i = m.start();
-                if (best < 0 || i < best) best = i;
-            }
-        }
-        return best;
-    }
-
-    private int endOfWake(String s, int start) {
-        String[] wakes = new String[] {"hello neo", "हेलो नियो"};
-        int bestEnd = start;
-        for (String w : wakes) {
-            if (s.startsWith(w, start)) {
-                int e = start + w.length();
-                if (e > bestEnd) bestEnd = e;
-            }
-        }
-        return bestEnd;
     }
 
     private String normalize(String s) {
