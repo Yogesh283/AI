@@ -37,6 +37,8 @@ import {
 } from "@/lib/voiceChat";
 import { useWakeLock } from "@/lib/useWakeLock";
 import { writeNeoAlexaListen } from "@/lib/neoAssistantActive";
+import { isNativeCapacitor } from "@/lib/nativeAppLinks";
+import { syncNativeWakeBridge } from "@/lib/neoWakeNative";
 import { preferOpenAiTtsForVoiceUi } from "@/lib/voiceTtsPolicy";
 import {
   createVoiceRealtimeMicStreamPromise,
@@ -146,6 +148,8 @@ export default function VoicePage() {
   const liveCancelRef = useRef<(() => void) | null>(null);
   const liveSendClientEventRef = useRef<((o: Record<string, unknown>) => void) | null>(null);
   const liveEnsureMicRef = useRef<(() => void) | null>(null);
+  /** APK: native wake was stopped so WebRTC can own the mic for Live voice. */
+  const nativeWakePausedForLiveRef = useRef(false);
   /** Monotonic id so stale live-web async work never calls `response.create` after a newer utterance. */
   const voiceLiveWebTurnRef = useRef(0);
   /** Drop duplicate finalized transcripts (Realtime + sidecar) within a short window. */
@@ -372,6 +376,12 @@ export default function VoicePage() {
     stopAvatarTtsAudio();
   }, []);
 
+  const resumeNativeWakeAfterVoiceLive = useCallback(() => {
+    if (!nativeWakePausedForLiveRef.current) return;
+    nativeWakePausedForLiveRef.current = false;
+    void syncNativeWakeBridge(true);
+  }, []);
+
   const stopSession = useCallback(() => {
     liveAssistStreamOpenRef.current = false;
     liveUserTranscriptOpenRef.current = false;
@@ -402,7 +412,8 @@ export default function VoicePage() {
     speakingRef.current = false;
     setSpeaking(false);
     setListening(false);
-  }, [stopBargeInRecognition, stopRecognitionOnly, stopVoiceOutput]);
+    resumeNativeWakeAfterVoiceLive();
+  }, [stopBargeInRecognition, stopRecognitionOnly, stopVoiceOutput, resumeNativeWakeAfterVoiceLive]);
 
   const startLiveVoice = useCallback(async (micPromise: Promise<MediaStream>) => {
     if (!sessionOnRef.current) return;
@@ -422,11 +433,23 @@ export default function VoicePage() {
     let acquiredMic: MediaStream | null = null;
     try {
       unlockWebAudioAndSpeechFromUserGesture();
+      /* Native wake + pipeline hold AudioRecord — release before WebRTC mic (APK / Mediatek stability). */
+      if (isNativeCapacitor()) {
+        try {
+          const { NeoNativeRouter } = await import("@/lib/neoNativeRouter");
+          await NeoNativeRouter.stopWakeListener();
+          nativeWakePausedForLiveRef.current = true;
+          await new Promise<void>((r) => setTimeout(r, 140));
+        } catch {
+          /* ignore */
+        }
+      }
       const pid = normalizeVoicePersonaId(personaId ?? readStoredVoicePersonaId());
       /* Mic promise must be created in the mic-button click (transient activation); await only after that. */
       try {
         acquiredMic = await micPromise;
       } catch (e) {
+        resumeNativeWakeAfterVoiceLive();
         const msg = e instanceof Error ? e.message : String(e);
         setErr(msg.trim() ? msg : "Microphone access failed — allow mic for this app.");
         setLiveConnecting(false);
@@ -463,6 +486,7 @@ export default function VoicePage() {
               userSpeechDebounceRef.current = null;
             }
             setUserSpeaking(false);
+            resumeNativeWakeAfterVoiceLive();
           }
         },
         onUserSpeechActive: (active) => {
@@ -718,6 +742,7 @@ export default function VoicePage() {
       liveSendClientEventRef.current = live.sendClientEvent;
       liveEnsureMicRef.current = live.ensureLocalMicLive;
     } catch (e) {
+      resumeNativeWakeAfterVoiceLive();
       if (acquiredMic) {
         for (const t of acquiredMic.getTracks()) {
           try {
@@ -738,7 +763,7 @@ export default function VoicePage() {
       setSessionOn(false);
       setErr(e instanceof Error ? e.message : String(e));
     }
-  }, [lang, personaId]);
+  }, [lang, personaId, resumeNativeWakeAfterVoiceLive]);
 
   /** Interrupt assistant audio (OpenAI Realtime). */
   const tapToSpeak = useCallback(() => {
@@ -793,6 +818,10 @@ export default function VoicePage() {
       stopRecognitionOnly();
       stopBargeInRecognition();
       stopVoiceOutput();
+      if (nativeWakePausedForLiveRef.current) {
+        nativeWakePausedForLiveRef.current = false;
+        void syncNativeWakeBridge(true);
+      }
     };
   }, [stopBargeInRecognition, stopRecognitionOnly, stopVoiceOutput]);
 

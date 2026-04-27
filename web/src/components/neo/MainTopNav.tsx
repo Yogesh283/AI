@@ -41,13 +41,11 @@ export function MainTopNav({ center, trailingBeforeProfile }: Props) {
   useEffect(() => {
     const u = getStoredUser();
     if (u?.display_name?.trim()) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- post-hydration read from localStorage
       setDisplayName(u.display_name.trim());
     }
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- close flyout on client navigation (incl. back/forward)
     setMenuOpen(false);
   }, [pathname]);
 

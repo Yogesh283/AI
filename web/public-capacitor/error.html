@@ -38,14 +38,13 @@
       Connection failed. Try local refresh, or open production inside app.
     </p>
     <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center">
-      <button type="button" id="refreshBtn">Refresh</button>
+      <button type="button" id="refreshBtn">Retry dev server</button>
       <button type="button" id="prodBtn" style="background: #22c55e; color: #062a12">
         Open Production
       </button>
     </div>
     <script>
-      // Capacitor's bridge can be unavailable on errorPath pages.
-      // Provide a tiny no-op shim so WebView console does not spam triggerEvent errors.
+      // Capacitor's bridge can be incomplete on errorPath pages.
       (function () {
         var cap = window.Capacitor || {};
         if (typeof cap.triggerEvent !== "function") {
@@ -54,30 +53,67 @@
         window.Capacitor = cap;
       })();
 
+      /** Same URL Capacitor tried first (from native); avoids guessing after adb/cap sync. */
+      function resolveDevServerUrl() {
+        try {
+          var w = window.WEBVIEW_SERVER_URL;
+          if (w && String(w).indexOf("http") === 0) {
+            var s = String(w).trim();
+            return s.endsWith("/") ? s : s + "/";
+          }
+        } catch (_) {}
+        try {
+          var c = window.Capacitor;
+          if (c && typeof c.getServerUrl === "function") {
+            var u = c.getServerUrl();
+            if (u && String(u).indexOf("http") === 0) {
+              var t = String(u).trim();
+              return t.endsWith("/") ? t : t + "/";
+            }
+          }
+        } catch (_) {}
+        return "http://127.0.0.1:3000/";
+      }
+
       function openInApp(url) {
         try {
-          window.location.assign(url);
+          window.location.replace(url);
         } catch (_) {
           window.location.href = url;
         }
       }
 
-      // In-app reload only (same WebView page), never opens Chrome.
+      var devUrl = resolveDevServerUrl();
+
       document.getElementById("refreshBtn").addEventListener("click", function () {
-        location.reload();
+        openInApp(devUrl);
       });
 
       document.getElementById("prodBtn").addEventListener("click", function () {
-        openInApp("https://myneoxai.com");
+        try {
+          window.location.assign("https://myneoxai.com");
+        } catch (_) {
+          window.location.href = "https://myneoxai.com";
+        }
       });
 
-      // If APK is configured for localhost and local dev server is down, provide better hint.
       try {
         var statusEl = document.getElementById("statusText");
         var current = String(window.location.href || "");
-        if (current.indexOf("localhost") !== -1) {
-          statusEl.textContent =
-            "Local server unreachable. Start `npm run dev` and run `adb reverse tcp:3000 tcp:3000`, or tap Open Production.";
+        var isLocal =
+          current.indexOf("localhost") !== -1 || current.indexOf("127.0.0.1") !== -1;
+        if (isLocal) {
+          statusEl.innerHTML =
+            "<strong>PC dev server not reached.</strong><br /><br />" +
+            "Capacitor target: <code id=\"devUrlLabel\"></code><br /><br />" +
+            "<strong>Easiest (USB):</strong> PC folder <code>web</code> &rarr; <code>npm run android:local</code> " +
+            "(Next + adb reverse + cap sync). Then Rebuild app.<br /><br />" +
+            "<strong>Manual:</strong> <code>npm run dev</code> + <code>adb reverse tcp:3000 tcp:3000</code>.<br />" +
+            "<strong>No USB:</strong> same Wi-Fi &rarr; <code>npm run android:local:wifi</code>.<br />" +
+            "Firewall: allow Node on port 3000. VoLTE/USB issues &rarr; try Wi-Fi mode.<br /><br />" +
+            "Or <strong>Open Production</strong>.";
+          var lab = document.getElementById("devUrlLabel");
+          if (lab) lab.textContent = devUrl.replace(/\/$/, "");
         }
       } catch (_) {}
     </script>

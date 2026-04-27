@@ -230,19 +230,18 @@ async function waitForVoices(maxMs = 2200): Promise<void> {
   await new Promise<void>((resolve) => {
     const start = Date.now();
     let finished = false;
-    let iv: number | undefined;
-    const done = () => {
-      if (finished) return;
-      finished = true;
-      synth.removeEventListener("voiceschanged", onVc);
-      if (iv !== undefined) window.clearInterval(iv);
-      resolve();
-    };
     const onVc = () => {
       synth.getVoices();
     };
     synth.addEventListener("voiceschanged", onVc);
-    iv = window.setInterval(() => {
+    const done = () => {
+      if (finished) return;
+      finished = true;
+      synth.removeEventListener("voiceschanged", onVc);
+      window.clearInterval(iv);
+      resolve();
+    };
+    const iv = window.setInterval(() => {
       synth.getVoices();
       if (synth.getVoices().length > 0 || Date.now() - start >= limit) done();
     }, 70);

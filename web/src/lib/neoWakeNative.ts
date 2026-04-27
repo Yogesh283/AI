@@ -56,21 +56,21 @@ let wakeBridgeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 async function runWakeBridgeSyncOnce(): Promise<void> {
   if (!isNativeCapacitor()) return;
+  const appVisible =
+    typeof document !== "undefined" ? document.visibilityState === "visible" : true;
   const assistantActive = readNeoAssistantActive();
   const alexaListen = readNeoAlexaListen();
   const screenOff = readWakeListenScreenOffStorage();
-  const pageVisible =
-    typeof document === "undefined" ? true : document.visibilityState === "visible";
   try {
     const { NeoNativeRouter } = await import("@/lib/neoNativeRouter");
     const voiceChatMode = !!(await NeoNativeRouter.getWakeVoiceChatMode()).enabled;
     /*
      * Keep wake service running while:
      * - wake voice-chat mode is enabled (works independently for screen-OFF Hello Neo), or
-     * - assistant + wake listen are enabled and either page is visible or screen-off listen is enabled.
+     * - assistant + wake listen are enabled (screen-off behavior is enforced natively).
+     *   This keeps "Status: Active" behavior stable on-screen without requiring tap-to-talk.
      */
-    const shouldRunWake =
-      voiceChatMode || (assistantActive && alexaListen && (screenOff || pageVisible));
+    const shouldRunWake = appVisible && (voiceChatMode || (assistantActive && alexaListen));
     if (shouldRunWake) {
       await NeoNativeRouter.startWakeListener({ screenOffListen: screenOff || voiceChatMode });
     } else {

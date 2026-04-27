@@ -59,9 +59,6 @@ public class WakeWordForegroundService extends Service {
     /** Ignore duplicate final transcripts (screen-off partial quirks / echo). */
     private long lastHandledCommandMs;
     private String lastHandledCommandKey = "";
-    /** After a successful wake command on screen-ON, allow one short follow-up without repeating wake phrase. */
-    private long followUpUntilMs = 0L;
-    private static final long FOLLOWUP_WINDOW_MS = 14000L;
     /**
      * Return value from {@link #consumeVoiceTranscript(String)}: do not schedule STT restart here —
      * {@link NeoCommandRouter} will run {@link #resumeListeningRunnable} when TTS ends.
@@ -89,7 +86,23 @@ public class WakeWordForegroundService extends Service {
     private volatile boolean chatRequestInFlight = false;
     private static final int CHAT_CONNECT_TIMEOUT_MS = 7000;
     private static final int CHAT_READ_TIMEOUT_MS = 12000;
-    private static final String CHAT_API_FALLBACK = "https://myneoxai.com/api/chat";
+    /** Same-origin Next proxy as the WebView — not bare {@code /api/chat} on the public host. */
+    private static final String CHAT_API_FALLBACK = "https://myneoxai.com/neo-api/api/chat";
+    private static volatile boolean runningNow = false;
+    private static volatile boolean runningScreenOffListen = false;
+    private static volatile boolean runningVoiceChatMode = false;
+
+    static boolean isRunningNow() {
+        return runningNow;
+    }
+
+    static boolean isRunningScreenOffListen() {
+        return runningScreenOffListen;
+    }
+
+    static boolean isRunningVoiceChatMode() {
+        return runningVoiceChatMode;
+    }
 
     private final Runnable resumeListeningRunnable =
         () -> {
@@ -108,6 +121,7 @@ public class WakeWordForegroundService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+        runningNow = true;
         wakeKeywordAvailable = PorcupineStreamWake.canInit(this);
         createChannel();
         acquirePartialWakeLock();
@@ -259,12 +273,14 @@ public class WakeWordForegroundService extends Service {
         } else {
             listenScreenOff = NeoPrefs.isWakeListenScreenOff(this);
         }
+        runningScreenOffListen = listenScreenOff;
         if (intent != null && intent.hasExtra(EXTRA_VOICE_CHAT_MODE)) {
             voiceChatMode = intent.getBooleanExtra(EXTRA_VOICE_CHAT_MODE, false);
             NeoPrefs.setWakeVoiceChatModeEnabled(this, voiceChatMode);
         } else {
             voiceChatMode = NeoPrefs.isWakeVoiceChatModeEnabled(this);
         }
+        runningVoiceChatMode = voiceChatMode;
 
         if (!hasRecordAudioPermission()) {
             shouldListen = false;
@@ -286,6 +302,14 @@ public class WakeWordForegroundService extends Service {
             return START_NOT_STICKY;
         }
         shouldListen = true;
+        Log.i(
+            TAG,
+            "Wake listener started: screenOff="
+                + listenScreenOff
+                + " voiceChatMode="
+                + voiceChatMode
+                + " wakeKeywordAvailable="
+                + wakeKeywordAvailable);
         if (voicePipeline != null) {
             voicePipeline.start();
         }
@@ -300,6 +324,9 @@ public class WakeWordForegroundService extends Service {
 
     @Override
     public void onDestroy() {
+        runningNow = false;
+        runningScreenOffListen = false;
+        runningVoiceChatMode = false;
         shouldListen = false;
         chatRequestInFlight = false;
         NeoCommandRouter.setAssistantSpeechEndedRunnable(null);
@@ -340,27 +367,7 @@ public class WakeWordForegroundService extends Service {
         String said = normalize(rawForTts);
         if (said.isEmpty()) return RELISTEN_MS_QUICK;
 
-        if (!isScreenInteractive() && voiceChatMode) {
-            handleWakeVoiceChat(said);
-            followUpUntilMs = System.currentTimeMillis() + FOLLOWUP_WINDOW_MS;
-            return RELISTEN_DEFERRED;
-        }
-
         String command = extractWakeCommand(said);
-        if (command == null && !wakeKeywordAvailable) {
-            /*
-             * Fallback mode when Porcupine keyword engine is not configured:
-             * allow direct spoken commands/chats without mandatory wake word.
-             */
-            command = said;
-        }
-        if (command == null && (isScreenInteractive() || listenScreenOff)) {
-            long now = System.currentTimeMillis();
-            if (now <= followUpUntilMs) {
-                /* Follow-up turn: user can continue without saying "Hello Neo" again. */
-                command = said;
-            }
-        }
         if (command == null) {
             return RELISTEN_MS_QUICK;
         }
@@ -393,10 +400,8 @@ public class WakeWordForegroundService extends Service {
              * - Fallback: OpenAI voice chat for natural follow-up or general queries.
              */
             handleWakeVoiceChat(command);
-            followUpUntilMs = System.currentTimeMillis() + FOLLOWUP_WINDOW_MS;
             return RELISTEN_DEFERRED;
         }
-        followUpUntilMs = System.currentTimeMillis() + FOLLOWUP_WINDOW_MS;
         if (NeoCommandRouter.isAISpeaking()) {
             return RELISTEN_DEFERRED;
         }
@@ -502,7 +507,7 @@ public class WakeWordForegroundService extends Service {
     }
 
     private int indexOfWake(String s) {
-        String[] wakes = new String[] {"hello neo", "hello new", "neo", "नियो", "हेलो नियो"};
+        String[] wakes = new String[] {"hello neo", "हेलो नियो"};
         int best = -1;
         for (String w : wakes) {
             Pattern p = Pattern.compile("(^|\\s|[,.!?])" + Pattern.quote(w) + "(\\s|[,.!?]|$)");
@@ -516,7 +521,7 @@ public class WakeWordForegroundService extends Service {
     }
 
     private int endOfWake(String s, int start) {
-        String[] wakes = new String[] {"hello neo", "hello new", "neo", "नियो", "हेलो नियो"};
+        String[] wakes = new String[] {"hello neo", "हेलो नियो"};
         int bestEnd = start;
         for (String w : wakes) {
             if (s.startsWith(w, start)) {
@@ -543,6 +548,14 @@ public class WakeWordForegroundService extends Service {
     }
 
     private boolean isMediaPlaybackActive() {
+        /*
+         * On some OEM builds, isMusicActive() stays true while app is foreground, which
+         * suppresses wake capture and feels like "Neo is not listening". For on-screen use,
+         * prioritize voice commands and keep media-blocking only for background/lock-screen.
+         */
+        if (isScreenInteractive()) {
+            return false;
+        }
         AudioManager am = audioManager;
         if (am == null) return false;
         try {

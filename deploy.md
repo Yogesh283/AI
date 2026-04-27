@@ -384,9 +384,19 @@ Phone ko USB se PC se jodo, **USB debugging** on. WebView ko **`http://localhost
    - Manual: `adb reverse tcp:3000 tcp:3000` (aur zarurat ho to `8010`).
 4. **Android Studio**: `D:\AI\web\android` open karo → USB device select → **Run** ▶ (debug build phone par seedha live WebView kholta hai).
    - **Build Variants** (left edge / View → Tool Windows): `app` ke liye **`playDebug`** (ya **`sideloadDebug`**) select karo — plain `debug` variant nahi hai.
-   - Agar Android Studio phir bhi `apk_ide_redirect_file\debug\...\redirect.txt` maange: `app/build.gradle` ab Gradle se **playDebug/sideloadDebug redirect ko `debug/...` par mirror** karta hai; **Sync Gradle** karke **Run** dubara chalao. Phir bhi ho to **Build → Clean / Rebuild**.
+   - Agar Android Studio phir bhi `apk_ide_redirect_file\debug\...\redirect.txt` maange: `app/build.gradle` ab Gradle se **playDebug/sideloadDebug redirect ko `debug/...` par mirror** karta hai; **Sync Gradle** karke **Run** dubara chalao. Phir bhi ho to **Build → Clean / Rebuild`.
+
+**Android Studio khulta hi band / splash par crash / Gradle sync fail:**
+
+- **Folder galat mat kholo:** project root `D:\AI` nahi — **`File → Open` → `D:\AI\web\android`** (jahan `settings.gradle` / `gradlew.bat` hai).
+- **JDK:** **Settings → Build, Execution, Deployment → Build Tools → Gradle → Gradle JDK** = **Embedded JDK** ya **JDK 17+** (AGP 8.13 ke liye 17 minimum). Purana JDK 11 se sync fail ho sakta hai.
+- **Command line se error dekho:** `cd D:\AI\web\android` → `.\gradlew.bat --stop` phir `.\gradlew.bat :app:assemblePlayDebug` — jo stack trace aaye wahi Android Studio ke “sync failed” ka asli reason hota hai.
+- **Cache:** `File → Invalidate Caches → Invalidate and Restart`. Agar phir bhi: band Studio ke baad `%USERPROFILE%\.gradle\caches` (ya sirf `caches\transforms-*`) delete karke dubara sync (pehli baar download thoda slow).
+- **RAM:** `web/android/gradle.properties` me Gradle heap **~3 GB** set hai; agar PC par kam RAM ho to Task Manager se browsers band karke sync chalao.
 
 **Check:** `adb devices` mein device `device` dikhna chahiye (unauthorized ho to phone par allow karo).
+
+**Agar WebView `error.html` / “connection failed” dikhaye (local `http://localhost:3000`):** (1) `npm run cap:sync:android:local` se `adb reverse tcp:3000 tcp:3000` confirm; (2) PC par `npm run dev` chal raha ho; (3) app me `network_security_config` localhost par cleartext allow karta hai — phir bhi fail ho to PC firewall / galat port check karo.
 
 **Live site test** (USB ke bina): `npm run cap:sync:android:prod` phir Gradle build — WebView `https://myneoxai.com` load karega.
 

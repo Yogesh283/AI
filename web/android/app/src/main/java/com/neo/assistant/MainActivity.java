@@ -6,7 +6,9 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
+import android.widget.Toast;
 import android.webkit.CookieManager;
 import android.webkit.PermissionRequest;
 import android.webkit.WebSettings;
@@ -16,6 +18,8 @@ import androidx.core.content.ContextCompat;
 import com.getcapacitor.Bridge;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.BridgeWebChromeClient;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 
 public class MainActivity extends BridgeActivity {
 
@@ -29,6 +33,20 @@ public class MainActivity extends BridgeActivity {
     public static final String EXTRA_VOICE_EXTERNAL_SPEC = "neo_voice_external_spec";
     /** Android allows only one runtime permission sheet at a time. */
     private boolean permissionPromptInFlight = false;
+
+    /**
+     * Parsed once from {@code assets/capacitor.config.json}. When true, do not auto-start
+     * {@link WakeWordForegroundService} from {@link #onResume} — the Web bundle calls
+     * {@code syncNativeWakeBridge} after load. Avoids FGS + {@link android.media.AudioRecord} racing WebView/EGL
+     * teardown on the Capacitor {@code error.html} path (FORTIFY / destroyed mutex on some Mali builds).
+     */
+    private Boolean localCapacitorServer;
+
+    /** One-shot delayed check: still on Capacitor error page while using local server.url → logcat + debug toast. */
+    private boolean neoDevHelpProbeScheduled;
+    private boolean neoDevHelpAlreadySignaled;
+
+    private static final String TAG_DEV_HELP = "NeoDevHelp";
 
     /** Queue opening WA/TG/etc. from the foreground activity (BAL-safe). {@code spec} keys are owned by {@link NeoCommandRouter}. */
     public static void requestVoiceExternalLaunch(Context from, Bundle spec) {
@@ -65,6 +83,64 @@ public class MainActivity extends BridgeActivity {
         View decor = getWindow().getDecorView();
         decor.post(this::configureWebViewForVoice);
         decor.postDelayed(this::configureWebViewForVoice, 300);
+        scheduleNeoDevHelpProbeOnce(decor);
+    }
+
+    private void scheduleNeoDevHelpProbeOnce(View decor) {
+        if (neoDevHelpProbeScheduled) {
+            return;
+        }
+        neoDevHelpProbeScheduled = true;
+        decor.postDelayed(this::maybeLogNeoDevServerUnreachable, 4500);
+    }
+
+    private void maybeLogNeoDevServerUnreachable() {
+        if (neoDevHelpAlreadySignaled) {
+            return;
+        }
+        if (isFinishing()) {
+            return;
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1 && isDestroyed()) {
+            return;
+        }
+        if (!usesLocalCapacitorServer()) {
+            return;
+        }
+        try {
+            Bridge bridge = getBridge();
+            if (bridge == null) {
+                return;
+            }
+            WebView wv = bridge.getWebView();
+            if (wv == null) {
+                return;
+            }
+            String u = wv.getUrl();
+            if (u == null) {
+                return;
+            }
+            if (!u.contains("error.html") && !u.contains("chrome-error")) {
+                return;
+            }
+            neoDevHelpAlreadySignaled = true;
+            Log.e(
+                    TAG_DEV_HELP,
+                    "WebView still on Capacitor error page — PC dev server not reached at server.url. "
+                        + "Fix: (1) PC cd web && npm run dev — leave running. "
+                        + "(2) USB adb reverse tcp:3000 tcp:3000 (re-run after cable replug). "
+                        + "(3) From web: npm run android:local or cap:sync:android:local then Rebuild. "
+                        + "(4) Wi-Fi: npm run android:local:wifi — same LAN, firewall allow Node:3000. "
+                        + "Filter: adb logcat -s NeoDevHelp:E");
+            if (BuildConfig.DEBUG) {
+                Toast.makeText(
+                                this,
+                                "Dev server unreachable — filter logcat: NeoDevHelp",
+                                Toast.LENGTH_LONG)
+                        .show();
+            }
+        } catch (Throwable ignored) {
+        }
     }
 
     @Override
@@ -92,8 +168,41 @@ public class MainActivity extends BridgeActivity {
          * Request READ_CONTACTS / CALL_PHONE only when the user invokes features that need them.
          * This avoids pause/resume churn and WebView bridge instability on startup.
          */
-        /* Bring wake listener back whenever app returns to foreground (after opening WhatsApp/Telegram/etc). */
-        decor.post(this::maybeStartWakeServiceForForeground);
+        /*
+         * Bring wake listener back whenever app returns to foreground (after opening WhatsApp/Telegram/etc).
+         * Local dev server (127.0.0.1 / localhost in capacitor.config): never auto-start here — the loaded app
+         * calls NeoNativeRouter.startWakeListener via neoWakeNative. Starting FGS + mic while WebView is still on
+         * error.html or failing EGL init correlates with libc FORTIFY / destroyed mutex on some devices.
+         */
+        Runnable startWake = this::maybeStartWakeServiceForForeground;
+        if (usesLocalCapacitorServer()) {
+            /* Wake starts from JS after Next.js (or production) actually loads. */
+        } else if (BuildConfig.DEBUG) {
+            decor.postDelayed(startWake, 2800);
+        } else {
+            decor.post(startWake);
+        }
+    }
+
+    private boolean usesLocalCapacitorServer() {
+        if (localCapacitorServer != null) {
+            return localCapacitorServer;
+        }
+        boolean local = false;
+        try (InputStream in = getAssets().open("capacitor.config.json")) {
+            byte[] buf = new byte[8192];
+            int n = in.read(buf);
+            if (n > 0) {
+                String s = new String(buf, 0, n, StandardCharsets.UTF_8);
+                local =
+                    s.contains("127.0.0.1")
+                        || s.contains("localhost")
+                        || s.contains("10.0.2.2");
+            }
+        } catch (Throwable ignored) {
+        }
+        localCapacitorServer = local;
+        return local;
     }
 
     private void maybeRequestReadContactsOnce() {
@@ -195,6 +304,10 @@ public class MainActivity extends BridgeActivity {
                 s.setUserAgentString(ua.replace("; wv", ""));
             }
             attachWebRtcMicChromeClient(wv, bridge);
+            /* Local dev: software layer avoids Mali/ANGLE eglCreateSync teardown crashes with error.html. */
+            if (usesLocalCapacitorServer()) {
+                wv.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+            }
         } catch (Throwable ignored) {
         }
     }

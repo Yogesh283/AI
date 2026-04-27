@@ -101,12 +101,19 @@ public class NeoNativeRouterPlugin extends Plugin {
     }
 
     private boolean startWakeService(boolean screenOffListen) {
+        boolean voiceChatMode = NeoPrefs.isWakeVoiceChatModeEnabled(getContext());
+        if (WakeWordForegroundService.isRunningNow()
+                && WakeWordForegroundService.isRunningScreenOffListen() == screenOffListen
+                && WakeWordForegroundService.isRunningVoiceChatMode() == voiceChatMode) {
+            /* Duplicate start calls are common from rapid web state sync; keep existing listener hot. */
+            return true;
+        }
         Intent i = new Intent(getContext(), WakeWordForegroundService.class);
         i.setAction(WakeWordForegroundService.ACTION_START);
         i.putExtra(WakeWordForegroundService.EXTRA_SCREEN_OFF_LISTEN, screenOffListen);
         i.putExtra(
             WakeWordForegroundService.EXTRA_VOICE_CHAT_MODE,
-            NeoPrefs.isWakeVoiceChatModeEnabled(getContext()));
+            voiceChatMode);
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 ContextCompat.startForegroundService(getContext(), i);

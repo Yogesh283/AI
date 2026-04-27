@@ -25,8 +25,13 @@ final class NeoVoicePipeline implements Runnable {
     private static final int PREROLL_SAMPLES = 8000;
     private static final int MAX_CAPTURE_SAMPLES = 16000 * 22;
     private static final long MIN_CAPTURE_SAMPLES = 4800;
+    private static final long MIN_SPEECH_MS_FOR_TRANSCRIBE = 420;
+    private static final long MIN_SPEECH_MS_FOR_TRANSCRIBE_FALLBACK = 700;
     private static final long SILENCE_END_MS = 480;
+    private static final long SILENCE_END_MS_FALLBACK = 820;
     private static final long WAKE_DEBOUNCE_MS = 1200L;
+    private static final double FALLBACK_START_THRESHOLD = 320.0;
+    private static final double FALLBACK_SPEECH_THRESHOLD = 260.0;
 
     public interface Host {
         boolean shouldRun();
@@ -149,13 +154,17 @@ final class NeoVoicePipeline implements Runnable {
                 audioRecord =
                     new AudioRecord.Builder()
                         .setAudioFormat(fmt)
-                        .setAudioSource(MediaRecorder.AudioSource.VOICE_RECOGNITION)
+                        /*
+                         * Some OEM ROMs (esp. MediaTek variants) feed very weak/blank audio on
+                         * VOICE_RECOGNITION in background capture. MIC is more reliable for wake pipeline.
+                         */
+                        .setAudioSource(MediaRecorder.AudioSource.MIC)
                         .setBufferSizeInBytes(bufSize)
                         .build();
             } else {
                 audioRecord =
                     new AudioRecord(
-                        MediaRecorder.AudioSource.VOICE_RECOGNITION,
+                        MediaRecorder.AudioSource.MIC,
                         sampleRate,
                         AudioFormat.CHANNEL_IN_MONO,
                         AudioFormat.ENCODING_PCM_16BIT,
@@ -209,7 +218,8 @@ final class NeoVoicePipeline implements Runnable {
                  * Fallback when Porcupine is unavailable: detect speech onset and capture directly.
                  * Command routing still runs in service-level policy.
                  */
-                if (meanAbs(readFrame, n) > 700.0) {
+                double level = meanAbs(readFrame, n);
+                if (level > FALLBACK_START_THRESHOLD) {
                     beginCaptureAtRingEnd();
                 }
             }
@@ -261,6 +271,7 @@ final class NeoVoicePipeline implements Runnable {
         long start = Math.max(0L, end - PREROLL_SAMPLES);
         captureBuf = new short[MAX_CAPTURE_SAMPLES];
         captureLen = ring.copyAbsoluteRange(start, end, captureBuf, 0);
+        Log.i(TAG, "beginCapture wakeEnabled=" + wakeWordEnabled + " preroll=" + captureLen);
         state = VoiceState.CAPTURE;
         silenceAccumMs = 0L;
         speechAccumMs = 0L;
@@ -273,7 +284,8 @@ final class NeoVoicePipeline implements Runnable {
         }
         long frameMs = (len * 1000L) / sampleRate;
         double meanAbs = meanAbs(frame, len);
-        boolean speechy = meanAbs > 550.0;
+        final double speechThreshold = wakeWordEnabled ? 360.0 : FALLBACK_SPEECH_THRESHOLD;
+        boolean speechy = meanAbs > speechThreshold;
         if (speechy) {
             speechAccumMs += frameMs;
             silenceAccumMs = 0L;
@@ -287,7 +299,8 @@ final class NeoVoicePipeline implements Runnable {
         System.arraycopy(frame, 0, captureBuf, captureLen, len);
         captureLen += len;
 
-        if (speechAccumMs >= 120 && silenceAccumMs >= SILENCE_END_MS && captureLen >= MIN_CAPTURE_SAMPLES) {
+        final long silenceEndMs = wakeWordEnabled ? SILENCE_END_MS : SILENCE_END_MS_FALLBACK;
+        if (speechAccumMs >= 120 && silenceAccumMs >= silenceEndMs && captureLen >= MIN_CAPTURE_SAMPLES) {
             finalizeCaptureAndTranscribe();
         } else if (captureLen >= MAX_CAPTURE_SAMPLES - frameLen) {
             finalizeCaptureAndTranscribe();
@@ -308,6 +321,8 @@ final class NeoVoicePipeline implements Runnable {
     private void finalizeCaptureAndTranscribe() {
         state = VoiceState.IDLE_WAKE;
         final short[] pcm = Arrays.copyOf(captureBuf, captureLen);
+        final long spokenMs = speechAccumMs;
+        final int capturedSamples = captureLen;
         captureBuf = null;
         captureLen = 0;
         silenceAccumMs = 0L;
@@ -315,6 +330,31 @@ final class NeoVoicePipeline implements Runnable {
         if (pcm.length < MIN_CAPTURE_SAMPLES) {
             return;
         }
+        /*
+         * Common false trigger: user says only wake phrase ("hello neo"), then pauses.
+         * Skip server transcription for extremely short post-wake speech and relisten fast.
+         */
+        final long minSpeechMs = wakeWordEnabled ? MIN_SPEECH_MS_FOR_TRANSCRIBE : MIN_SPEECH_MS_FOR_TRANSCRIBE_FALLBACK;
+        if (spokenMs < minSpeechMs) {
+            Log.i(
+                    TAG,
+                    "skipTranscribe shortSpeech wakeEnabled="
+                            + wakeWordEnabled
+                            + " speechMs="
+                            + spokenMs
+                            + " samples="
+                            + capturedSamples);
+            mainHandler.post(() -> host.requestRelistenMs(1200));
+            return;
+        }
+        Log.i(
+                TAG,
+                "finalizeCapture wakeEnabled="
+                        + wakeWordEnabled
+                        + " speechMs="
+                        + spokenMs
+                        + " samples="
+                        + capturedSamples);
         new Thread(() -> transcribeAndDeliver(pcm), "neo-whisper").start();
     }
 

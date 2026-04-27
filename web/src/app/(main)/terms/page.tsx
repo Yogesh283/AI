@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import Link from "next/link";
 import { MainTopNav } from "@/components/neo/MainTopNav";
 
