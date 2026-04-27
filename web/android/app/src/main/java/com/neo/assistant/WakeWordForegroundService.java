@@ -673,13 +673,9 @@ public class WakeWordForegroundService extends Service {
 
     private boolean isMediaPlaybackActive() {
         /*
-         * On some OEM builds, isMusicActive() stays true while app is foreground, which
-         * suppresses wake capture and feels like "Neo is not listening". For on-screen use,
-         * prioritize voice commands and keep media-blocking only for background/lock-screen.
+         * While another app plays music/video, do not process wake/STT — avoids overlap with Neo TTS + fewer
+         * misleading “repeat / bar bar bol” cues when media is audible in the foreground or background.
          */
-        if (isScreenInteractive()) {
-            return false;
-        }
         AudioManager am = audioManager;
         if (am == null) return false;
         try {

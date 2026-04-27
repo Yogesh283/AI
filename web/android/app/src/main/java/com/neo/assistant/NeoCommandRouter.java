@@ -118,11 +118,9 @@ public final class NeoCommandRouter {
         }
     }
 
-    /** When STT matched wake but no intent ran — short hint so the user knows to rephrase. */
+    /** When STT matched wake but no intent ran — stay silent (no apology / repeat prompt). */
     public static void speakCommandNotUnderstood(Context context, String rawHeard) {
-        speak(
-            context,
-            "माफ कीजिए, समझ नहीं आया। दोबारा बोलिए।");
+        /* Intentionally no TTS — product rule: no “sorry / say again” outside a deliberate assistant reply path. */
     }
 
     /** @return true while Neo voice acknowledgement / reply TTS is active */
@@ -2411,9 +2409,25 @@ public final class NeoCommandRouter {
         }
     }
 
+    /**
+     * Avoid assistant speech while another app is clearly playing audio (music/video). Reduces clashes and
+     * confusing “assistant talking over” behaviour when users hear media + Neo at once.
+     */
+    private static boolean shouldDeferAssistantSpeechForExternalMedia(Context context) {
+        try {
+            AudioManager am = (AudioManager) context.getApplicationContext().getSystemService(Context.AUDIO_SERVICE);
+            return am != null && am.isMusicActive();
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
     private static void speak(Context context, String text) {
         if (text == null || text.trim().isEmpty()) return;
         if (!assistantTtsAllowed) {
+            return;
+        }
+        if (shouldDeferAssistantSpeechForExternalMedia(context)) {
             return;
         }
         if (isSilentWakeRouting()) {

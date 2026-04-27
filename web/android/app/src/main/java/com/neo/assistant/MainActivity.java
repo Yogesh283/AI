@@ -77,8 +77,7 @@ public class MainActivity extends BridgeActivity {
          * Google's Credential Manager and surface as "The user canceled the sign-in flow."
          * Mic is requested when the user actually uses voice / speech features (or grant from system Settings).
          */
-        /* Do not stop wake here — onCreate runs on cold start and on activity recreate; stopping killed voice before
-         * the WebView could call NeoNativeRouter.startWakeListener again. Stop only from onPause policy or plugin. */
+        /* Do not stop wake here — onCreate runs on cold start and on activity recreate. Stop from onStop / plugin. */
         // Bridge may exist before first resume — allow media playback ASAP for TTS MP3.
         View decor = getWindow().getDecorView();
         decor.post(this::configureWebViewForVoice);
@@ -163,7 +162,7 @@ public class MainActivity extends BridgeActivity {
          * Do not start RECORD_AUDIO (or other) permission flows here — returning from Google Sign-In
          * runs onResume; overlapping dialogs surface as "The user canceled the sign-in flow."
          */
-        /* Do not stop wake here — onResume runs after unlock; killing wake prevented lock-screen Hello Neo. */
+        /* Wake restart is gated by Profile + WebView bridge; foreground rules apply (see onStop). */
         // WebView: allow TTS / Web Audio without an extra user gesture (fixes silent voice on many APK builds).
         View decor = getWindow().getDecorView();
         decor.post(this::configureWebViewForVoice);
@@ -355,11 +354,21 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
-    public void onPause() {
-        super.onPause();
+    public void onUserLeaveHint() {
+        super.onUserLeaveHint();
         /*
-         * Default: stop native wake when leaving the activity (other app / lock) — avoids pocket noise.
-         * If user enabled “listen when screen is off”, keep the foreground wake service running while locked.
+         * User deliberately left Neo (Home, Recents, switch app) — never listen in the background.
+         */
+        maybeStopWakeService();
+    }
+
+    @Override
+    public void onStop() {
+        super.onStop();
+        /*
+         * Screen off / keyguard while Neo was open does not always fire onUserLeaveHint. If the user enabled
+         * screen-off listen or wake voice-chat, keep the foreground wake service so “Hello Neo” voice chat can
+         * still run after the wake word. Otherwise stop — no pocket / idle listening without that contract.
          */
         if (!NeoPrefs.isWakeListenScreenOff(this) && !NeoPrefs.isWakeVoiceChatModeEnabled(this)) {
             maybeStopWakeService();

@@ -136,3 +136,24 @@ Execution notes:
 - Ask follow-up only when command is ambiguous or blocked (missing app, missing contact, permission denied).
 - Avoid long re-prompts and avoid repeating user sentence unless needed for disambiguation.
 
+## 10) Foreground-only & silence policy (Hindi)
+
+Official product instruction:
+
+> "AI को निर्देश दें कि वॉयस कमांड केवल तभी सक्रिय हो जब यूज़र आपकी AI असिस्टेंट ऐप खोलें। ऐप बंद होने या बैकग्राउंड में होने पर, कोई वॉयस कमांड न सुनें और न ही प्रतिक्रिया दें। यदि कोई अन्य ऐप या मीडिया चल रहा हो, तो कोई भी आवाज न आए। स्क्रीन ऑफ हो तो भी, केवल तब वॉयस चैट चालू हो जब यूज़र स्पष्ट रूप से 'Hello Neo' कहें। अन्यथा, किसी भी परिस्थिति में, कोई माफ़ी, कोई रिपीट अनुरोध, या कोई अन्य प्रतिक्रिया न दें। ऐप के बाहर सिस्टम एकदम शांत और निष्क्रिय रहे।"
+
+Implementation pointers:
+
+- APK: **`MainActivity.onUserLeaveHint`** → stop wake when user leaves Neo for another app; **`onStop`** stops wake only if screen-off listen and wake voice-chat are both off (lock / screen-off + Hello Neo path preserved when those toggles are on).
+- Bridge: **`ignoreWebVisibilityWhen`** in `neoWakeNative.ts` so screen-off does not incorrectly `stopWakeListener` while native policy keeps the FGS.
+- **`speakCommandNotUnderstood`** does not speak (no apology / repeat prompt).
+- **`AudioManager.isMusicActive()`**: defer wake mic handling + block assistant `speak()` while external media plays.
+
+## 11) In-app voice + lock-screen Hello Neo & tone (Hindi)
+
+Official product instruction:
+
+> "AI को इस तरह निर्देश दें कि वॉयस कमांड केवल उसी ऐप के अंदर सक्रिय हो जहाँ इसे बनाया गया है—उदाहरण के लिए, जब यूज़र Neo AI Assistant ऐप खोलें, तब ही वॉयस कमांड सुनें और पूरा करें। जब फोन लॉक हो या स्क्रीन ऑफ हो, तब 'Hello Neo' वेक-वर्ड के बाद वॉयस चैट सुचारु रूप से चले। सिस्टम को ऐसा बनाया जाए कि वह मानव जैसा सहज, दोस्ताना और समझदार हो। जब यूज़र बोले, तो कोशिश हो कि हर इनपुट समझा जाए और उसी के आधार पर जवाब दिया जाए। पूरी बातचीत और कमांड प्रोसेसिंग स्मूद, बिना बाधा और स्पष्ट हो, ताकि यूज़र को हमेशा एक भरोसेमंद और सहज अनुभव मिले।"
+
+Backend voice tone: `backend/app/routers/voice.py` (Realtime instructions) and `backend/app/routers/chat.py` (`voice` source system prompt) include concise “friendly, smooth, grounded in user words” guidance.
+

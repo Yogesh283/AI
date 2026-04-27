@@ -992,7 +992,9 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
             voice_mode_extra = (
                 " Voice mode: reply only in Shuddh Hindi (Devanagari), no English — same natural phone-call rhythm. "
                 "Prefer short, clear spoken sentences; no markdown unless they ask for code. "
-                "Listen-first; brief acknowledgment then answer; match persona tone calmly."
+                "Listen-first; brief acknowledgment then answer; match persona tone calmly. "
+                "Aim to reflect what they actually said; keep the exchange smooth, clear, and trustworthy—human-like "
+                "and friendly, not robotic."
             )
         else:
             voice_mode_extra = (
@@ -1003,7 +1005,9 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
                 "and keep default replies concise (around 2-4 short lines) unless they ask for detail. "
                 "Listen-first: let the user finish; do not talk over them or fill silence unnecessarily; "
                 "acknowledge briefly then answer in a calm, attentive way, matching the assistant persona "
-                "(warm professional woman vs steady professional man) without being loud or domineering."
+                "(warm professional woman vs steady professional man) without being loud or domineering. "
+                "Ground answers in their actual words; keep the flow smooth and interruption-free unless "
+                "disambiguation is truly needed."
             )
 
     vision_policy = ""

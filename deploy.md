@@ -474,6 +474,15 @@ This answers the common product spec: **wake phrase** (e.g. “Hello Neo”) →
 - Provide concise action confirmation after execution.
 - Ask clarification only for ambiguous, unsafe, or blocked actions.
 
+#### Foreground-only assistant (required behavior)
+
+- Voice commands listen and execute **only in the Neo AI Assistant app**, not inside other apps.
+- **`MainActivity.onUserLeaveHint`** → stops `WakeWordForegroundService` when the user leaves Neo (Home, Recents, switch app) — **no background listening**.
+- **`MainActivity.onStop`** → stops wake **unless** Profile enabled **screen-off listen** or **wake voice-chat** — keeps **“Hello Neo” → voice chat** workable when the phone locks or screen turns off **while Neo was still the user’s session** (wake word gated in native layer).
+- **WebView bridge** (`neoWakeNative.ts`): treats `visibilityState === "hidden"` like screen-off; does **not** strip wake when voice-chat / screen-off / assistant+wake toggles expect native listening (`ignoreWebVisibilityWhen`).
+- **Other app media playing** (`AudioManager.isMusicActive()`): suppress assistant TTS and defer wake processing (see `NeoCommandRouter`, `WakeWordForegroundService`).
+- **Unmatched intent**: no “sorry / say again” TTS (`speakCommandNotUnderstood` is silent).
+
 #### What Neo ships today (this repo)
 
 | Piece | Role | Where |
@@ -482,7 +491,7 @@ This answers the common product spec: **wake phrase** (e.g. “Hello Neo”) →
 | Speech → text | **`SpeechRecognizer`** + `RecognizerIntent` (Google on-device / OEM), not Python. One-shot utterances; silence timeouts (`EXTRA_SPEECH_INPUT_*_SILENCE_LENGTH_MILLIS`) end each capture. | `WakeWordForegroundService.java` |
 | Wake + command | **Keyword in transcript**: “hello neo”, “neo”, “नियो”, “हेलो नियो” — then **rest of same string** is routed as the command (so wake + command can be one recognition pass). After each pass the service waits **~1.8–5.5s** before listening again (longer after a real command or wake-only) so the mic is not immediately hot again. | `extractWakeCommand()` + `pendingRelistenMs` in `WakeWordForegroundService.java` |
 | App integration | **Intents / URIs**: WhatsApp (`whatsapp://`), Telegram (`tg://`), YouTube search, contacts, `tel:` digits, volume, time. Short **TTS** then open (so the user hears the next step). | `NeoCommandRouter.java` |
-| Mic when screen off | Default: **stop** listening on `ACTION_SCREEN_OFF` to reduce pocket noise. Optional **listen while locked** via prefs / Profile (see `NeoPrefs.KEY_WAKE_SCREEN_OFF`, `MainActivity.onPause`). | `WakeWordForegroundService.java`, `MainActivity.java` |
+| Mic / lifecycle | **`MainActivity.onStop`** stops the wake FGS when the user leaves the assistant UI (another app, home, etc.). Optional screen-off prefs still apply **only while the activity could run wake**; strict foreground-first. | `MainActivity.java`, `WakeWordForegroundService.java` |
 | Boot | Wake **does not** auto-start on boot; user starts it from the app. Boot receiver entry was removed so no unused `RECEIVE_BOOT_COMPLETED` permission. | `AndroidManifest.xml` |
 
 **Important limitation:** `SpeechRecognizer` is **not** a true always-on, low-power **wake word** engine (unlike dedicated SDKs). It runs **recognition sessions** in a loop with small delays after each result/error. For a stricter “mic only after wake” product, consider **Picovoice Porcupine**, **Snowboy** (deprecated), or **on-device hotword** APIs, then open the mic for a **second** `SpeechRecognizer` pass for the command only.
