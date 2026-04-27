@@ -558,10 +558,9 @@ public final class NeoCommandRouter {
     }
 
     private static void speakThen(Context context, String phrase, long delayMs, Runnable action) {
+        long d = Math.min(Math.max(delayMs, 0L), 320L);
         if (isSilentWakeRouting()) {
             isAISpeaking = true;
-            /* Slightly longer than before so activity/audio focus settles before STT relisten (fewer OEM “tun”). */
-            long d = Math.min(Math.max(delayMs, 0L), 650L);
             pendingBusyRunnable =
                 () -> {
                     pendingBusyRunnable = null;
@@ -584,7 +583,7 @@ public final class NeoCommandRouter {
                 } catch (Exception ignored) {
                 }
             };
-        busyAckHandler.postDelayed(pendingBusyRunnable, delayMs);
+        busyAckHandler.postDelayed(pendingBusyRunnable, d);
     }
 
     /**
@@ -599,9 +598,9 @@ public final class NeoCommandRouter {
         Runnable open,
         String followUp
     ) {
+        long d = Math.min(Math.max(delayMs, 0L), 320L);
         if (isSilentWakeRouting()) {
             isAISpeaking = true;
-            long d = Math.min(Math.max(delayMs, 0L), 650L);
             pendingBusyRunnable =
                 () -> {
                     pendingBusyRunnable = null;
@@ -625,7 +624,7 @@ public final class NeoCommandRouter {
                 } catch (Exception ignored) {
                 }
                 if (followUp != null && !followUp.isEmpty()) {
-                    busyAckHandler.postDelayed(() -> speak(context, followUp), 620L);
+                    busyAckHandler.postDelayed(() -> speak(context, followUp), 280L);
                 }
             });
     }
@@ -637,7 +636,7 @@ public final class NeoCommandRouter {
     private static void applyNeoAssistantVoiceProfile() {
         if (tts == null || !ttsReady) return;
         try {
-            tts.setSpeechRate(0.93f);
+            tts.setSpeechRate(1.08f);
             tts.setPitch(1.0f);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 Voice v = pickBestAssistantVoice(tts, ASSISTANT_TTS_LOCALE);

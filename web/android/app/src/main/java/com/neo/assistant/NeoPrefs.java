@@ -42,10 +42,10 @@ public final class NeoPrefs {
     private NeoPrefs() {}
 
     public static boolean isWakeListenScreenOff(Context c) {
-        /* Screen-on-only voice policy: default OFF for screen-off listening. */
+        /* Default ON so wake/voice remains available with screen off unless the user disables it. */
         return c.getApplicationContext()
             .getSharedPreferences(FILE, Context.MODE_PRIVATE)
-            .getBoolean(KEY_WAKE_SCREEN_OFF, false);
+            .getBoolean(KEY_WAKE_SCREEN_OFF, true);
     }
 
     public static void setWakeListenScreenOff(Context c, boolean on) {

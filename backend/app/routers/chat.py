@@ -891,9 +891,9 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
         )
 
     web_block = ""
-    # Always pull Google snippets for normal turns (when user said something); recall/datetime
-    # return above before this. use_web remains supported for clients but is no longer required.
-    want_web = bool(last_user.strip())
+    # For voice turns, keep default low-latency path unless caller explicitly asks for web snippets.
+    # Chat/source turns retain auto live-web enrichment.
+    want_web = bool(last_user.strip()) and (body.source != "voice" or body.use_web)
     if want_web:
         try:
             query_for_google = await maybe_refine_google_query(last_user, user_id=uid)

@@ -68,6 +68,8 @@ public class WakeWordForegroundService extends Service {
     private static final int RELISTEN_MS_ERROR = 900;
     /** Wake heard with no command tail — brief pause so the user can finish the phrase (Alexa-like beat). */
     private static final int RELISTEN_MS_AFTER_WAKE_ONLY = 1200;
+    /** Screen-off voice mode should feel snappier than the default wake-only pause. */
+    private static final int RELISTEN_MS_AFTER_WAKE_ONLY_SCREEN_OFF = 650;
     /** If other app audio/video is active, stay idle and retry later. */
     private static final int MEDIA_ACTIVE_RECHECK_MS = 3000;
     private static final int MEDIA_ACTIVE_RECHECK_MAX_MS = 5200;
@@ -368,14 +370,19 @@ public class WakeWordForegroundService extends Service {
         String said = normalize(rawForTts);
         if (said.isEmpty()) return RELISTEN_MS_QUICK;
 
-        String command = extractWakeCommand(said);
+        boolean screenOnNow = isScreenInteractive();
+        String command = extractWakeCommand(said, screenOnNow);
         if (command == null) {
             if (isSpeechFirstFallbackMode()) {
                 /*
                  * Porcupine assets are unavailable in this build. Route transcript directly so multilingual
                  * wake mis-hears ("हलो/హలో/हैलो ...") still execute app commands or fall back to voice chat.
                  */
-                command = said;
+                if (screenOnNow) {
+                    command = said;
+                } else {
+                    return RELISTEN_MS_QUICK;
+                }
             } else {
             Log.i(
                 TAG,
@@ -391,11 +398,18 @@ public class WakeWordForegroundService extends Service {
 
         if (command.isEmpty()) {
             /* Wake only — no TTS in background listener (silent operation; no speaker→mic overlap). */
+            if (!isScreenInteractive()) {
+                return RELISTEN_MS_AFTER_WAKE_ONLY_SCREEN_OFF;
+            }
             return RELISTEN_MS_AFTER_WAKE_ONLY;
         }
 
         if (!isScreenInteractive()) {
-            if (!listenScreenOff) {
+            /*
+             * Off-screen voice chat mode should continue to accept wake+command even when
+             * generic screen-off command listening is disabled in preferences.
+             */
+            if (!listenScreenOff && !voiceChatMode) {
                 return RELISTEN_MS_AFTER_WAKE_ONLY;
             }
             /* Screen off + user opted in: same Neo commands as screen on (may bring activity/UI to front). */
@@ -403,21 +417,32 @@ public class WakeWordForegroundService extends Service {
 
         String key = command.trim().toLowerCase(Locale.ROOT);
         long now = System.currentTimeMillis();
-        if (key.equals(lastHandledCommandKey) && (now - lastHandledCommandMs) < 3200) {
+        long dedupeWindowMs = isScreenInteractive() ? 3200L : 1800L;
+        if (key.equals(lastHandledCommandKey) && (now - lastHandledCommandMs) < dedupeWindowMs) {
             return RELISTEN_MS_QUICK;
         }
         lastHandledCommandKey = key;
         lastHandledCommandMs = now;
 
+        if (!isScreenInteractive()) {
+            /*
+             * Product rule: voice commands are on-screen only.
+             * Off-screen uses wake voice chat path (when enabled).
+             */
+            if (voiceChatMode) {
+                handleWakeVoiceChat(command);
+                return RELISTEN_DEFERRED;
+            }
+            return RELISTEN_MS_AFTER_WAKE_ONLY;
+        }
+
         boolean handled = NeoCommandRouter.execute(this, command);
         if (!handled) {
             /*
-             * Screen ON:
-             * - Primary: app command router (open WhatsApp, call, contacts, etc.)
-             * - Fallback: OpenAI voice chat for natural follow-up or general queries.
+             * Screen ON: "Hello Neo" is command-only. Voice chat remains owned by the
+             * dedicated voice chat page/session in the Web app.
              */
-            handleWakeVoiceChat(command);
-            return RELISTEN_DEFERRED;
+            return RELISTEN_MS_QUICK;
         }
         if (NeoCommandRouter.isAISpeaking()) {
             return RELISTEN_DEFERRED;
@@ -534,7 +559,7 @@ public class WakeWordForegroundService extends Service {
                 + ")(?=[\\s,.!?]|$)",
             Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
 
-    private String extractWakeCommand(String said) {
+    private String extractWakeCommand(String said, boolean allowStandaloneFallback) {
         Matcher m = WAKE_IN_UTTERANCE.matcher(said);
         if (m.find()) {
             String rest = said.substring(m.end()).trim();
@@ -547,7 +572,7 @@ public class WakeWordForegroundService extends Service {
          * Dev/sideload builds often ship without Porcupine ({@code wakeKeywordAvailable=false}). Still route
          * obvious short intents (contacts / YouTube / WhatsApp) without forcing “Hello Neo”.
          */
-        if (!wakeKeywordAvailable && looksLikeStandaloneNeoCommand(said)) {
+        if (allowStandaloneFallback && !wakeKeywordAvailable && looksLikeStandaloneNeoCommand(said)) {
             return said.trim();
         }
         return null;

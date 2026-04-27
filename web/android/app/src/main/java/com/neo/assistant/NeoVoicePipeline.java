@@ -25,11 +25,11 @@ final class NeoVoicePipeline implements Runnable {
     private static final int PREROLL_SAMPLES = 8000;
     private static final int MAX_CAPTURE_SAMPLES = 16000 * 22;
     private static final long MIN_CAPTURE_SAMPLES = 3600;
-    private static final long MIN_SPEECH_MS_FOR_TRANSCRIBE = 320;
-    private static final long MIN_SPEECH_MS_FOR_TRANSCRIBE_FALLBACK = 300;
-    private static final long SILENCE_END_MS = 360;
+    private static final long MIN_SPEECH_MS_FOR_TRANSCRIBE = 220;
+    private static final long MIN_SPEECH_MS_FOR_TRANSCRIBE_FALLBACK = 220;
+    private static final long SILENCE_END_MS = 280;
     /** Slightly longer pause tolerance so Hinglish / short gaps do not cut the clip early. */
-    private static final long SILENCE_END_MS_FALLBACK = 620;
+    private static final long SILENCE_END_MS_FALLBACK = 420;
     private static final long WAKE_DEBOUNCE_MS = 1200L;
     /** Mean abs PCM per sample; lower = quieter speech still starts capture (fallback, no Porcupine). */
     private static final double FALLBACK_START_THRESHOLD = 260.0;
@@ -361,7 +361,7 @@ final class NeoVoicePipeline implements Runnable {
                             + spokenMs
                             + " samples="
                             + capturedSamples);
-            mainHandler.post(() -> host.requestRelistenMs(420));
+            mainHandler.post(() -> host.requestRelistenMs(260));
             return;
         }
         Log.i(
@@ -391,7 +391,7 @@ final class NeoVoicePipeline implements Runnable {
         }
         final String out = text == null ? "" : text.trim();
         if (out.isEmpty()) {
-            mainHandler.post(() -> host.requestRelistenMs(520));
+            mainHandler.post(() -> host.requestRelistenMs(320));
             return;
         }
         mainHandler.post(() -> host.onTranscript(out));
