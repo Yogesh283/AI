@@ -26,6 +26,12 @@ public final class NeoPrefs {
     public static final String KEY_LAST_VOICE_APP_CONTEXT = "last_voice_app_context";
     /** Next utterance treated as YouTube search query until this time (epoch ms). */
     public static final String KEY_YT_VOICE_PENDING_UNTIL = "yt_voice_pending_until";
+    /** Voice command recognition language lock: "hi" or "en". */
+    public static final String KEY_VOICE_CMD_LANG = "voice_cmd_lang";
+    /** Pending call disambiguation choices JSON array: [{name,tel}, ...]. */
+    public static final String KEY_PENDING_CALL_CHOICES = "pending_call_choices";
+    /** Pending call disambiguation expiry (epoch ms). */
+    public static final String KEY_PENDING_CALL_UNTIL = "pending_call_until";
     /** One-time runtime prompt for {@link android.Manifest.permission#READ_CONTACTS} (call-by-name from voice). */
     public static final String KEY_PROMPTED_READ_CONTACTS = "prompted_read_contacts";
     /** One-time runtime prompt for {@link android.Manifest.permission#CALL_PHONE} (direct call trigger). */
@@ -279,6 +285,72 @@ public final class NeoPrefs {
             .getSharedPreferences(FILE, Context.MODE_PRIVATE)
             .edit()
             .remove(KEY_YT_VOICE_PENDING_UNTIL)
+            .apply();
+    }
+
+    public static String getVoiceCommandLanguage(Context c) {
+        String v =
+            c.getApplicationContext()
+                .getSharedPreferences(FILE, Context.MODE_PRIVATE)
+                .getString(KEY_VOICE_CMD_LANG, "hi");
+        if ("en".equalsIgnoreCase(v)) {
+            return "en";
+        }
+        return "hi";
+    }
+
+    public static void setVoiceCommandLanguage(Context c, String lang) {
+        String norm = "en".equalsIgnoreCase(lang) ? "en" : "hi";
+        c.getApplicationContext()
+            .getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_VOICE_CMD_LANG, norm)
+            .apply();
+    }
+
+    public static void armPendingCallChoices(Context c, JSONArray choices, long ttlMs) {
+        if (choices == null || choices.length() == 0) {
+            clearPendingCallChoices(c);
+            return;
+        }
+        long until = System.currentTimeMillis() + Math.max(8000L, ttlMs);
+        c.getApplicationContext()
+            .getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_PENDING_CALL_CHOICES, choices.toString())
+            .putLong(KEY_PENDING_CALL_UNTIL, until)
+            .apply();
+    }
+
+    public static boolean hasPendingCallChoices(Context c) {
+        long until =
+            c.getApplicationContext()
+                .getSharedPreferences(FILE, Context.MODE_PRIVATE)
+                .getLong(KEY_PENDING_CALL_UNTIL, 0L);
+        return until > System.currentTimeMillis();
+    }
+
+    public static JSONArray getPendingCallChoices(Context c) {
+        if (!hasPendingCallChoices(c)) {
+            return new JSONArray();
+        }
+        try {
+            String s =
+                c.getApplicationContext()
+                    .getSharedPreferences(FILE, Context.MODE_PRIVATE)
+                    .getString(KEY_PENDING_CALL_CHOICES, "[]");
+            return new JSONArray(s);
+        } catch (Exception ignored) {
+            return new JSONArray();
+        }
+    }
+
+    public static void clearPendingCallChoices(Context c) {
+        c.getApplicationContext()
+            .getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .edit()
+            .remove(KEY_PENDING_CALL_CHOICES)
+            .remove(KEY_PENDING_CALL_UNTIL)
             .apply();
     }
 }

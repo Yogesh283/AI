@@ -162,9 +162,16 @@ public final class NeoCommandRouter {
     static boolean execute(Context context, String raw) {
         busyAckHandler.removeCallbacksAndMessages(null);
         pendingBusyRunnable = null;
+        NeoVoiceWhisperClient.setForcedLanguage(NeoPrefs.getVoiceCommandLanguage(context));
 
         String text = normalize(raw);
         if (text.isEmpty()) return false;
+        if (handleVoiceLanguageSwitchIntent(context, text)) {
+            return true;
+        }
+        if (handlePendingCallDisambiguation(context, text, raw)) {
+            return true;
+        }
         /* UI-only — no TTS (avoids speaker→mic loop and “bar bar” prompts). */
         if (isMicControlIntent(text, raw)) {
             return true;
@@ -320,21 +327,39 @@ public final class NeoCommandRouter {
                 preferBiz
                     ? new String[] {"com.whatsapp.w4b", "com.whatsapp"}
                     : new String[] {"com.whatsapp", "com.whatsapp.w4b"};
-            Uri appUri =
-                waDigits != null
-                    ? Uri.parse("whatsapp://send?phone=" + waDigits)
-                    : Uri.parse("whatsapp://send");
             speakOpenAppWithFollowUp(
                 context,
                 raw,
                 calmOpenWhatsAppPhrase(raw),
                 520,
                 () -> {
-                    openPreferredAppThenStore(
-                        context,
-                        waPkgs,
-                        appUri,
-                        "com.whatsapp");
+                    if (waDigits != null && waDigits.length() >= 11) {
+                        openPreferredAppThenStore(
+                            context,
+                            waPkgs,
+                            Uri.parse("whatsapp://send?phone=" + waDigits),
+                            "com.whatsapp");
+                    } else {
+                        /*
+                         * Avoid invalid-link screen on some WhatsApp builds when launched with whatsapp://send
+                         * without a phone/text payload; launch app home directly.
+                         */
+                        boolean launched = false;
+                        for (String pkg : waPkgs) {
+                            Intent launch = context.getPackageManager().getLaunchIntentForPackage(pkg);
+                            if (launch != null && startActivityCompat(context, launch)) {
+                                launched = true;
+                                break;
+                            }
+                        }
+                        if (!launched) {
+                            openPreferredAppThenStore(
+                                context,
+                                waPkgs,
+                                Uri.parse("https://api.whatsapp.com/send"),
+                                "com.whatsapp");
+                        }
+                    }
                     if (waDigits != null && waDigits.length() >= 11) {
                         NeoPrefs.setVoiceComposeTarget(context, "wa", waDigits, "");
                     }
@@ -382,14 +407,31 @@ public final class NeoCommandRouter {
                 speak(context, "किस नाम से फ़ोन लगाना है? जैसे—विजय जी को कॉल करो।");
                 return true;
             }
-            String telUri = lookupDialStringForContactName(context, name);
-            if (telUri == null) {
+            List<CallCandidate> candidates = lookupDialCandidatesForContactName(context, name, 3);
+            if (candidates.isEmpty()) {
                 speak(
                     context,
                     "यह नाम आपकी संपर्क सूची में नहीं मिला। जिस नाम से सेव है, वही बोलकर फिर कोशिश करिए।");
                 return true;
             }
-            final String dial = telUri;
+            if (candidates.size() >= 2 && hasAmbiguousTopContactNames(candidates)) {
+                JSONArray choices = new JSONArray();
+                for (int i = 0; i < Math.min(3, candidates.size()); i++) {
+                    try {
+                        JSONObject o = new JSONObject();
+                        o.put("name", candidates.get(i).displayName);
+                        o.put("tel", candidates.get(i).telUri);
+                        choices.put(o);
+                    } catch (Exception ignored) {
+                    }
+                }
+                NeoPrefs.armPendingCallChoices(context, choices, 45_000L);
+                speak(
+                    context,
+                    "सर, आपकी संपर्क सूची में " + candidates.get(0).displayName + " नाम के दो कॉन्टैक्ट हैं। बताइए पहला या दूसरा किसे कॉल करूँ?");
+                return true;
+            }
+            final String dial = candidates.get(0).telUri;
             speakThen(context, calmCallPhrase(raw), 1250, () -> startTelIntent(context, dial));
             return true;
         }
@@ -583,7 +625,7 @@ public final class NeoCommandRouter {
                 } catch (Exception ignored) {
                 }
                 if (followUp != null && !followUp.isEmpty()) {
-                    busyAckHandler.postDelayed(() -> speak(context, followUp), 1250L);
+                    busyAckHandler.postDelayed(() -> speak(context, followUp), 620L);
                 }
             });
     }
@@ -992,6 +1034,9 @@ public final class NeoCommandRouter {
                 || t.contains("padho")
                 || t.contains("पढ़")
                 || t.contains("पढ़ो")
+                || t.contains("सुनाओ")
+                || t.contains("सुना दो")
+                || t.contains("बोलकर")
                 || t.contains("dikhao")
                 || t.contains("दिखा")
                 || t.contains("whose")
@@ -1413,10 +1458,14 @@ public final class NeoCommandRouter {
                 || t.contains("व्हाट्सएप")
                 || t.contains("वाट्सऐप")
                 || t.contains("व्हाट्सऐप")
+                || t.contains("whatsup")
+                || t.contains("व्हाटसप")
+                || t.contains("वटसप")
                 /* ASR often inserts a space: "व्हाट्स एप खोलो" */
                 || t.replace(" ", "").contains("व्हाट्सएप")
                 || t.replace(" ", "").contains("वाट्सऐप")
-                || t.replace(" ", "").contains("व्हाट्सऐप");
+                || t.replace(" ", "").contains("व्हाट्सऐप")
+                || t.replace(" ", "").contains("वटसप");
         if (!hasWord) return false;
         String tr = t.trim();
         /* Follow-up turn: user often says only the app name. */
@@ -1570,6 +1619,100 @@ public final class NeoCommandRouter {
         }
         Intent pick = new Intent(Intent.ACTION_PICK, ContactsContract.Contacts.CONTENT_URI);
         startActivityCompat(context, pick);
+    }
+
+    private static boolean handleVoiceLanguageSwitchIntent(Context context, String t) {
+        if (t == null || t.isEmpty()) {
+            return false;
+        }
+        boolean wantsHindi =
+            t.contains("hindi")
+                || t.contains("हिंदी")
+                || t.contains("हिन्दी")
+                || t.contains("हिंदि");
+        boolean wantsEnglish =
+            t.contains("english")
+                || t.contains("अंग्रेजी")
+                || t.contains("इंग्लिश")
+                || t.contains("inglish");
+        boolean isSwitchIntent =
+            t.contains("बात")
+                || t.contains("speak")
+                || t.contains("language")
+                || t.contains("भाषा")
+                || t.contains("में")
+                || t.contains("use");
+        if (!isSwitchIntent || (!wantsHindi && !wantsEnglish)) {
+            return false;
+        }
+        if (wantsEnglish) {
+            NeoPrefs.setVoiceCommandLanguage(context, "en");
+            NeoVoiceWhisperClient.setForcedLanguage("en");
+            speak(context, "Sure sir, I will listen and respond in English.");
+            return true;
+        }
+        NeoPrefs.setVoiceCommandLanguage(context, "hi");
+        NeoVoiceWhisperClient.setForcedLanguage("hi");
+        speak(context, "ठीक है सर, अब मैं हिंदी में सुनूंगा और हिंदी में जवाब दूंगा।");
+        return true;
+    }
+
+    private static boolean handlePendingCallDisambiguation(Context context, String t, String raw) {
+        if (!NeoPrefs.hasPendingCallChoices(context)) {
+            return false;
+        }
+        JSONArray arr = NeoPrefs.getPendingCallChoices(context);
+        if (arr.length() == 0) {
+            NeoPrefs.clearPendingCallChoices(context);
+            return false;
+        }
+        int idx = parseChoiceIndex(t);
+        if (idx < 0) {
+            String matchTel = matchCallChoiceBySpokenName(arr, t, raw);
+            if (matchTel != null) {
+                NeoPrefs.clearPendingCallChoices(context);
+                final String tel = matchTel;
+                speakThen(context, calmCallPhrase(raw), 520, () -> startTelIntent(context, tel));
+                return true;
+            }
+            speak(context, "सर, पहला या दूसरा बोलिए — किसे कॉल करना है?");
+            return true;
+        }
+        if (idx >= arr.length()) {
+            speak(context, "सर, सूची में उतने विकल्प नहीं हैं। पहला या दूसरा बोलिए।");
+            return true;
+        }
+        String tel = arr.optJSONObject(idx) == null ? "" : arr.optJSONObject(idx).optString("tel", "");
+        NeoPrefs.clearPendingCallChoices(context);
+        if (tel.isEmpty()) {
+            return false;
+        }
+        final String callTel = tel;
+        speakThen(context, calmCallPhrase(raw), 520, () -> startTelIntent(context, callTel));
+        return true;
+    }
+
+    private static int parseChoiceIndex(String t) {
+        if (t == null) return -1;
+        if (t.matches(".*\\b(1|one|first|पहला|पहले|1st)\\b.*")) return 0;
+        if (t.matches(".*\\b(2|two|second|दूसरा|दूसरे|2nd)\\b.*")) return 1;
+        if (t.matches(".*\\b(3|three|third|तीसरा|3rd)\\b.*")) return 2;
+        return -1;
+    }
+
+    private static String matchCallChoiceBySpokenName(JSONArray arr, String t, String raw) {
+        String probe = normalize((raw == null || raw.trim().isEmpty()) ? t : raw);
+        if (probe.isEmpty()) return null;
+        for (int i = 0; i < arr.length(); i++) {
+            JSONObject o = arr.optJSONObject(i);
+            if (o == null) continue;
+            String name = normalize(o.optString("name", ""));
+            String tel = o.optString("tel", "");
+            if (!name.isEmpty() && probe.contains(name) && !tel.isEmpty()) {
+                return tel;
+            }
+        }
+        return null;
     }
 
     private static boolean isCallByNameIntent(String t) {
@@ -1901,14 +2044,43 @@ public final class NeoCommandRouter {
         return "tel:+" + digits;
     }
 
-    private static String lookupDialStringForContactName(Context context, String nameQuery) {
+    private static final class CallCandidate {
+        final String telUri;
+        final String displayName;
+        final int score;
+
+        CallCandidate(String telUri, String displayName, int score) {
+            this.telUri = telUri;
+            this.displayName = displayName == null ? "" : displayName.trim();
+            this.score = score;
+        }
+    }
+
+    private static boolean hasAmbiguousTopContactNames(List<CallCandidate> candidates) {
+        if (candidates == null || candidates.size() < 2) {
+            return false;
+        }
+        String a = normalize(candidates.get(0).displayName);
+        String b = normalize(candidates.get(1).displayName);
+        if (a.isEmpty() || b.isEmpty()) {
+            return false;
+        }
+        return a.equals(b) && Math.abs(candidates.get(0).score - candidates.get(1).score) <= 10;
+    }
+
+    private static List<CallCandidate> lookupDialCandidatesForContactName(
+        Context context,
+        String nameQuery,
+        int limit
+    ) {
+        ArrayList<CallCandidate> out = new ArrayList<>();
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS)
                 != PackageManager.PERMISSION_GRANTED) {
-            return null;
+            return out;
         }
-        String q = nameQuery.toLowerCase(Locale.ROOT).trim();
+        String q = nameQuery == null ? "" : nameQuery.toLowerCase(Locale.ROOT).trim();
         if (q.length() < 2) {
-            return null;
+            return out;
         }
         ContentResolver cr = context.getContentResolver();
         Uri uri = ContactsContract.CommonDataKinds.Phone.CONTENT_URI;
@@ -1925,33 +2097,38 @@ public final class NeoCommandRouter {
                     null,
                     ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME_PRIMARY + " ASC")) {
             if (c == null) {
-                return null;
+                return out;
             }
-            String bestUri = null;
-            int bestScore = 0;
             while (c.moveToNext()) {
                 String num = c.getString(0);
                 String disp = c.getString(1);
                 if (num == null || disp == null) {
                     continue;
                 }
-                String d = disp.toLowerCase(Locale.ROOT);
-                int score = scoreContactNameMatch(d, q);
-                if (score <= bestScore) {
+                int score = scoreContactNameMatch(disp.toLowerCase(Locale.ROOT), q);
+                if (score < 62) {
                     continue;
                 }
                 String telCandidate = normalizePhoneFieldToTelUri(num);
                 if (telCandidate == null) {
                     continue;
                 }
-                bestScore = score;
-                bestUri = telCandidate;
+                out.add(new CallCandidate(telCandidate, disp, score));
             }
-            if (bestScore < 62 || bestUri == null) {
-                return null;
-            }
-            return bestUri;
         }
+        out.sort((a, b) -> Integer.compare(b.score, a.score));
+        if (out.size() > Math.max(1, limit)) {
+            return new ArrayList<>(out.subList(0, Math.max(1, limit)));
+        }
+        return out;
+    }
+
+    private static String lookupDialStringForContactName(Context context, String nameQuery) {
+        List<CallCandidate> candidates = lookupDialCandidatesForContactName(context, nameQuery, 1);
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return candidates.get(0).telUri;
     }
 
     private static String extractTel(String t) {

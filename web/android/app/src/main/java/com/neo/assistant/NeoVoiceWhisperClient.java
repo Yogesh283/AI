@@ -20,10 +20,23 @@ import org.json.JSONObject;
 final class NeoVoiceWhisperClient {
 
     private static final String TAG = "NeoWhisper";
+    private static volatile String forcedLanguage = null;
 
     static final String DEFAULT_TRANSCRIBE_URL = "https://myneoxai.com/neo-api/api/voice/transcribe";
 
     private NeoVoiceWhisperClient() {}
+
+    static void setForcedLanguage(String lang) {
+        if ("en".equalsIgnoreCase(lang)) {
+            forcedLanguage = "en";
+            return;
+        }
+        if ("hi".equalsIgnoreCase(lang)) {
+            forcedLanguage = "hi";
+            return;
+        }
+        forcedLanguage = null;
+    }
 
     private static String readStreamLimited(InputStream is, int maxChars) throws java.io.IOException {
         if (is == null) {
@@ -51,24 +64,25 @@ final class NeoVoiceWhisperClient {
             conn = (HttpURLConnection) new URL(endpoint).openConnection();
             conn.setRequestMethod("POST");
             conn.setDoOutput(true);
-            conn.setConnectTimeout(7000);
-            conn.setReadTimeout(45000);
+            conn.setConnectTimeout(3200);
+            conn.setReadTimeout(12000);
             /* Default Java HttpURLConnection user-agent is often blocked by CDNs / WAFs. */
             conn.setRequestProperty(
                     "User-Agent",
                     "NeoAssistant-Android/" + BuildConfig.VERSION_NAME + " (voice-transcribe)");
             conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
             conn.setRequestProperty("Accept", "application/json");
-            String lang = Locale.getDefault().getLanguage();
-            boolean sendLang =
-                    lang != null
-                            && lang.length() == 2
-                            && !lang.equalsIgnoreCase("en");
+            String lang = forcedLanguage;
+            if (!"hi".equals(lang) && !"en".equals(lang)) {
+                String localeLang = Locale.getDefault().getLanguage();
+                lang = "hi".equalsIgnoreCase(localeLang) ? "hi" : "en";
+            }
+            boolean sendLang = "hi".equals(lang) || "en".equals(lang);
             byte[] langPart =
                     sendLang
                             ? ("--" + boundary + "\r\n"
                                             + "Content-Disposition: form-data; name=\"language\"\r\n\r\n"
-                                            + lang.toLowerCase(Locale.ROOT)
+                                            + lang
                                             + "\r\n")
                                     .getBytes(StandardCharsets.UTF_8)
                             : null;

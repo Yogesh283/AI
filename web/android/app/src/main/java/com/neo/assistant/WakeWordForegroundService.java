@@ -64,10 +64,10 @@ public class WakeWordForegroundService extends Service {
      * {@link NeoCommandRouter} will run {@link #resumeListeningRunnable} when TTS ends.
      */
     private static final int RELISTEN_DEFERRED = -1;
-    private static final int RELISTEN_MS_QUICK = 720;
-    private static final int RELISTEN_MS_ERROR = 1500;
+    private static final int RELISTEN_MS_QUICK = 480;
+    private static final int RELISTEN_MS_ERROR = 900;
     /** Wake heard with no command tail — brief pause so the user can finish the phrase (Alexa-like beat). */
-    private static final int RELISTEN_MS_AFTER_WAKE_ONLY = 1850;
+    private static final int RELISTEN_MS_AFTER_WAKE_ONLY = 1200;
     /** If other app audio/video is active, stay idle and retry later. */
     private static final int MEDIA_ACTIVE_RECHECK_MS = 3000;
     private static final int MEDIA_ACTIVE_RECHECK_MAX_MS = 5200;
@@ -84,8 +84,8 @@ public class WakeWordForegroundService extends Service {
     private AudioFocusRequest micAudioFocusRequest;
     private volatile boolean voiceChatMode = false;
     private volatile boolean chatRequestInFlight = false;
-    private static final int CHAT_CONNECT_TIMEOUT_MS = 4200;
-    private static final int CHAT_READ_TIMEOUT_MS = 7200;
+    private static final int CHAT_CONNECT_TIMEOUT_MS = 3000;
+    private static final int CHAT_READ_TIMEOUT_MS = 5200;
     /** Same-origin Next proxy as the WebView — not bare {@code /api/chat} on the public host. */
     private static final String CHAT_API_FALLBACK = "https://myneoxai.com/neo-api/api/chat";
     private static volatile boolean runningNow = false;
@@ -122,6 +122,7 @@ public class WakeWordForegroundService extends Service {
     public void onCreate() {
         super.onCreate();
         runningNow = true;
+        NeoVoiceWhisperClient.setForcedLanguage(NeoPrefs.getVoiceCommandLanguage(this));
         wakeKeywordAvailable = PorcupineStreamWake.canInit(this);
         createChannel();
         acquirePartialWakeLock();
