@@ -45,6 +45,7 @@ import {
   isOpenAiRealtimeVoiceSupported,
   startOpenAiRealtimeVoiceSession,
 } from "@/lib/openaiRealtimeVoice";
+import { extractHelloNeoCommand } from "@/lib/neoVoiceCommands";
 
 const VOICE_HISTORY_PREFIX = "neo-voice-history-";
 
@@ -148,6 +149,8 @@ export default function VoicePage() {
   const liveCancelRef = useRef<(() => void) | null>(null);
   const liveSendClientEventRef = useRef<((o: Record<string, unknown>) => void) | null>(null);
   const liveEnsureMicRef = useRef<(() => void) | null>(null);
+  /** APK Live: unmute model downlink only after user says Hello Neo (see finalized user transcript). */
+  const liveAssistantAudioUnlockedRef = useRef(true);
   /** APK: native wake was stopped so WebRTC can own the mic for Live voice. */
   const nativeWakePausedForLiveRef = useRef(false);
   /** Monotonic id so stale live-web async work never calls `response.create` after a newer utterance. */
@@ -412,6 +415,7 @@ export default function VoicePage() {
     speakingRef.current = false;
     setSpeaking(false);
     setListening(false);
+    liveAssistantAudioUnlockedRef.current = !isNativeCapacitor();
     resumeNativeWakeAfterVoiceLive();
   }, [stopBargeInRecognition, stopRecognitionOnly, stopVoiceOutput, resumeNativeWakeAfterVoiceLive]);
 
@@ -532,6 +536,13 @@ export default function VoicePage() {
           if (typeof document !== "undefined" && document.visibilityState !== "visible") {
             liveUserTranscriptOpenRef.current = false;
             return;
+          }
+          if (isNativeCapacitor() && !liveAssistantAudioUnlockedRef.current) {
+            const { hadWake } = extractHelloNeoCommand(line);
+            if (hadWake) {
+              liveAssistantAudioUnlockedRef.current = true;
+              live.setAssistantAudioMuted(false);
+            }
           }
           if (isVoiceUserStopIntent(line)) {
             liveCancelRef.current?.();
@@ -746,6 +757,13 @@ export default function VoicePage() {
       liveCancelRef.current = live.cancelAssistant;
       liveSendClientEventRef.current = live.sendClientEvent;
       liveEnsureMicRef.current = live.ensureLocalMicLive;
+      if (isNativeCapacitor()) {
+        liveAssistantAudioUnlockedRef.current = false;
+        live.setAssistantAudioMuted(true);
+      } else {
+        liveAssistantAudioUnlockedRef.current = true;
+        live.setAssistantAudioMuted(false);
+      }
     } catch (e) {
       resumeNativeWakeAfterVoiceLive();
       if (acquiredMic) {
@@ -866,6 +884,9 @@ export default function VoicePage() {
         }
       }
       if (!sessionOnRef.current) {
+        if (isNativeCapacitor()) {
+          return;
+        }
         try {
           primeSpeechVoices();
           window.speechSynthesis?.resume();

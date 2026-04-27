@@ -186,6 +186,11 @@ export type OpenAiRealtimeVoiceSession = {
    * Safe to call often; only touches local uplink tracks.
    */
   ensureLocalMicLive: () => void;
+  /**
+   * Mute/unmute model downlink (APK: keep silent until user says “Hello Neo” in Live voice).
+   * Does not stop the session or cancel in-flight responses.
+   */
+  setAssistantAudioMuted: (muted: boolean) => void;
 };
 
 export type StartOpenAiRealtimeVoiceOptions = {
@@ -323,6 +328,11 @@ export async function startOpenAiRealtimeVoiceSession(
     }
   };
 
+  const setAssistantAudioMuted = (muted: boolean) => {
+    remoteAudio.muted = muted;
+    remoteAudio.volume = muted ? 0 : 1;
+  };
+
   const close = () => {
     try {
       dc.close();
@@ -356,5 +366,5 @@ export async function startOpenAiRealtimeVoiceSession(
     }
   };
 
-  return { close, peerConnection: pc, cancelAssistant, sendClientEvent, ensureLocalMicLive };
+  return { close, peerConnection: pc, cancelAssistant, sendClientEvent, ensureLocalMicLive, setAssistantAudioMuted };
 }

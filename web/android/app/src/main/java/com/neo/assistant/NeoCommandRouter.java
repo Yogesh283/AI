@@ -47,6 +47,17 @@ public final class NeoCommandRouter {
     private static volatile Runnable assistantSpeechEndedRunnable;
 
     /**
+     * When {@code false}, {@link #speak} is a no-op. Used by {@link WakeWordForegroundService} so the APK stays
+     * silent until “Hello Neo” is confirmed in the transcript or by the Porcupine hotword for this capture.
+     * Tap routing from WebView leaves this {@code true} (default).
+     */
+    private static volatile boolean assistantTtsAllowed = true;
+
+    public static void setAssistantTtsAllowed(boolean allowed) {
+        assistantTtsAllowed = allowed;
+    }
+
+    /**
      * {@link WakeWordForegroundService} wraps {@link #execute} with this so background wake routing has
      * <strong>no TTS</strong> (no wake hint, no errors spoken, no “opening…” lines). Actions still pause STT via
      * {@link #isAISpeaking} during delayed execution. OEM mic / focus sounds are not fully controllable from app code.
@@ -700,6 +711,7 @@ public final class NeoCommandRouter {
         busyAckHandler.removeCallbacksAndMessages(null);
         pendingBusyRunnable = null;
         assistantSpeechEndedRunnable = null;
+        assistantTtsAllowed = true;
         isAISpeaking = false;
         if (tts != null) {
             try {
@@ -2401,6 +2413,9 @@ public final class NeoCommandRouter {
 
     private static void speak(Context context, String text) {
         if (text == null || text.trim().isEmpty()) return;
+        if (!assistantTtsAllowed) {
+            return;
+        }
         if (isSilentWakeRouting()) {
             return;
         }

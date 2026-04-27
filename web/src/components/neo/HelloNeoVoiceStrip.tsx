@@ -224,9 +224,8 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
        */
       if (!inFollowUp && !hadWake) {
         syncFollowUp();
-        setHint(
-          "पहले «Hello Neo», «Hey Neo», या «नियो» बोलें, फिर कमांड (जैसे व्हाट्सऐप खोलो)। Say Hello Neo (or Neo) first, then your command.",
-        );
+        /* Product: stay silent — no hint/TTS until user speaks a valid wake phrase (handled in wake-gated flows). */
+        setHint(null);
         return;
       }
 
@@ -432,14 +431,14 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
               clearNeoFollowUpSession();
               tapFollowUpArmedRef.current = false;
             }
-            setHint("I didn't quite hear that — tap again and speak clearly.");
+            setHint(null);
             await resumeNativeWakeAfterTapIfNeeded();
             return;
           }
           try {
             await runPipeline(said);
           } catch {
-            setHint("Could not respond.");
+            setHint(null);
           }
         })();
       };

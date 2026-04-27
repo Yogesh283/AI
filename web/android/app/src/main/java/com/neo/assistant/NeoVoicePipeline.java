@@ -63,6 +63,9 @@ final class NeoVoicePipeline implements Runnable {
         default boolean allowFallbackHotCapture() {
             return true;
         }
+
+        /** Porcupine detected the hotword and a capture window is starting (worker thread). */
+        default void onPorcupineHotword() {}
     }
 
     private enum VoiceState {
@@ -293,6 +296,7 @@ final class NeoVoicePipeline implements Runnable {
                     long now = System.currentTimeMillis();
                     if (now - lastWakeMs >= WAKE_DEBOUNCE_MS) {
                         lastWakeMs = now;
+                        host.onPorcupineHotword();
                         beginCaptureAtRingEnd();
                     }
                 }

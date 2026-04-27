@@ -27,6 +27,7 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.Locale;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.json.JSONArray;
@@ -86,6 +87,8 @@ public class WakeWordForegroundService extends Service {
     private AudioFocusRequest micAudioFocusRequest;
     private volatile boolean voiceChatMode = false;
     private volatile boolean chatRequestInFlight = false;
+    /** Set when Porcupine fires for the clip that produced the next Whisper transcript (speech-first path leaves false). */
+    private final AtomicBoolean porcupineWakeForNextTranscript = new AtomicBoolean(false);
     private static final int CHAT_CONNECT_TIMEOUT_MS = 3000;
     private static final int CHAT_READ_TIMEOUT_MS = 5200;
     /** Same-origin Next proxy as the WebView — not bare {@code /api/chat} on the public host. */
@@ -178,6 +181,11 @@ public class WakeWordForegroundService extends Service {
                             return false;
                         }
                         return true;
+                    }
+
+                    @Override
+                    public void onPorcupineHotword() {
+                        porcupineWakeForNextTranscript.set(true);
                     }
                 });
         NeoCommandRouter.setAssistantSpeechEndedRunnable(
@@ -383,96 +391,104 @@ public class WakeWordForegroundService extends Service {
         String said = normalize(rawForTts);
         if (said.isEmpty()) return RELISTEN_MS_QUICK;
 
+        boolean porcupineHeard = porcupineWakeForNextTranscript.getAndSet(false);
         boolean screenOnNow = isScreenInteractive();
         String command = extractWakeCommand(said, screenOnNow);
-        if (command == null) {
-            if (screenOnNow) {
-                /*
-                 * On-screen assistant mode: allow direct commands without forcing wake phrase every turn.
-                 * Off-screen path remains wake-gated ("Hello Neo").
-                 */
-                command = said;
-            } else if (isSpeechFirstFallbackMode()) {
-                /*
-                 * Porcupine assets are unavailable in this build. Route transcript directly so multilingual
-                 * wake mis-hears ("हलो/హలో/हैलो ...") still execute app commands or fall back to voice chat.
-                 */
-                return RELISTEN_MS_QUICK;
-            } else {
-                Log.i(
-                    TAG,
-                    "voiceCommand ignored: no wake phrase match (Porcupine="
-                        + wakeKeywordAvailable
-                        + ") len="
-                        + said.length()
-                        + " text="
-                        + (said.length() > 160 ? said.substring(0, 160) + "..." : said));
-                return RELISTEN_MS_QUICK;
-            }
-        }
+        final boolean allowAssistantVoice = command != null || porcupineHeard;
 
-        if (command.isEmpty()) {
-            /*
-             * User expectation: one "Hello Neo" should always produce an audible acknowledgment.
-             * Keep it short and let TTS completion drive the next relisten.
-             */
-            NeoCommandRouter.speakWakeListeningAck(this, rawForTts);
-            if (NeoCommandRouter.isAISpeaking()) {
-                return RELISTEN_DEFERRED;
+        NeoCommandRouter.setAssistantTtsAllowed(allowAssistantVoice);
+        try {
+            if (command == null) {
+                if (screenOnNow) {
+                    /*
+                     * On-screen assistant mode: allow direct commands without forcing wake phrase every turn.
+                     * Off-screen path remains wake-gated ("Hello Neo").
+                     */
+                    command = said;
+                } else if (isSpeechFirstFallbackMode()) {
+                    /*
+                     * Porcupine assets are unavailable in this build. Route transcript directly so multilingual
+                     * wake mis-hears ("हलो/హలో/हैलो ...") still execute app commands or fall back to voice chat.
+                     */
+                    return RELISTEN_MS_QUICK;
+                } else {
+                    Log.i(
+                        TAG,
+                        "voiceCommand ignored: no wake phrase match (Porcupine="
+                            + wakeKeywordAvailable
+                            + ") len="
+                            + said.length()
+                            + " text="
+                            + (said.length() > 160 ? said.substring(0, 160) + "..." : said));
+                    return RELISTEN_MS_QUICK;
+                }
             }
-            if (!isScreenInteractive()) {
-                return RELISTEN_MS_AFTER_WAKE_ONLY_SCREEN_OFF;
-            }
-            return RELISTEN_MS_AFTER_WAKE_ONLY;
-        }
 
-        if (!isScreenInteractive()) {
-            /*
-             * Off-screen voice chat mode should continue to accept wake+command even when
-             * generic screen-off command listening is disabled in preferences.
-             */
-            if (!listenScreenOff && !voiceChatMode) {
+            if (command.isEmpty()) {
+                /*
+                 * User expectation: one "Hello Neo" should always produce an audible acknowledgment.
+                 * Keep it short and let TTS completion drive the next relisten.
+                 */
+                NeoCommandRouter.speakWakeListeningAck(this, rawForTts);
+                if (NeoCommandRouter.isAISpeaking()) {
+                    return RELISTEN_DEFERRED;
+                }
+                if (!isScreenInteractive()) {
+                    return RELISTEN_MS_AFTER_WAKE_ONLY_SCREEN_OFF;
+                }
                 return RELISTEN_MS_AFTER_WAKE_ONLY;
             }
-            /* Screen off + user opted in: same Neo commands as screen on (may bring activity/UI to front). */
-        }
 
-        String key = command.trim().toLowerCase(Locale.ROOT);
-        long now = System.currentTimeMillis();
-        long dedupeWindowMs = isScreenInteractive() ? 1400L : 900L;
-        if (key.equals(lastHandledCommandKey) && (now - lastHandledCommandMs) < dedupeWindowMs) {
-            return RELISTEN_MS_QUICK;
-        }
-        lastHandledCommandKey = key;
-        lastHandledCommandMs = now;
-
-        if (!isScreenInteractive()) {
-            /*
-             * Product rule: voice commands are on-screen only.
-             * Off-screen uses wake voice chat path (when enabled).
-             */
-            if (voiceChatMode) {
-                handleWakeVoiceChat(command);
-                return RELISTEN_DEFERRED;
+            if (!isScreenInteractive()) {
+                /*
+                 * Off-screen voice chat mode should continue to accept wake+command even when
+                 * generic screen-off command listening is disabled in preferences.
+                 */
+                if (!listenScreenOff && !voiceChatMode) {
+                    return RELISTEN_MS_AFTER_WAKE_ONLY;
+                }
+                /* Screen off + user opted in: same Neo commands as screen on (may bring activity/UI to front). */
             }
-            return RELISTEN_MS_AFTER_WAKE_ONLY;
-        }
 
-        boolean handled = NeoCommandRouter.execute(this, command);
-        if (!handled) {
-            /*
-             * Always give audible feedback so the user knows Neo heard them.
-             */
-            NeoCommandRouter.speakCommandNotUnderstood(this, rawForTts);
+            String key = command.trim().toLowerCase(Locale.ROOT);
+            long now = System.currentTimeMillis();
+            long dedupeWindowMs = isScreenInteractive() ? 1400L : 900L;
+            if (key.equals(lastHandledCommandKey) && (now - lastHandledCommandMs) < dedupeWindowMs) {
+                return RELISTEN_MS_QUICK;
+            }
+            lastHandledCommandKey = key;
+            lastHandledCommandMs = now;
+
+            if (!isScreenInteractive()) {
+                /*
+                 * Product rule: voice commands are on-screen only.
+                 * Off-screen uses wake voice chat path (when enabled).
+                 */
+                if (voiceChatMode) {
+                    handleWakeVoiceChat(command);
+                    return RELISTEN_DEFERRED;
+                }
+                return RELISTEN_MS_AFTER_WAKE_ONLY;
+            }
+
+            boolean handled = NeoCommandRouter.execute(this, command);
+            if (!handled) {
+                /*
+                 * Always give audible feedback so the user knows Neo heard them.
+                 */
+                NeoCommandRouter.speakCommandNotUnderstood(this, rawForTts);
+                if (NeoCommandRouter.isAISpeaking()) {
+                    return RELISTEN_DEFERRED;
+                }
+                return RELISTEN_MS_QUICK;
+            }
             if (NeoCommandRouter.isAISpeaking()) {
                 return RELISTEN_DEFERRED;
             }
             return RELISTEN_MS_QUICK;
+        } finally {
+            NeoCommandRouter.setAssistantTtsAllowed(true);
         }
-        if (NeoCommandRouter.isAISpeaking()) {
-            return RELISTEN_DEFERRED;
-        }
-        return RELISTEN_MS_QUICK;
     }
 
     /** Speech-first fallback when Porcupine keyword model is unavailable but wake voice-chat mode is on. */
