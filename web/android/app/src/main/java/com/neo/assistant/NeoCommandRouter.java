@@ -264,16 +264,51 @@ public final class NeoCommandRouter {
             }
         }
 
+        if (NeoPrefs.isYoutubeVoiceQueryPending(context)) {
+            if (isWhatsAppIntent(text)
+                    || isTelegramIntent(text)
+                    || isContactsIntent(text)) {
+                NeoPrefs.clearYoutubeVoiceQueryPending(context);
+            } else if (extractYouTubeQuery(text) != null) {
+                /* Re-run normal “यूट्यूब … / play …” parsing; avoid treating a full YouTube command as a plain search. */
+                NeoPrefs.clearYoutubeVoiceQueryPending(context);
+            } else if (text.length() >= 2 && text.length() <= 280) {
+                NeoPrefs.clearYoutubeVoiceQueryPending(context);
+                final String q = raw != null && !raw.trim().isEmpty() ? raw.trim() : text;
+                NeoPrefs.setLastVoiceAppContext(context, "youtube");
+                if (isSilentWakeRouting()) {
+                    openYouTubeSearchForPlayback(context, q);
+                    return true;
+                }
+                speakThen(
+                    context,
+                    "ठीक है, यूट्यूब पर खोज रहा हूँ।",
+                    420,
+                    () -> openYouTubeSearchForPlayback(context, q));
+                return true;
+            }
+        }
+
         String ytQuery = extractYouTubeQuery(text);
         if (ytQuery != null) {
             final String q = ytQuery;
+            final boolean askSongNext = "latest songs".equals(q.trim());
+            Runnable openYt =
+                () -> {
+                    openYouTubeSearchForPlayback(context, q);
+                    if (askSongNext) {
+                        NeoPrefs.armYoutubeVoiceQueryPending(context, 120_000L);
+                    }
+                };
             speakOpenAppWithFollowUp(
                 context,
                 raw,
                 calmOpenYouTubePhrase(raw),
                 620,
-                () -> openYouTubeSearchForPlayback(context, q),
-                afterYouTubeOpenedPrompt(raw));
+                openYt,
+                askSongNext
+                    ? "अब बोलिए कौन सा गाना या कलाकार चाहिए — एक बार नाम बोल दीजिए।"
+                    : afterYouTubeOpenedPrompt(raw));
             return true;
         }
 
@@ -788,7 +823,10 @@ public final class NeoCommandRouter {
 
     /** Open the YouTube Music app when user asks for music (not a YouTube-only phrase). */
     private static boolean isYouTubeMusicLaunchIntent(String t) {
-        if (t.contains("youtube") || t.contains("you tube") || t.contains("यूट्यूब")) {
+        if (t.contains("youtube")
+                || t.contains("you tube")
+                || t.contains("यूट्यूब")
+                || t.contains("यूटूब")) {
             return false;
         }
         return t.matches(".*\\b(open|play|launch|start)\\b.*\\bmusic\\b.*")
@@ -801,7 +839,10 @@ public final class NeoCommandRouter {
      */
     private static boolean isLikelyYouTubeSongCommand(String t) {
         if (t == null || t.isEmpty()) return false;
-        if (t.contains("यूट्यूब") || t.contains("youtube") || t.contains("you tube")) return true;
+        if (t.contains("यूट्यूब")
+                || t.contains("यूटूब")
+                || t.contains("youtube")
+                || t.contains("you tube")) return true;
         boolean hasSongWord = t.contains("गाना") || t.contains("गाने") || t.contains("संगीत");
         boolean hasPlayVerb =
             t.contains("चलाओ")
@@ -835,7 +876,7 @@ public final class NeoCommandRouter {
         }
         Matcher m3 =
             Pattern.compile(
-                    "(?:youtube|you\\s*tube|यूट्यूब)\\s+(?:पर\\s+)?(.+?)\\s+(?:चलाओ|बजाओ|चला|सुना|खोल)",
+                    "(?:youtube|you\\s*tube|यूट्यूब|यूटूब)\\s+(?:पर\\s+)?(.+?)\\s+(?:चलाओ|बजाओ|चला|सुना|खोल)",
                     Pattern.CASE_INSENSITIVE)
                 .matcher(s);
         if (m3.find()) {
@@ -880,6 +921,7 @@ public final class NeoCommandRouter {
         boolean asksYouTube = t.contains("youtube")
             || t.contains("you tube")
             || t.contains("यूट्यूब")
+            || t.contains("यूटूब")
             || t.contains("song")
             || t.contains("music")
             || t.contains("gaana")
@@ -902,7 +944,7 @@ public final class NeoCommandRouter {
             .replaceAll("\\b(play|listen|start|open|on|in|youtube|you\\s*tube|song|music|by singer|singer)\\b", "")
             .replaceAll("\\b(gaana|gana)\\b", "")
             .replaceAll(
-                "यूट्यूब|गाना|गाने|संगीत|म्यूजिक|सिंगर|चलाओ|चला\\s*दो|चला\\s*दीजिए|बजाओ|भजाओ|सुना\\s*दो|सुनाओ|सुना\\s*ओ",
+                "यूट्यूब|यूटूब|गाना|गाने|संगीत|म्यूजिक|सिंगर|चलाओ|चला\\s*दो|चला\\s*दीजिए|बजाओ|भजाओ|सुना\\s*दो|सुनाओ|सुना\\s*ओ",
                 "")
             .replaceAll("\\b(of|by|ka|ki|ke)\\b", "")
             .replaceAll("\\s+", " ")
@@ -1467,7 +1509,8 @@ public final class NeoCommandRouter {
         if (isWhatsAppIntent(t) || isTelegramIntent(t) || isContactsIntent(t) || isYouTubeMusicLaunchIntent(t)) {
             return false;
         }
-        if (t.contains("youtube") || t.contains("you tube") || t.contains("यूट्यूब")) return false;
+        if (t.contains("youtube") || t.contains("you tube") || t.contains("यूट्यूब") || t.contains("यूटूब"))
+            return false;
         if (t.contains("call") || t.contains("dial") || t.contains("फोन") || t.contains("कॉल")) return false;
         return true;
     }

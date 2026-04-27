@@ -522,14 +522,41 @@ public class WakeWordForegroundService extends Service {
 
     private String extractWakeCommand(String said) {
         Matcher m = WAKE_IN_UTTERANCE.matcher(said);
-        if (!m.find()) {
-            return null;
+        if (m.find()) {
+            String rest = said.substring(m.end()).trim();
+            if (rest.startsWith(",") || rest.startsWith(".")) {
+                rest = rest.substring(1).trim();
+            }
+            return rest;
         }
-        String rest = said.substring(m.end()).trim();
-        if (rest.startsWith(",") || rest.startsWith(".")) {
-            rest = rest.substring(1).trim();
+        /*
+         * Dev/sideload builds often ship without Porcupine ({@code wakeKeywordAvailable=false}). Still route
+         * obvious short intents (contacts / YouTube / WhatsApp) without forcing “Hello Neo”.
+         */
+        if (!wakeKeywordAvailable && looksLikeStandaloneNeoCommand(said)) {
+            return said.trim();
         }
-        return rest;
+        return null;
+    }
+
+    /** Narrow imperative phrases — avoids treating random chat as a command when wake keyword is unavailable. */
+    private boolean looksLikeStandaloneNeoCommand(String said) {
+        if (said == null) return false;
+        String s = said.trim();
+        if (s.length() < 3 || s.length() > 220) return false;
+        String lower = s.toLowerCase(Locale.ROOT);
+        if (lower.matches(
+                "(?is).*(?:^|\\s)(?:open|launch|start|show)\\s+(?:contact|contacts)\\b.*")) return true;
+        if (lower.matches(
+                "(?is).*(?:contact|contacts)\\b.*(?:^|\\s)(?:open|launch|start|show)\\b.*")) return true;
+        if (lower.contains("youtube") || lower.contains("you tube")) return true;
+        if (s.contains("यूट्यूब") || s.contains("यूटूब")) return true;
+        if (lower.contains("whatsapp")) return true;
+        if (s.contains("व्हाट्स") || s.contains("व्हाट्सऐप")) return true;
+        if (lower.contains("telegram")) return true;
+        if (s.contains("संपर्क") && (lower.contains("open") || s.contains("खोल"))) return true;
+        if (lower.matches("(?is)^(open\\s+)?youtube\\s*$")) return true;
+        return false;
     }
 
     private String normalize(String s) {

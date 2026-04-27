@@ -56,14 +56,22 @@ let wakeBridgeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 async function runWakeBridgeSyncOnce(): Promise<void> {
   if (!isNativeCapacitor()) return;
-  const appVisible =
-    typeof document !== "undefined" ? document.visibilityState === "visible" : true;
   const assistantActive = readNeoAssistantActive();
   const alexaListen = readNeoAlexaListen();
   const screenOff = readWakeListenScreenOffStorage();
   try {
     const { NeoNativeRouter } = await import("@/lib/neoNativeRouter");
     const voiceChatMode = !!(await NeoNativeRouter.getWakeVoiceChatMode()).enabled;
+    /*
+     * WebView often reports visibilityState=hidden during native Google TTS, permission sheets, or brief
+     * overlays — that must not stop the foreground wake service when native policy expects mic to stay up.
+     */
+    /* Voice-chat / screen-off / Neo Active+listen: never let WebView visibility flicker stop the FGS (TTS overlays). */
+    const ignoreWebVisibilityWhen =
+      voiceChatMode || screenOff || (assistantActive && alexaListen);
+    const webSaysVisible =
+      typeof document === "undefined" || document.visibilityState === "visible";
+    const appVisible = ignoreWebVisibilityWhen || webSaysVisible;
     /*
      * Keep wake service running while:
      * - wake voice-chat mode is enabled (works independently for screen-OFF Hello Neo), or

@@ -24,6 +24,8 @@ public final class NeoPrefs {
     public static final String KEY_VOICE_COMPOSE_LABEL = "voice_compose_label";
     /** Last app context from voice flow (e.g. wa/tg/contacts/youtube) for short follow-up commands. */
     public static final String KEY_LAST_VOICE_APP_CONTEXT = "last_voice_app_context";
+    /** Next utterance treated as YouTube search query until this time (epoch ms). */
+    public static final String KEY_YT_VOICE_PENDING_UNTIL = "yt_voice_pending_until";
     /** One-time runtime prompt for {@link android.Manifest.permission#READ_CONTACTS} (call-by-name from voice). */
     public static final String KEY_PROMPTED_READ_CONTACTS = "prompted_read_contacts";
     /** One-time runtime prompt for {@link android.Manifest.permission#CALL_PHONE} (direct call trigger). */
@@ -253,5 +255,30 @@ public final class NeoPrefs {
         return c.getApplicationContext()
             .getSharedPreferences(FILE, Context.MODE_PRIVATE)
             .getString(KEY_LAST_VOICE_APP_CONTEXT, "");
+    }
+
+    public static void armYoutubeVoiceQueryPending(Context c, long ttlMs) {
+        long until = System.currentTimeMillis() + Math.max(5000L, ttlMs);
+        c.getApplicationContext()
+            .getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .edit()
+            .putLong(KEY_YT_VOICE_PENDING_UNTIL, until)
+            .apply();
+    }
+
+    public static boolean isYoutubeVoiceQueryPending(Context c) {
+        long until =
+            c.getApplicationContext()
+                .getSharedPreferences(FILE, Context.MODE_PRIVATE)
+                .getLong(KEY_YT_VOICE_PENDING_UNTIL, 0L);
+        return until > System.currentTimeMillis();
+    }
+
+    public static void clearYoutubeVoiceQueryPending(Context c) {
+        c.getApplicationContext()
+            .getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .edit()
+            .remove(KEY_YT_VOICE_PENDING_UNTIL)
+            .apply();
     }
 }
