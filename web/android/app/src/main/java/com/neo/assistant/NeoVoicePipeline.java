@@ -11,6 +11,7 @@ import android.os.Looper;
 import android.util.Log;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Single {@link AudioRecord} + ring buffer + Porcupine wake + VAD capture + Whisper transcription.
@@ -31,9 +32,14 @@ final class NeoVoicePipeline implements Runnable {
     /** Slightly longer pause tolerance so Hinglish / short gaps do not cut the clip early. */
     private static final long SILENCE_END_MS_FALLBACK = 420;
     private static final long WAKE_DEBOUNCE_MS = 1200L;
-    /** Mean abs PCM per sample; keep conservative to avoid ambient false-captures when wake keyword is unavailable. */
-    private static final double FALLBACK_START_THRESHOLD = 620.0;
-    private static final double FALLBACK_SPEECH_THRESHOLD = 360.0;
+    /** Prevent piling up multiple parallel /voice/transcribe requests on flaky networks. */
+    private static final long TRANSCRIBE_BACKOFF_MS = 2200L;
+    /**
+     * Mean abs PCM per sample fallback thresholds (when Porcupine is unavailable).
+     * Tuned for softer speech pickup while single-flight + backoff guards prevent request storms.
+     */
+    private static final double FALLBACK_START_THRESHOLD = 360.0;
+    private static final double FALLBACK_SPEECH_THRESHOLD = 220.0;
 
     public interface Host {
         boolean shouldRun();
@@ -78,6 +84,8 @@ final class NeoVoicePipeline implements Runnable {
     private long silenceAccumMs;
     private long speechAccumMs;
     private long lastWakeMs;
+    private final AtomicBoolean transcribeInFlight = new AtomicBoolean(false);
+    private volatile long transcribeBackoffUntilMs = 0L;
 
     NeoVoicePipeline(android.content.Context context, Host host) {
         this.appCtx = context.getApplicationContext();
@@ -364,6 +372,15 @@ final class NeoVoicePipeline implements Runnable {
             mainHandler.post(() -> host.requestRelistenMs(260));
             return;
         }
+        long now = System.currentTimeMillis();
+        if (now < transcribeBackoffUntilMs) {
+            mainHandler.post(() -> host.requestRelistenMs(480));
+            return;
+        }
+        if (!transcribeInFlight.compareAndSet(false, true)) {
+            mainHandler.post(() -> host.requestRelistenMs(520));
+            return;
+        }
         Log.i(
                 TAG,
                 "finalizeCapture wakeEnabled="
@@ -372,7 +389,16 @@ final class NeoVoicePipeline implements Runnable {
                         + spokenMs
                         + " samples="
                         + capturedSamples);
-        new Thread(() -> transcribeAndDeliver(pcm), "neo-whisper").start();
+        new Thread(
+                        () -> {
+                            try {
+                                transcribeAndDeliver(pcm);
+                            } finally {
+                                transcribeInFlight.set(false);
+                            }
+                        },
+                        "neo-whisper")
+                .start();
     }
 
     private void transcribeAndDeliver(short[] pcm) {
@@ -391,9 +417,11 @@ final class NeoVoicePipeline implements Runnable {
         }
         final String out = text == null ? "" : text.trim();
         if (out.isEmpty()) {
+            transcribeBackoffUntilMs = System.currentTimeMillis() + TRANSCRIBE_BACKOFF_MS;
             mainHandler.post(() -> host.requestRelistenMs(320));
             return;
         }
+        transcribeBackoffUntilMs = 0L;
         mainHandler.post(() -> host.onTranscript(out));
     }
 
