@@ -457,6 +457,23 @@ Neo **server** se `https://api.openai.com` HTTPS nikalna zaroori hai (chat + Whi
 
 This answers the common product spec: **wake phrase** (e.g. “Hello Neo”) → **short command window** (“open WhatsApp”, “read messages”, “call contact”, “open YouTube”) → **spoken reply in the user’s language** → **do not leave the mic “hunting” forever** (fewer system beeps / battery).
 
+#### Wake-word policy (required behavior)
+
+- Voice commands and voice chat must stay fully passive until user says `Hello Neo`.
+- This applies both on-screen and off-screen.
+- Before wake-word: no beep, no tone, no TTS, no visual cue, no text response, and no command execution.
+- Only after `Hello Neo`: activate listening, process command/chat, and respond.
+- If wake-word confidence is uncertain, stay passive (fail-safe).
+- This rule has higher priority than other voice UX defaults.
+
+#### Voice-command execution policy (required behavior)
+
+- Interpret and execute spoken commands quickly with minimal friction.
+- For clear intents like `WhatsApp खोलो`, `YouTube खोलो`, `मेरा कॉन्टैक्ट खोलो`, `इस गाने को प्ले करो`, perform the action directly.
+- Do not ask unnecessary follow-up questions for clear commands.
+- Provide concise action confirmation after execution.
+- Ask clarification only for ambiguous, unsafe, or blocked actions.
+
 #### What Neo ships today (this repo)
 
 | Piece | Role | Where |

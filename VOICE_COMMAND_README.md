@@ -123,5 +123,16 @@ From `web` directory:
 
 Use the following as the official AI/dev instruction for Android mic + wake behavior:
 
-> "AI को निर्देश दीजिए कि एंड्रॉयड एप में माइक्रोफ़ोन केवल तब एक्टिव हो जब यूज़र 'Hello Neo' बोले, और यह ऑफ-स्क्रीन में भी ठीक से हो। बाकी समय माइक्रोफ़ोन पूरी तरह बंद रहे। वेक-वर्ड डिटेक्शन के लिए पेसिव लिसनिंग और लो-पावर मोड का उपयोग करें। जब 'Hello Neo' पहचाना जाए, तब कमांड प्रोसेसिंग के दौरान माइक चालू करें, और कमांड पूरा होते ही माइक बंद कर दें। स्क्रीन ऑफ या ऑन, दोनों स्थितियों में वेक-वर्ड डिटेक्शन सक्रिय रहे, लेकिन अन्य ऐप्स या मीडिया पर कोई असर न पड़े। बैकग्राउंड ऑडियो फोकस, मीडिया डिटेक्शन, और परमीशन मैनेजमेंट को ध्यान में रखते हुए यह लॉजिक कोड में लागू किया जाए।"
+> "AI को निर्देश दीजिए कि वॉयस कमांड या वॉयस चैट (ऑन-स्क्रीन और ऑफ-स्क्रीन दोनों) पूरी तरह निष्क्रिय रहे जब तक यूज़र स्पष्ट रूप से 'Hello Neo' न बोले। वेक-वर्ड से पहले किसी भी तरह की आवाज, बीप, टोन, संकेत, UI प्रतिक्रिया, या टेक्स्ट प्रतिक्रिया नहीं होनी चाहिए; सिस्टम ऐसा लगे जैसे पूरी तरह पैसिव है। केवल 'Hello Neo' सुनने पर ही Active Mode में जाएं, सुनना शुरू करें, कमांड प्रोसेस करें और प्रतिक्रिया दें। अगर वेक-वर्ड पहचाने जाने में संदेह हो तो fail-safe रूप से passive ही रहें। यह wake-word gating policy सभी सामान्य voice rules से higher priority पर लागू हो।"
+
+## 9) Voice Command Execution Directive (Hindi)
+
+Use the following as the official AI/dev instruction for voice-command handling quality:
+
+> "AI को निर्देश दें कि यूज़र के बोले हुए हर कमांड को समझकर, तुरंत उसे पूरा करें। जब यूज़र बोले 'WhatsApp खोलो', 'YouTube खोलो', 'मेरा कॉन्टैक्ट खोलो', या 'इस गाने को प्ले करो', तो AI बिना दोहराए और बिना सवाल किए, दिए गए निर्देशों को समझकर उन्हें पूरा करे। किसी भी ऐप खोलना, किसी को कॉल लगाना, गाना प्ले करना, सभी कमांड्स यूज़र के बोले अनुसार ही हों। AI का लक्ष्य यह हो कि यूज़र को हर बार सहज, स्वाभाविक और सटीक प्रतिक्रिया मिले, ताकि वे बिना किसी बाधा के जो चाहें, वह तुरंत हासिल कर सकें।"
+
+Execution notes:
+- If intent is clear and safe, execute first, then give a short confirmation.
+- Ask follow-up only when command is ambiguous or blocked (missing app, missing contact, permission denied).
+- Avoid long re-prompts and avoid repeating user sentence unless needed for disambiguation.
 

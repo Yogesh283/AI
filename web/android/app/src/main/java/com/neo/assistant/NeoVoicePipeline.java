@@ -55,6 +55,14 @@ final class NeoVoicePipeline implements Runnable {
         void onTranscript(String raw);
 
         void requestRelistenMs(int ms);
+
+        /**
+         * When {@code false}, speech-first VAD capture is suppressed — only Porcupine hotword starts capture.
+         * Used for off-screen wake voice-chat so random speech never reaches Whisper / chat.
+         */
+        default boolean allowFallbackHotCapture() {
+            return true;
+        }
     }
 
     private enum VoiceState {
@@ -243,6 +251,10 @@ final class NeoVoicePipeline implements Runnable {
                  * Fallback when Porcupine is unavailable: detect speech onset and capture directly.
                  * Command routing still runs in service-level policy.
                  */
+                if (!host.allowFallbackHotCapture()) {
+                    sleepQuiet(90);
+                    continue;
+                }
                 double level = meanAbs(readFrame, n);
                 if (level > FALLBACK_START_THRESHOLD) {
                     beginCaptureAtRingEnd();

@@ -528,6 +528,11 @@ export default function VoicePage() {
         onUserTranscript: (t) => {
           const line = t.trim();
           if (!line) return;
+          /* Tab/app background: do not run Live web pipeline or request assistant speech (Hello Neo / wake is native). */
+          if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+            liveUserTranscriptOpenRef.current = false;
+            return;
+          }
           if (isVoiceUserStopIntent(line)) {
             liveCancelRef.current?.();
             speakingRef.current = false;

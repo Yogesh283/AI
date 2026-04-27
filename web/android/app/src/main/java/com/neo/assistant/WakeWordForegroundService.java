@@ -34,8 +34,8 @@ import org.json.JSONObject;
 
 /**
  * Foreground “Hello Neo” wake: single {@link android.media.AudioRecord} pipeline ({@link NeoVoicePipeline}) with
- * Picovoice Porcupine + ring buffer + Whisper (no {@link android.speech.SpeechRecognizer}). Screen-off + voice-chat
- * routes to chat; screen-on runs {@link NeoCommandRouter} then chat fallback; optional screen-off commands if enabled.
+ * Picovoice Porcupine + ring buffer + Whisper (no {@link android.speech.SpeechRecognizer}).
+ * Voice command execution is on-screen only.
  */
 public class WakeWordForegroundService extends Service {
     public static final String ACTION_START = "com.neo.assistant.action.START_WAKE";
@@ -167,6 +167,18 @@ public class WakeWordForegroundService extends Service {
                     public void requestRelistenMs(int ms) {
                         schedulePassiveRelisten(ms);
                     }
+
+                    @Override
+                    public boolean allowFallbackHotCapture() {
+                        /*
+                         * Off-screen + wake voice-chat: never run speech-first capture (no Porcupine gate).
+                         * Avoids Whisper → chat / TTS from ambient speech before a real "Hello Neo" hotword.
+                         */
+                        if (voiceChatMode && !isScreenInteractive()) {
+                            return false;
+                        }
+                        return true;
+                    }
                 });
         NeoCommandRouter.setAssistantSpeechEndedRunnable(
             () -> {
@@ -179,12 +191,13 @@ public class WakeWordForegroundService extends Service {
     }
 
     /**
-     * Mic policy: always when display is on; when display is off only if user enabled screen-off listen or voice-chat
-     * mode (otherwise we stop on {@link Intent#ACTION_SCREEN_OFF} to reduce pocket wake).
+     * Mic policy:
+     * - on-screen: always allow
+     * - off-screen: allow only for wake voice-chat mode (Hello Neo -> chat)
      */
     private boolean mayUseMicNow() {
         if (isScreenInteractive()) return true;
-        return voiceChatMode || listenScreenOff;
+        return voiceChatMode;
     }
 
     private boolean isScreenInteractive() {
@@ -198,7 +211,7 @@ public class WakeWordForegroundService extends Service {
             public void onReceive(Context context, Intent intent) {
                 if (intent == null || intent.getAction() == null) return;
                 if (Intent.ACTION_SCREEN_OFF.equals(intent.getAction())) {
-                    if (!voiceChatMode && !listenScreenOff) {
+                    if (!voiceChatMode) {
                         stopListeningSilently();
                     }
                 } else if (Intent.ACTION_SCREEN_ON.equals(intent.getAction()) && shouldListen) {
