@@ -38,7 +38,7 @@ import {
 import { useWakeLock } from "@/lib/useWakeLock";
 import { writeNeoAlexaListen } from "@/lib/neoAssistantActive";
 import { isNativeCapacitor } from "@/lib/nativeAppLinks";
-import { syncNativeWakeBridge } from "@/lib/neoWakeNative";
+import { setNativeVoiceChatPageActive, syncNativeWakeBridge } from "@/lib/neoWakeNative";
 import { preferOpenAiTtsForVoiceUi } from "@/lib/voiceTtsPolicy";
 import {
   createVoiceRealtimeMicStreamPromise,
@@ -198,6 +198,14 @@ export default function VoicePage() {
   useEffect(() => {
     // Voice chat opens: force-disable Alexa-style listen to avoid overlap/interruption.
     writeNeoAlexaListen(false);
+    if (isNativeCapacitor()) {
+      void setNativeVoiceChatPageActive(true);
+    }
+    return () => {
+      if (isNativeCapacitor()) {
+        void setNativeVoiceChatPageActive(false);
+      }
+    };
   }, []);
 
   /* Same persisted thread as /dashboard text chat — do not use voice-only storage as primary. */

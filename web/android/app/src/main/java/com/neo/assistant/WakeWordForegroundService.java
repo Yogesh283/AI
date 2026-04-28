@@ -223,7 +223,7 @@ public class WakeWordForegroundService extends Service {
      */
     private boolean mayUseMicNow() {
         if (isScreenInteractive()) return true;
-        return voiceChatMode;
+        return voiceChatMode || listenScreenOff;
     }
 
     private boolean isScreenInteractive() {
@@ -478,8 +478,8 @@ public class WakeWordForegroundService extends Service {
 
             if (!isScreenInteractive()) {
                 /*
-                 * Off-screen voice chat mode should continue to accept wake+command even when
-                 * generic screen-off command listening is disabled in preferences.
+                 * Screen-off path: allow voice chat while screen is off.
+                 * (On-screen voice chat remains page-gated by canUseVoiceChatNow()).
                  */
                 if (!listenScreenOff && !voiceChatMode) {
                     return RELISTEN_MS_AFTER_WAKE_ONLY;
@@ -509,15 +509,8 @@ public class WakeWordForegroundService extends Service {
             lastHandledCommandMs = now;
 
             if (!isScreenInteractive()) {
-                /*
-                 * Product rule: voice commands are on-screen only.
-                 * Off-screen uses wake voice chat path (when enabled).
-                 */
-                if (voiceChatMode) {
-                    handleWakeVoiceChat(command);
-                    return RELISTEN_DEFERRED;
-                }
-                return RELISTEN_MS_AFTER_WAKE_ONLY;
+                handleWakeVoiceChat(command);
+                return RELISTEN_DEFERRED;
             }
 
             boolean handled = NeoCommandRouter.execute(this, command);
@@ -550,6 +543,7 @@ public class WakeWordForegroundService extends Service {
 
     private boolean shouldFallbackToVoiceChat(String command) {
         if (command == null) return false;
+        if (!canUseVoiceChatNow()) return false;
         String q = command.trim();
         if (q.length() < CHAT_FALLBACK_MIN_CHARS) return false;
         /*
@@ -560,7 +554,15 @@ public class WakeWordForegroundService extends Service {
         if (low.endsWith("?")) return true;
         if (low.matches(".*\\b(what|why|how|who|when|where|explain|tell|describe|meaning)\\b.*")) return true;
         if (q.matches("(?is).*(क्या|क्यों|कैसे|कौन|कब|कहाँ|बताओ|समझाओ|समझाइए).*")) return true;
-        return true;
+        return false;
+    }
+
+    private boolean canUseVoiceChatNow() {
+        if (!isScreenInteractive()) {
+            return true;
+        }
+        /* On-screen chat only while user is inside Neo app voice chat page (page toggles voiceChatMode). */
+        return voiceChatMode && isNeoAppForeground();
     }
 
     /** Speech-first fallback when Porcupine keyword model is unavailable but wake voice-chat mode is on. */
@@ -573,6 +575,9 @@ public class WakeWordForegroundService extends Service {
      * Keeps this mode independent from app-intent command router behavior.
      */
     private void handleWakeVoiceChat(String userText) {
+        if (!canUseVoiceChatNow()) {
+            return;
+        }
         final String q = userText == null ? "" : userText.trim();
         if (q.isEmpty()) {
             return;

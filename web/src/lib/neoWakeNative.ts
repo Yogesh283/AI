@@ -79,8 +79,8 @@ async function runWakeBridgeSyncOnce(): Promise<void> {
       voiceChatMode || screenOff || (assistantActive && alexaListen);
     const webSaysVisible = true;
     const appVisible = ignoreWebVisibilityWhen || webSaysVisible;
-    /** Voice wake only when Profile toggles require it and the app surface is visible. */
-    const shouldRunWake = appVisible && (voiceChatMode || (assistantActive && alexaListen));
+    /** Keep wake running for command mode, voice-chat page mode, or explicit screen-off listening mode. */
+    const shouldRunWake = appVisible && (voiceChatMode || screenOff || (assistantActive && alexaListen));
     if (shouldRunWake) {
       await NeoNativeRouter.startWakeListener({ screenOffListen: screenOff || voiceChatMode });
     } else {
@@ -138,6 +138,14 @@ export async function setNativeWakeVoiceChatMode(enabled: boolean): Promise<void
   } catch {
     /* ignore */
   }
+}
+
+/**
+ * Voice chat mode is page-scoped: true only while `/voice` page is open in app.
+ * Screen-off chat remains available via native policy, independent of this flag.
+ */
+export async function setNativeVoiceChatPageActive(active: boolean): Promise<void> {
+  await setNativeWakeVoiceChatMode(active);
 }
 
 export async function getNativeWakeVoiceChatMode(): Promise<boolean> {
