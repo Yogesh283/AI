@@ -67,14 +67,14 @@ public class WakeWordForegroundService extends Service {
      * {@link NeoCommandRouter} will run {@link #resumeListeningRunnable} when TTS ends.
      */
     private static final int RELISTEN_DEFERRED = -1;
-    private static final int RELISTEN_MS_QUICK = 260;
-    private static final int RELISTEN_MS_ERROR = 520;
+    private static final int RELISTEN_MS_QUICK = 180;
+    private static final int RELISTEN_MS_ERROR = 420;
     /** Wake heard with no command tail — brief pause so the user can finish the phrase (Alexa-like beat). */
-    private static final int RELISTEN_MS_AFTER_WAKE_ONLY = 1200;
+    private static final int RELISTEN_MS_AFTER_WAKE_ONLY = 850;
     /** Screen-off voice mode should feel snappier than the default wake-only pause. */
-    private static final int RELISTEN_MS_AFTER_WAKE_ONLY_SCREEN_OFF = 650;
+    private static final int RELISTEN_MS_AFTER_WAKE_ONLY_SCREEN_OFF = 480;
     /** After Neo TTS ends, keep mic idle briefly so speaker echo does not become a fresh command. */
-    private static final int RELISTEN_MS_AFTER_TTS_COOLDOWN = 1100;
+    private static final int RELISTEN_MS_AFTER_TTS_COOLDOWN = 700;
     /** If other app audio/video is active, stay idle and retry later. */
     private static final int MEDIA_ACTIVE_RECHECK_MS = 3000;
     private static final int MEDIA_ACTIVE_RECHECK_MAX_MS = 5200;

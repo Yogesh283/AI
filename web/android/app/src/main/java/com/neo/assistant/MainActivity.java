@@ -305,7 +305,11 @@ public class MainActivity extends BridgeActivity {
         if (usesLocalCapacitorServer()) {
             /* Wake starts from JS after Next.js (or production) actually loads. */
         } else if (BuildConfig.DEBUG) {
-            decor.postDelayed(startWake, 2800);
+            /*
+             * Keep a small settle delay in debug builds, but avoid multi-second wake startup lag.
+             * Native plugin already guards FGS eligibility by waiting for RESUMED activity.
+             */
+            decor.postDelayed(startWake, 900);
         } else {
             decor.post(startWake);
         }
