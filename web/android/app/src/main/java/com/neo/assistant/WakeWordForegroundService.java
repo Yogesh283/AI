@@ -394,9 +394,7 @@ public class WakeWordForegroundService extends Service {
         boolean porcupineHeard = porcupineWakeForNextTranscript.getAndSet(false);
         boolean screenOnNow = isScreenInteractive();
         String command = extractWakeCommand(said, screenOnNow);
-        final boolean allowAssistantVoice = command != null || porcupineHeard;
 
-        NeoCommandRouter.setAssistantTtsAllowed(allowAssistantVoice);
         try {
             if (command == null) {
                 if (screenOnNow) {
@@ -408,7 +406,7 @@ public class WakeWordForegroundService extends Service {
                 } else if (isSpeechFirstFallbackMode()) {
                     /*
                      * Porcupine assets are unavailable in this build. Route transcript directly so multilingual
-                     * wake mis-hears ("हलो/హలో/हैलो ...") still execute app commands or fall back to voice chat.
+                     * wake mis-hears ("हलో/హలో/हैलो ...") still execute app commands or fall back to voice chat.
                      */
                     return RELISTEN_MS_QUICK;
                 } else {
@@ -423,6 +421,13 @@ public class WakeWordForegroundService extends Service {
                     return RELISTEN_MS_QUICK;
                 }
             }
+
+            /*
+             * Must run after on-screen fallback (command = said). Otherwise allowAssistantVoice stays false,
+             * {@link NeoCommandRouter#speak} is a no-op, and every on-screen reply is silent.
+             */
+            final boolean allowAssistantVoice = command != null || porcupineHeard;
+            NeoCommandRouter.setAssistantTtsAllowed(allowAssistantVoice);
 
             if (command.isEmpty()) {
                 /*

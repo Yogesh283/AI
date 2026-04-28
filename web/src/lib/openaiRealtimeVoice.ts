@@ -187,7 +187,7 @@ export type OpenAiRealtimeVoiceSession = {
    */
   ensureLocalMicLive: () => void;
   /**
-   * Mute/unmute model downlink (APK: keep silent until user says “Hello Neo” in Live voice).
+   * Mute/unmute model downlink (Voice page unmutes after the data channel opens — mic tap unlocks playback).
    * Does not stop the session or cancel in-flight responses.
    */
   setAssistantAudioMuted: (muted: boolean) => void;

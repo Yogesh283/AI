@@ -477,6 +477,14 @@ export default function VoicePage() {
             live.ensureLocalMicLive();
             setLiveConnecting(false);
             setListening(true);
+            /*
+             * APK: user opened Voice Live from the mic button (gesture). Realtime ASR often omits “Hello Neo”
+             * from transcripts — keeping assistant audio muted until then made replies permanently silent.
+             */
+            if (isNativeCapacitor()) {
+              liveAssistantAudioUnlockedRef.current = true;
+              live.setAssistantAudioMuted(false);
+            }
             /* No second Web Speech session here: it fought the WebRTC mic and caused OS “tun” cues on phones. */
           }
           if (s === "closed") {
