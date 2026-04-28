@@ -1119,6 +1119,8 @@ public final class NeoCommandRouter {
         out = out.replace("कौंटक्ट", "कॉन्टैक्ट");
         out = out.replace("कौंटेक्ट", "कॉन्टैक्ट");
         out = out.replace("कोन्टैक्ट", "कॉन्टैक्ट");
+        out = out.replace("कोंटक्ट", "कॉन्टैक्ट");
+        out = out.replace("कॉंटक्ट", "कॉन्टैक्ट");
         out = out.replace("टेलिग्राम", "टेलीग्राम");
         out = out.replace("यूटूब", "यूट्यूब");
         out = out.replace("कोल", "कॉल");
@@ -1588,6 +1590,8 @@ public final class NeoCommandRouter {
                 || t.contains("whatsup")
                 || t.contains("व्हाटसप")
                 || t.contains("वटसप")
+                || t.contains("वाटसप")
+                || t.contains("वाटसब")
                 || t.contains("वट्सब")
                 || t.contains("वर्सप")
                 || t.contains("वर्सेप")
@@ -1596,6 +1600,8 @@ public final class NeoCommandRouter {
                 || t.replace(" ", "").contains("वाट्सऐप")
                 || t.replace(" ", "").contains("व्हाट्सऐप")
                 || t.replace(" ", "").contains("वटसप")
+                || t.replace(" ", "").contains("वाटसप")
+                || t.replace(" ", "").contains("वाटसब")
                 || t.replace(" ", "").contains("वट्सब")
                 || t.replace(" ", "").contains("वर्सप");
         if (!hasWord) return false;
@@ -1667,6 +1673,8 @@ public final class NeoCommandRouter {
                 || t.contains("कौंटेक्ट")
                 || t.contains("कौंटैक्ट")
                 || t.contains("कौन्टक्ट")
+                || t.contains("कोंटक्ट")
+                || t.contains("कॉंटक्ट")
                 || t.contains("contect")
                 || t.contains("contact list")
                 || t.contains("contacts list"))) {
@@ -2308,7 +2316,66 @@ public final class NeoCommandRouter {
                 return 70;
             }
         }
+        String dFold = foldForFuzzyName(displayNorm);
+        String qFold = foldForFuzzyName(queryNorm);
+        if (!dFold.isEmpty() && !qFold.isEmpty()) {
+            if (dFold.equals(qFold)) {
+                return 84;
+            }
+            if (dFold.contains(qFold) || qFold.contains(dFold)) {
+                return 76;
+            }
+            int dist = levenshteinDistance(dFold, qFold);
+            int maxLen = Math.max(dFold.length(), qFold.length());
+            if (maxLen > 0) {
+                int similarity = ((maxLen - dist) * 100) / maxLen;
+                if (similarity >= 74) {
+                    return 73;
+                }
+                if (similarity >= 64) {
+                    return 66;
+                }
+            }
+        }
         return 0;
+    }
+
+    /**
+     * Fold common Hindi/ASR surface variations so "विजेसर" vs "विजेसर/विजयसर" can still score.
+     */
+    private static String foldForFuzzyName(String s) {
+        if (s == null || s.isEmpty()) return "";
+        String out = s.toLowerCase(Locale.ROOT);
+        out = out
+            .replaceAll("[\\u093c\\u094d\\u0901\\u0902\\u0903]", "")
+            .replaceAll("[\\u093e\\u093f\\u0940\\u0941\\u0942\\u0943\\u0944\\u0947\\u0948\\u094b\\u094c]", "")
+            .replaceAll("[^\\p{L}\\p{N}]", "");
+        return out;
+    }
+
+    private static int levenshteinDistance(String a, String b) {
+        int n = a.length();
+        int m = b.length();
+        if (n == 0) return m;
+        if (m == 0) return n;
+        int[] prev = new int[m + 1];
+        int[] cur = new int[m + 1];
+        for (int j = 0; j <= m; j++) prev[j] = j;
+        for (int i = 1; i <= n; i++) {
+            cur[0] = i;
+            char ca = a.charAt(i - 1);
+            for (int j = 1; j <= m; j++) {
+                int cost = (ca == b.charAt(j - 1)) ? 0 : 1;
+                int ins = cur[j - 1] + 1;
+                int del = prev[j] + 1;
+                int sub = prev[j - 1] + cost;
+                cur[j] = Math.min(ins, Math.min(del, sub));
+            }
+            int[] tmp = prev;
+            prev = cur;
+            cur = tmp;
+        }
+        return prev[m];
     }
 
     private static String normalizePhoneFieldToTelUri(String phoneField) {
@@ -2392,7 +2459,7 @@ public final class NeoCommandRouter {
                     continue;
                 }
                 int score = scoreContactNameMatch(disp.toLowerCase(Locale.ROOT), q);
-                if (score < 62) {
+                if (score < 56) {
                     continue;
                 }
                 String telCandidate = normalizePhoneFieldToTelUri(num);

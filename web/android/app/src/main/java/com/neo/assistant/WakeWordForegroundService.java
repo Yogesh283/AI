@@ -196,7 +196,12 @@ public class WakeWordForegroundService extends Service {
                          * This avoids random ambient speech being sent to STT while user is away from Neo UI.
                          */
                         if (!isNeoAppForeground() && !wakeKeywordAvailable) {
-                            return false;
+                            /*
+                             * Exception: short post-open follow-up window (e.g., YouTube/Contacts just opened).
+                             * Lets user immediately say next step ("song name", "kise call karna hai") while
+                             * still keeping ambient capture blocked outside that window.
+                             */
+                            return isExternalFollowUpWindowActive();
                         }
                         return true;
                     }
