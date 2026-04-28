@@ -474,6 +474,34 @@ This answers the common product spec: **wake phrase** (e.g. “Hello Neo”) →
 - Provide concise action confirmation after execution.
 - Ask clarification only for ambiguous, unsafe, or blocked actions.
 
+#### AI pre-deploy voice test gate (mandatory)
+
+- **Do not deploy** until voice command regression tests pass and manual critical-path checks are done.
+- AI/agent must verify all high-priority commands end-to-end before restart/deploy:
+  - `call` flow (including `मेरा कॉन्टैक्ट खोलो` -> immediate prompt `किसे कॉल करना है?` -> call target handling)
+  - YouTube song command (`यह गाना सुनाओ` / `... चलाओ`) opens YouTube search/play path quickly
+  - WhatsApp / Telegram message intents execute correctly
+- If any critical voice case fails, AI must fix first, re-run tests, then deploy.
+- Keep policy strict:
+  - **On-screen**: voice commands + responses active
+  - **Off-screen**: only wake-gated voice chat path active (no generic command execution)
+- Response style must remain short, human, responsible, and reliable (no repetitive noisy prompts).
+
+**Minimum pre-deploy command checks (server/local):**
+
+```bash
+cd /home/myneoxai/apps/neoxai/web && npm run test:voice
+```
+
+**Manual QA checklist (must pass):**
+
+- `Hello Neo` first attempt wake works (no repeated wake needed)
+- `मेरा कॉन्टैक्ट खोलो` -> contacts opens -> immediate `किसे कॉल करना है?`
+- Contact name follow-up routes to call intent correctly
+- `यह गाना सुनाओ ...` launches YouTube query/play path without long delay
+- WhatsApp/Telegram message command executes correct app/deeplink
+- Off-screen: command execution blocked; wake voice-chat only
+
 #### Foreground-only assistant (required behavior)
 
 - Voice commands listen and execute **only in the Neo AI Assistant app**, not inside other apps.

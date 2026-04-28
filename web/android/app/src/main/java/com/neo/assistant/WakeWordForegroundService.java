@@ -470,7 +470,13 @@ public class WakeWordForegroundService extends Service {
                     .trim();
             long now = System.currentTimeMillis();
             long dedupeWindowMs = isScreenInteractive() ? 2600L : 1600L;
-            if (key.equals(lastHandledCommandKey) && (now - lastHandledCommandMs) < dedupeWindowMs) {
+            boolean nearDuplicate =
+                key.equals(lastHandledCommandKey)
+                    || (!key.isEmpty()
+                        && !lastHandledCommandKey.isEmpty()
+                        && (key.startsWith(lastHandledCommandKey)
+                            || lastHandledCommandKey.startsWith(key)));
+            if (nearDuplicate && (now - lastHandledCommandMs) < dedupeWindowMs) {
                 return RELISTEN_MS_QUICK;
             }
             lastHandledCommandKey = key;

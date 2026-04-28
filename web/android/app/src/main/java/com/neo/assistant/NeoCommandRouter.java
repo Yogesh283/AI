@@ -233,7 +233,7 @@ public final class NeoCommandRouter {
                 context,
                 raw,
                 calmOpenContactsPhrase(raw),
-                520,
+                260,
                 () -> openContactsApp(context),
                 afterContactsOpenedPrompt(raw));
             return true;
@@ -324,6 +324,14 @@ public final class NeoCommandRouter {
                         NeoPrefs.armYoutubeVoiceQueryPending(context, 120_000L);
                     }
                 };
+            if (!askSongNext) {
+                speakThen(
+                    context,
+                    "ठीक है, अभी चलाता हूँ।",
+                    180,
+                    openYt);
+                return true;
+            }
             speakOpenAppWithFollowUp(
                 context,
                 raw,
@@ -555,7 +563,7 @@ public final class NeoCommandRouter {
     }
 
     private static String afterContactsOpenedPrompt(String raw) {
-        return "सर, संपर्क सूची खुल गई है। अब इसी में बताइए क्या करना है—किस नाम पर कॉल लगानी है, जैसे: अमन को कॉल करो।";
+        return "संपर्क सूची खुल गई है। किसे कॉल करना है?";
     }
 
     private static String afterWhatsAppOpenedPrompt(String raw) {
