@@ -82,8 +82,15 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        /*
+         * Before inflation: on some MTK+Mali phones + "Wait for debugger", early HWUI/EGL can SIGABRT with
+         * FORTIFY pthread_mutex / destroyed mutex (libc). Software-raster this window first.
+         */
+        GpuWorkarounds.disableHardwareAccelerationForWindow(this);
         registerPlugin(NeoNativeRouterPlugin.class);
         super.onCreate(savedInstanceState);
+        /* Second pass: on some API levels {@code getWindow()} is only ready after {@code super.onCreate}. */
+        GpuWorkarounds.disableHardwareAccelerationForWindow(this);
         /* Apply UA / cookies before first paint so the initial request to server.url is not stuck with "; wv". */
         configureWebViewForVoice();
         /*
@@ -424,8 +431,11 @@ public class MainActivity extends BridgeActivity {
                 s.setUserAgentString(ua.replace("; wv", ""));
             }
             attachWebRtcMicChromeClient(wv, bridge);
-            /* Local dev: software layer avoids Mali/ANGLE eglCreateSync teardown crashes with error.html. */
-            if (usesLocalCapacitorServer()) {
+            /*
+             * Local dev: software layer avoids Mali/ANGLE eglCreateSync teardown with error.html.
+             * Production: same on MTK-class devices (see GpuWorkarounds / logcat FORTIFY mutex aborts).
+             */
+            if (usesLocalCapacitorServer() || GpuWorkarounds.shouldSoftwareRasterMainWindow()) {
                 wv.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
             }
         } catch (Throwable ignored) {
