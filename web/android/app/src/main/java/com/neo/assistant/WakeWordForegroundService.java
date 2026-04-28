@@ -5,6 +5,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.app.ActivityManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -185,6 +186,14 @@ public class WakeWordForegroundService extends Service {
                          * Avoids Whisper → chat / TTS from ambient speech before a real "Hello Neo" hotword.
                          */
                         if (voiceChatMode && !isScreenInteractive()) {
+                            return false;
+                        }
+                        /*
+                         * When Neo UI is not foreground and Porcupine keyword model is unavailable, do not run
+                         * speech-first captures from ambient audio in external apps. External-app commands should
+                         * stay wake-gated by transcript wake phrase ("Hello Neo ...").
+                         */
+                        if (!isNeoAppForeground() && !wakeKeywordAvailable) {
                             return false;
                         }
                         return true;
@@ -416,7 +425,15 @@ public class WakeWordForegroundService extends Service {
                      * On-screen assistant mode: allow direct commands without forcing wake phrase every turn.
                      * Off-screen path remains wake-gated ("Hello Neo").
                      */
-                    command = said;
+                    if (isNeoAppForeground()) {
+                        command = said;
+                    } else {
+                        /*
+                         * User is currently in another app (screen still ON). Keep external flow wake-gated so
+                         * random speech does not fire commands; "Hello Neo <command>" still executes.
+                         */
+                        return RELISTEN_MS_QUICK;
+                    }
                 } else if (isSpeechFirstFallbackMode()) {
                     /*
                      * Porcupine assets are unavailable in this build. Route transcript directly so multilingual
@@ -711,6 +728,21 @@ public class WakeWordForegroundService extends Service {
         if (am == null) return false;
         try {
             return am.isMusicActive();
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    /**
+     * @return true when Neo process is currently foreground/visible to user.
+     */
+    private boolean isNeoAppForeground() {
+        try {
+            ActivityManager.RunningAppProcessInfo info = new ActivityManager.RunningAppProcessInfo();
+            ActivityManager.getMyMemoryState(info);
+            int imp = info.importance;
+            return imp == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
+                    || imp == ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE;
         } catch (Exception ignored) {
             return false;
         }
