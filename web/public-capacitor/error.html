@@ -38,7 +38,7 @@
       Connection failed. Try local refresh, or open production inside app.
     </p>
     <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center">
-      <button type="button" id="refreshBtn">Retry dev server</button>
+      <button type="button" id="refreshBtn">Retry connection</button>
       <button type="button" id="prodBtn" style="background: #22c55e; color: #062a12">
         Open Production
       </button>
@@ -53,8 +53,8 @@
         window.Capacitor = cap;
       })();
 
-      /** Same URL Capacitor tried first (from native); avoids guessing after adb/cap sync. */
-      function resolveDevServerUrl() {
+      /** Primary URL from Capacitor (production or dev); fallback for bare open. */
+      function resolvePrimaryServerUrl() {
         try {
           var w = window.WEBVIEW_SERVER_URL;
           if (w && String(w).indexOf("http") === 0) {
@@ -75,6 +75,14 @@
         return "http://127.0.0.1:3000/";
       }
 
+      function isDevServerTarget(url) {
+        try {
+          return /127\.0\.0\.1|localhost|10\.0\.2\.2|:3000\/?$/i.test(String(url || ""));
+        } catch (_) {
+          return false;
+        }
+      }
+
       function openInApp(url) {
         try {
           window.location.replace(url);
@@ -83,10 +91,10 @@
         }
       }
 
-      var devUrl = resolveDevServerUrl();
+      var primaryUrl = resolvePrimaryServerUrl();
 
       document.getElementById("refreshBtn").addEventListener("click", function () {
-        openInApp(devUrl);
+        openInApp(primaryUrl);
       });
 
       document.getElementById("prodBtn").addEventListener("click", function () {
@@ -100,9 +108,10 @@
       try {
         var statusEl = document.getElementById("statusText");
         var current = String(window.location.href || "");
-        var isLocal =
+        var isCapacitorLocalHost =
           current.indexOf("localhost") !== -1 || current.indexOf("127.0.0.1") !== -1;
-        if (isLocal) {
+        /* This page is always served from https://localhost/ even when server.url failed was production. */
+        if (isCapacitorLocalHost && isDevServerTarget(primaryUrl)) {
           statusEl.innerHTML =
             "<strong>PC dev server not reached.</strong><br /><br />" +
             "Capacitor target: <code id=\"devUrlLabel\"></code><br /><br />" +
@@ -113,7 +122,15 @@
             "Firewall: allow Node on port 3000. VoLTE/USB issues &rarr; try Wi-Fi mode.<br /><br />" +
             "Or <strong>Open Production</strong>.";
           var lab = document.getElementById("devUrlLabel");
-          if (lab) lab.textContent = devUrl.replace(/\/$/, "");
+          if (lab) lab.textContent = primaryUrl.replace(/\/$/, "");
+        } else if (isCapacitorLocalHost) {
+          statusEl.innerHTML =
+            "<strong>Could not load Neo from the server.</strong><br /><br />" +
+            "Primary URL: <code id=\"devUrlLabel\"></code><br /><br />" +
+            "Check mobile data / Wi-Fi, disable VPN or captive portal, then tap <strong>Retry</strong>. " +
+            "If this repeats, the host may be slow or blocked — try again in a few seconds (the app also retries automatically).";
+          var lab2 = document.getElementById("devUrlLabel");
+          if (lab2) lab2.textContent = primaryUrl.replace(/\/$/, "");
         }
       } catch (_) {}
     </script>

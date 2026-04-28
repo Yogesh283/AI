@@ -18,8 +18,11 @@ import androidx.core.content.ContextCompat;
 import com.getcapacitor.Bridge;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.BridgeWebChromeClient;
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
+import org.json.JSONObject;
 
 public class MainActivity extends BridgeActivity {
 
@@ -47,6 +50,17 @@ public class MainActivity extends BridgeActivity {
     private boolean neoDevHelpAlreadySignaled;
 
     private static final String TAG_DEV_HELP = "NeoDevHelp";
+    private static final String TAG_REMOTE_RETRY = "NeoRemoteRetry";
+
+    /**
+     * Parsed from {@code assets/capacitor.config.json} — first load of {@code server.url}. Used to recover from
+     * Capacitor {@code error.html} when DNS/network hiccups on cold start (medio en logs).
+     */
+    private String cachedCapacitorServerUrl;
+    private volatile boolean capacitorServerUrlReadAttempted;
+
+    private int remoteHostReloadAttempts;
+    private static final int MAX_REMOTE_HOST_RELOADS = 5;
 
     /** Queue opening WA/TG/etc. from the foreground activity (BAL-safe). {@code spec} keys are owned by {@link NeoCommandRouter}. */
     public static void requestVoiceExternalLaunch(Context from, Bundle spec) {
@@ -83,6 +97,98 @@ public class MainActivity extends BridgeActivity {
         decor.post(this::configureWebViewForVoice);
         decor.postDelayed(this::configureWebViewForVoice, 300);
         scheduleNeoDevHelpProbeOnce(decor);
+        scheduleRemoteHostRetriesIfProduction(decor);
+    }
+
+    /**
+     * When {@code server.url} is a real host (not localhost), cold start can still land on
+     * {@code https://localhost/error.html} — reload the configured origin a few times.
+     */
+    private void scheduleRemoteHostRetriesIfProduction(View decor) {
+        if (usesLocalCapacitorServer()) {
+            return;
+        }
+        String url = getCapacitorConfiguredServerUrl();
+        if (url == null || url.isEmpty()) {
+            return;
+        }
+        String low = url.toLowerCase(Locale.ROOT);
+        if (low.contains("127.0.0.1") || low.contains("localhost") || low.contains("10.0.2.2")) {
+            return;
+        }
+        long[] delaysMs = new long[] {650L, 1700L, 4000L, 8500L, 15000L};
+        for (long d : delaysMs) {
+            decor.postDelayed(() -> tryReloadCapacitorRemoteHostOnce(url), d);
+        }
+    }
+
+    /**
+     * @return {@code server.url} from bundled Capacitor config, or {@code null}
+     */
+    private String getCapacitorConfiguredServerUrl() {
+        if (capacitorServerUrlReadAttempted) {
+            return cachedCapacitorServerUrl;
+        }
+        capacitorServerUrlReadAttempted = true;
+        cachedCapacitorServerUrl = null;
+        try (InputStream in = getAssets().open("capacitor.config.json")) {
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                bos.write(buf, 0, n);
+            }
+            JSONObject root = new JSONObject(bos.toString(StandardCharsets.UTF_8.name()));
+            JSONObject server = root.optJSONObject("server");
+            if (server != null) {
+                String u = server.optString("url", "").trim();
+                if (!u.isEmpty()) {
+                    cachedCapacitorServerUrl = u;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return cachedCapacitorServerUrl;
+    }
+
+    private void tryReloadCapacitorRemoteHostOnce(String serverUrl) {
+        if (remoteHostReloadAttempts >= MAX_REMOTE_HOST_RELOADS) {
+            return;
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1 && isDestroyed()) {
+            return;
+        }
+        if (isFinishing()) {
+            return;
+        }
+        try {
+            Bridge bridge = getBridge();
+            if (bridge == null) {
+                return;
+            }
+            WebView wv = bridge.getWebView();
+            if (wv == null) {
+                return;
+            }
+            String current = wv.getUrl();
+            if (current == null) {
+                return;
+            }
+            if (!current.contains("error.html") && !current.contains("chrome-error")) {
+                return;
+            }
+            remoteHostReloadAttempts++;
+            Log.i(
+                    TAG_REMOTE_RETRY,
+                    "Capacitor error page — reloading server.url (attempt "
+                        + remoteHostReloadAttempts
+                        + "/"
+                        + MAX_REMOTE_HOST_RELOADS
+                        + "): "
+                        + serverUrl);
+            wv.loadUrl(serverUrl);
+        } catch (Throwable ignored) {
+        }
     }
 
     private void scheduleNeoDevHelpProbeOnce(View decor) {
@@ -123,20 +229,30 @@ public class MainActivity extends BridgeActivity {
                 return;
             }
             neoDevHelpAlreadySignaled = true;
-            Log.e(
-                    TAG_DEV_HELP,
-                    "WebView still on Capacitor error page — PC dev server not reached at server.url. "
-                        + "Fix: (1) PC cd web && npm run dev — leave running. "
-                        + "(2) USB adb reverse tcp:3000 tcp:3000 (re-run after cable replug). "
-                        + "(3) From web: npm run android:local or cap:sync:android:local then Rebuild. "
-                        + "(4) Wi-Fi: npm run android:local:wifi — same LAN, firewall allow Node:3000. "
-                        + "Filter: adb logcat -s NeoDevHelp:E");
-            if (BuildConfig.DEBUG) {
-                Toast.makeText(
-                                this,
-                                "Dev server unreachable — filter logcat: NeoDevHelp",
-                                Toast.LENGTH_LONG)
-                        .show();
+            if (usesLocalCapacitorServer()) {
+                Log.e(
+                        TAG_DEV_HELP,
+                        "WebView still on Capacitor error page — PC dev server not reached at server.url. "
+                            + "Fix: (1) PC cd web && npm run dev — leave running. "
+                            + "(2) USB adb reverse tcp:3000 tcp:3000 (re-run after cable replug). "
+                            + "(3) From web: npm run android:local or cap:sync:android:local then Rebuild. "
+                            + "(4) Wi-Fi: npm run android:local:wifi — same LAN, firewall allow Node:3000. "
+                            + "Filter: adb logcat -s NeoDevHelp:E");
+                if (BuildConfig.DEBUG) {
+                    Toast.makeText(
+                                    this,
+                                    "Dev server unreachable — filter logcat: NeoDevHelp",
+                                    Toast.LENGTH_LONG)
+                            .show();
+                }
+            } else {
+                String origin = getCapacitorConfiguredServerUrl();
+                Log.e(
+                        TAG_DEV_HELP,
+                        "WebView still on Capacitor error page — remote server.url not loaded. target="
+                            + origin
+                            + ". Check device network, DNS, VPN, captive portal, and that the host is up. "
+                            + "Reloads were attempted (see NeoRemoteRetry). Filter: adb logcat -s NeoDevHelp:E NeoRemoteRetry:I");
             }
         } catch (Throwable ignored) {
         }
