@@ -7,6 +7,8 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import androidx.core.content.ContextCompat;
 import com.getcapacitor.PermissionState;
 import com.getcapacitor.JSObject;
@@ -25,6 +27,9 @@ import com.getcapacitor.annotation.PermissionCallback;
     }
 )
 public class NeoNativeRouterPlugin extends Plugin {
+
+    /** Time for {@link WakeWordForegroundService#onStartCommand} to finish {@link android.app.Service#startForeground}. */
+    private static final long WAKE_RUNNING_VERIFY_MS = 450L;
 
     @PluginMethod
     public void setWakeScreenOffListen(PluginCall call) {
@@ -76,17 +81,13 @@ public class NeoNativeRouterPlugin extends Plugin {
             requestPermissionForAlias("microphone", call, "onMicPermissionForWake");
             return;
         }
-        JSObject out = new JSObject();
-        boolean started = startWakeService(Boolean.TRUE.equals(so));
-        out.put("started", started);
-        if (!started) out.put("reason", "fgs-start-blocked");
-        call.resolve(out);
+        launchWakeListenerAndResolve(call, Boolean.TRUE.equals(so));
     }
 
     @PermissionCallback
     private void onMicPermissionForWake(PluginCall call) {
-        JSObject out = new JSObject();
         if (getPermissionState("microphone") != PermissionState.GRANTED) {
+            JSObject out = new JSObject();
             out.put("started", false);
             out.put("reason", "record-audio-permission-missing");
             call.resolve(out);
@@ -94,20 +95,46 @@ public class NeoNativeRouterPlugin extends Plugin {
         }
         Boolean so = call.getBoolean("screenOffListen", false);
         NeoPrefs.setWakeListenScreenOff(getContext(), Boolean.TRUE.equals(so));
-        boolean started = startWakeService(Boolean.TRUE.equals(so));
-        out.put("started", started);
-        if (!started) out.put("reason", "fgs-start-blocked");
-        call.resolve(out);
+        launchWakeListenerAndResolve(call, Boolean.TRUE.equals(so));
     }
 
-    private boolean startWakeService(boolean screenOffListen) {
+    /**
+     * Dispatches {@link WakeWordForegroundService}; resolves {@code started} after {@link #WAKE_RUNNING_VERIFY_MS}
+     * so the client sees false when Android 14+ rejects microphone {@code startForeground} while backgrounded.
+     */
+    private void launchWakeListenerAndResolve(PluginCall call, boolean screenOffListen) {
         boolean voiceChatMode = NeoPrefs.isWakeVoiceChatModeEnabled(getContext());
         if (WakeWordForegroundService.isRunningNow()
                 && WakeWordForegroundService.isRunningScreenOffListen() == screenOffListen
                 && WakeWordForegroundService.isRunningVoiceChatMode() == voiceChatMode) {
-            /* Duplicate start calls are common from rapid web state sync; keep existing listener hot. */
-            return true;
+            JSObject out = new JSObject();
+            out.put("started", true);
+            call.resolve(out);
+            return;
         }
+        if (!dispatchWakeForegroundService(screenOffListen)) {
+            JSObject out = new JSObject();
+            out.put("started", false);
+            out.put("reason", "fgs-intent-blocked");
+            call.resolve(out);
+            return;
+        }
+        new Handler(Looper.getMainLooper())
+                .postDelayed(
+                        () -> {
+                            JSObject out = new JSObject();
+                            boolean ok = WakeWordForegroundService.isRunningNow();
+                            out.put("started", ok);
+                            if (!ok) {
+                                out.put("reason", "foreground-service-not-promoted");
+                            }
+                            call.resolve(out);
+                        },
+                        WAKE_RUNNING_VERIFY_MS);
+    }
+
+    private boolean dispatchWakeForegroundService(boolean screenOffListen) {
+        boolean voiceChatMode = NeoPrefs.isWakeVoiceChatModeEnabled(getContext());
         Intent i = new Intent(getContext(), WakeWordForegroundService.class);
         i.setAction(WakeWordForegroundService.ACTION_START);
         i.putExtra(WakeWordForegroundService.EXTRA_SCREEN_OFF_LISTEN, screenOffListen);

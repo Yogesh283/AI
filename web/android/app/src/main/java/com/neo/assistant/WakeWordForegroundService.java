@@ -126,7 +126,11 @@ public class WakeWordForegroundService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        runningNow = true;
+        /*
+         * Do not set {@link #runningNow} here — Android 14+ may reject {@link #startForeground} for microphone
+         * FGS while the app is not eligible (background). {@link #runningNow} becomes true only after a
+         * successful promotion so JS ({@link NeoNativeRouterPlugin}) does not report a false “started”.
+         */
         NeoVoiceWhisperClient.setForcedLanguage(NeoPrefs.getVoiceCommandLanguage(this));
         wakeKeywordAvailable = PorcupineStreamWake.canInit(this);
         createChannel();
@@ -321,10 +325,12 @@ public class WakeWordForegroundService extends Service {
              * Avoid crash/restart loop; user can retry from app UI after bringing app to foreground.
              */
             shouldListen = false;
+            runningNow = false;
             Log.w(TAG, "Wake FGS start blocked by system eligibility; skipping restart loop.", se);
             stopSelf();
             return START_NOT_STICKY;
         }
+        runningNow = true;
         shouldListen = true;
         Log.i(
             TAG,

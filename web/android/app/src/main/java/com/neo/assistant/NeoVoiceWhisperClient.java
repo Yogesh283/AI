@@ -64,8 +64,9 @@ final class NeoVoiceWhisperClient {
             conn = (HttpURLConnection) new URL(endpoint).openConnection();
             conn.setRequestMethod("POST");
             conn.setDoOutput(true);
-            conn.setConnectTimeout(3200);
-            conn.setReadTimeout(12000);
+            /* Whisper + TLS on slow networks / cold server — short timeouts caused frequent SocketTimeoutException. */
+            conn.setConnectTimeout(12000);
+            conn.setReadTimeout(55000);
             /* Default Java HttpURLConnection user-agent is often blocked by CDNs / WAFs. */
             conn.setRequestProperty(
                     "User-Agent",
