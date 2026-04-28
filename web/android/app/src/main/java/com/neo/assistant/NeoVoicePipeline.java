@@ -26,11 +26,11 @@ final class NeoVoicePipeline implements Runnable {
     private static final int PREROLL_SAMPLES = 8000;
     private static final int MAX_CAPTURE_SAMPLES = 16000 * 22;
     private static final long MIN_CAPTURE_SAMPLES = 3600;
-    private static final long MIN_SPEECH_MS_FOR_TRANSCRIBE = 140;
-    private static final long MIN_SPEECH_MS_FOR_TRANSCRIBE_FALLBACK = 130;
-    private static final long SILENCE_END_MS = 260;
+    private static final long MIN_SPEECH_MS_FOR_TRANSCRIBE = 120;
+    private static final long MIN_SPEECH_MS_FOR_TRANSCRIBE_FALLBACK = 100;
+    private static final long SILENCE_END_MS = 320;
     /** Slightly longer pause tolerance so Hinglish / short gaps do not cut the clip early. */
-    private static final long SILENCE_END_MS_FALLBACK = 360;
+    private static final long SILENCE_END_MS_FALLBACK = 520;
     private static final long WAKE_DEBOUNCE_MS = 700L;
     /** Fallback (no Porcupine): avoid re-capturing the same phrase/noise burst twice. */
     private static final long FALLBACK_CAPTURE_DEBOUNCE_MS = 1300L;
@@ -348,7 +348,7 @@ final class NeoVoicePipeline implements Runnable {
         captureLen += len;
 
         final long silenceEndMs = wakeWordEnabled ? SILENCE_END_MS : SILENCE_END_MS_FALLBACK;
-        if (speechAccumMs >= 120 && silenceAccumMs >= silenceEndMs && captureLen >= MIN_CAPTURE_SAMPLES) {
+        if (speechAccumMs >= 80 && silenceAccumMs >= silenceEndMs && captureLen >= MIN_CAPTURE_SAMPLES) {
             finalizeCaptureAndTranscribe();
         } else if (captureLen >= MAX_CAPTURE_SAMPLES - frameLen) {
             finalizeCaptureAndTranscribe();

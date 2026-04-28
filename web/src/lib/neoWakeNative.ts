@@ -56,6 +56,14 @@ let wakeBridgeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 async function runWakeBridgeSyncOnce(): Promise<void> {
   if (!isNativeCapacitor()) return;
+  /*
+   * Android 14+ microphone FGS eligibility is strict while app is background/hidden.
+   * Avoid start/stop churn from hidden WebView ticks; MainActivity foreground lifecycle
+   * remains the source of truth for keeping/stopping wake.
+   */
+  if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+    return;
+  }
   const assistantActive = readNeoAssistantActive();
   const alexaListen = readNeoAlexaListen();
   const screenOff = readWakeListenScreenOffStorage();
@@ -69,8 +77,7 @@ async function runWakeBridgeSyncOnce(): Promise<void> {
      */
     const ignoreWebVisibilityWhen =
       voiceChatMode || screenOff || (assistantActive && alexaListen);
-    const webSaysVisible =
-      typeof document === "undefined" || document.visibilityState === "visible";
+    const webSaysVisible = true;
     const appVisible = ignoreWebVisibilityWhen || webSaysVisible;
     /** Voice wake only when Profile toggles require it and the app surface is visible. */
     const shouldRunWake = appVisible && (voiceChatMode || (assistantActive && alexaListen));

@@ -563,23 +563,23 @@ public final class NeoCommandRouter {
     }
 
     private static String afterContactsOpenedPrompt(String raw) {
-        return "संपर्क सूची खुल गई है। किसे कॉल करना है?";
+        return "संपर्क सूची खुल गई है। आप क्या करना चाहेंगे? किसे कॉल करना है?";
     }
 
     private static String afterWhatsAppOpenedPrompt(String raw) {
-        return "सर, व्हाट्सऐप खुल गया है। अब इसी में बताइए क्या करना है—किसे मैसेज भेजना है या किसे कॉल करनी है।";
+        return "व्हाट्सऐप खुल गया है। आप क्या करना चाहेंगे? किसे मैसेज भेजना है या किसे कॉल करनी है?";
     }
 
     private static String afterTelegramOpenedPrompt(String raw) {
-        return "सर, टेलीग्राम खुल गया है। अब इसी में बताइए क्या करना है—किसे मैसेज भेजना है।";
+        return "टेलीग्राम खुल गया है। आप क्या करना चाहेंगे? किसे मैसेज भेजना है?";
     }
 
     private static String afterYouTubeOpenedPrompt(String raw) {
-        return "सर, यूट्यूब खुल गया है। अब इसी में बताइए क्या चलाना है—गाना, वीडियो, या सर्च क्वेरी बोलिए।";
+        return "यूट्यूब खुल गया है। आप क्या करना चाहेंगे? कौन सा गाना प्ले करना है?";
     }
 
     private static String afterMusicAppOpenedPrompt(String raw) {
-        return "सर, संगीत ऐप खुल गया है। अब इसी में बताइए क्या सुनना है।";
+        return "संगीत ऐप खुल गया है। आप क्या करना चाहेंगे? कौन सा गाना प्ले करना है?";
     }
 
     private static void speakThen(Context context, String phrase, long delayMs, Runnable action) {

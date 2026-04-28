@@ -71,6 +71,8 @@ public class WakeWordForegroundService extends Service {
     private static final int RELISTEN_MS_AFTER_WAKE_ONLY = 1200;
     /** Screen-off voice mode should feel snappier than the default wake-only pause. */
     private static final int RELISTEN_MS_AFTER_WAKE_ONLY_SCREEN_OFF = 650;
+    /** After Neo TTS ends, keep mic idle briefly so speaker echo does not become a fresh command. */
+    private static final int RELISTEN_MS_AFTER_TTS_COOLDOWN = 1100;
     /** If other app audio/video is active, stay idle and retry later. */
     private static final int MEDIA_ACTIVE_RECHECK_MS = 3000;
     private static final int MEDIA_ACTIVE_RECHECK_MAX_MS = 5200;
@@ -87,6 +89,7 @@ public class WakeWordForegroundService extends Service {
     private AudioFocusRequest micAudioFocusRequest;
     private volatile boolean voiceChatMode = false;
     private volatile boolean chatRequestInFlight = false;
+    private volatile long assistantTtsCooldownUntilMs = 0L;
     /** Set when Porcupine fires for the clip that produced the next Whisper transcript (speech-first path leaves false). */
     private final AtomicBoolean porcupineWakeForNextTranscript = new AtomicBoolean(false);
     private static final int CHAT_CONNECT_TIMEOUT_MS = 3000;
@@ -197,7 +200,8 @@ public class WakeWordForegroundService extends Service {
                 if (!shouldListen) return;
                 if (!mayUseMicNow()) return;
                 if (NeoCommandRouter.isAISpeaking()) return;
-                schedulePassiveRelisten(RELISTEN_MS_QUICK);
+                assistantTtsCooldownUntilMs = System.currentTimeMillis() + RELISTEN_MS_AFTER_TTS_COOLDOWN;
+                schedulePassiveRelisten(RELISTEN_MS_AFTER_TTS_COOLDOWN);
             });
         registerScreenStateReceiver();
     }
@@ -256,6 +260,10 @@ public class WakeWordForegroundService extends Service {
     /** Whisper / pipeline delivered final user text on main thread. */
     private void onVoicePipelineTranscript(String raw) {
         if (!shouldListen || !mayUseMicNow()) {
+            return;
+        }
+        if (System.currentTimeMillis() < assistantTtsCooldownUntilMs) {
+            schedulePassiveRelisten(RELISTEN_MS_QUICK);
             return;
         }
         if (NeoCommandRouter.isAISpeaking()) {
