@@ -483,9 +483,13 @@ public class MainActivity extends BridgeActivity {
     public void onUserLeaveHint() {
         super.onUserLeaveHint();
         /*
-         * User deliberately left Neo (Home, Recents, switch app) — never listen in the background.
+         * If user enabled screen-off listen / wake voice-chat, keep wake running even after app switch
+         * so follow-up commands after opening YouTube/Contacts/WA/TG still work hands-free.
+         * Otherwise keep strict stop behavior.
          */
-        maybeStopWakeService();
+        if (!NeoPrefs.isWakeListenScreenOff(this) && !NeoPrefs.isWakeVoiceChatModeEnabled(this)) {
+            maybeStopWakeService();
+        }
     }
 
     @Override
