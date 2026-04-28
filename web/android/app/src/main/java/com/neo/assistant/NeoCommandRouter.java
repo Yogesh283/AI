@@ -173,6 +173,7 @@ public final class NeoCommandRouter {
         NeoVoiceWhisperClient.setForcedLanguage(NeoPrefs.getVoiceCommandLanguage(context));
 
         String text = normalize(raw);
+        text = normalizeAsrCommandText(text);
         if (text.isEmpty()) return false;
         if (handleChainedAppSwitchIntent(context, text, raw)) {
             return true;
@@ -1098,6 +1099,38 @@ public final class NeoCommandRouter {
         return s == null ? "" : s.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").trim();
     }
 
+    /**
+     * Normalize common Whisper/ASR miss-hears seen in field logs so routing stays stable.
+     * Keep this lightweight and phrase-level (not full NLP).
+     */
+    private static String normalizeAsrCommandText(String s) {
+        if (s == null || s.isEmpty()) return "";
+        String out = s;
+        out = out.replace("वटसप", "व्हाट्सएप");
+        out = out.replace("वट्सब", "व्हाट्सएप");
+        out = out.replace("वड्सप", "व्हाट्सएप");
+        out = out.replace("वर्सब", "व्हाट्सएप");
+        out = out.replace("वर्सप", "व्हाट्सएप");
+        out = out.replace("डेलिग्राम", "टेलिग्राम");
+        out = out.replace("नेयो", "नियो");
+        out = out.replace("नीयो", "नियो");
+        out = out.replace("निग्यों", "नियो");
+        out = out.replace("कौन्टक्ट", "कॉन्टैक्ट");
+        out = out.replace("कौंटक्ट", "कॉन्टैक्ट");
+        out = out.replace("कौंटेक्ट", "कॉन्टैक्ट");
+        out = out.replace("कोन्टैक्ट", "कॉन्टैक्ट");
+        out = out.replace("टेलिग्राम", "टेलीग्राम");
+        out = out.replace("यूटूब", "यूट्यूब");
+        out = out.replace("कोल", "कॉल");
+        out = out.replace("मैंसेज", "मैसेज");
+        out = out.replace("मेसेज", "मैसेज");
+        out = out.replace("मेसीज", "मैसेज");
+        out = out.replace("करओ", "करो");
+        out = out.replace("कुरो", "करो");
+        out = out.replaceAll("\\s+", " ").trim();
+        return out;
+    }
+
     private static boolean isReadMessagesIntent(String t) {
         boolean msgCtx =
             t.contains("message")
@@ -1555,11 +1588,16 @@ public final class NeoCommandRouter {
                 || t.contains("whatsup")
                 || t.contains("व्हाटसप")
                 || t.contains("वटसप")
+                || t.contains("वट्सब")
+                || t.contains("वर्सप")
+                || t.contains("वर्सेप")
                 /* ASR often inserts a space: "व्हाट्स एप खोलो" */
                 || t.replace(" ", "").contains("व्हाट्सएप")
                 || t.replace(" ", "").contains("वाट्सऐप")
                 || t.replace(" ", "").contains("व्हाट्सऐप")
-                || t.replace(" ", "").contains("वटसप");
+                || t.replace(" ", "").contains("वटसप")
+                || t.replace(" ", "").contains("वट्सब")
+                || t.replace(" ", "").contains("वर्सप");
         if (!hasWord) return false;
         String tr = t.trim();
         /* Follow-up turn: user often says only the app name. */
@@ -1589,8 +1627,12 @@ public final class NeoCommandRouter {
             t.contains("telegram")
                 || t.contains("टेलीग्राम")
                 || t.contains("टेलिग्राम")
+                || t.contains("डेलिग्राम")
+                || t.contains("टेलीग्राम")
                 || t.replace(" ", "").contains("टेलीग्राम")
-                || t.replace(" ", "").contains("टेलिग्राम");
+                || t.replace(" ", "").contains("टेलिग्राम")
+                || t.replace(" ", "").contains("डेलिग्राम")
+                || t.replace(" ", "").contains("टेलीग्राम");
         if (!hasWord) return false;
         String tr = t.trim();
         if (tr.matches("(?i)telegram!?")
@@ -1622,6 +1664,10 @@ public final class NeoCommandRouter {
         if (!mentionsWaTg
             && (t.contains("कॉन्टैक्ट")
                 || t.contains("कांटेक्ट")
+                || t.contains("कौंटेक्ट")
+                || t.contains("कौंटैक्ट")
+                || t.contains("कौन्टक्ट")
+                || t.contains("contect")
                 || t.contains("contact list")
                 || t.contains("contacts list"))) {
             if (t.contains("खोल")
@@ -1641,7 +1687,9 @@ public final class NeoCommandRouter {
             }
         }
         return t.matches(".*\\b(open|launch|show|start)\\b.*\\b(contact|contacts|phonebook|phone book|address book)\\b.*")
+            || t.matches(".*\\b(open|launch|show|start)\\b.*\\bcontect\\b.*")
             || t.matches(".*\\b(contact|contacts|phonebook|phone book)\\b.*\\b(open|launch|show|start)\\b.*")
+            || t.matches(".*\\bcontect\\b.*\\b(open|launch|show|start)\\b.*")
             || t.matches(".*\\b(my\\s+contact|mycontact|my\\s+contacts)\\b.*")
             || t.contains("संपर्क खोल")
             || t.contains("फोन बुक खोल")

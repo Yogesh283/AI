@@ -1194,7 +1194,7 @@ async def post_chat(
     web_block = ctx.web_block
     system_extra = ctx.system_extra
     if last_user:
-        logger.info(
+        logger.warning(
             "chat_user_input uid=%s source=%s text=%r",
             uid,
             ctx.source,
@@ -1373,7 +1373,7 @@ async def post_chat_stream(
                 yield _sse({"s": True})
             ctx = await _build_chat_route_context(body, user)
             if ctx.last_user:
-                logger.info(
+                logger.warning(
                     "chat_stream_user_input uid=%s source=%s text=%r",
                     ctx.uid,
                     ctx.source,

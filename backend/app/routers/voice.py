@@ -46,15 +46,19 @@ async def transcribe(
     browser or in `WakeWordForegroundService`. No server-side mic session for wake commands.
     """
     if not audio or not audio.filename:
+        logger.warning("voice_transcribe user_text=%r status=no_audio", "")
         return {"text": "", "error": "no_audio"}
 
     raw = await audio.read()
     if not raw:
+        logger.warning("voice_transcribe user_text=%r status=empty_audio", "")
         return {"text": "", "error": "empty_audio"}
     if len(raw) > MAX_AUDIO_BYTES:
+        logger.warning("voice_transcribe user_text=%r status=audio_too_large bytes=%s", "", len(raw))
         return {"text": "", "error": "audio_too_large"}
 
     if not _openai_api_key():
+        logger.warning("voice_transcribe user_text=%r status=openai_not_configured", "")
         return {
             "text": "",
             "error": "openai_not_configured",
@@ -69,6 +73,12 @@ async def transcribe(
         language=language,
     )
     if not text:
+        logger.warning(
+            "voice_transcribe user_text=%r status=transcription_failed lang=%s bytes=%s",
+            "",
+            (language or "").strip() or "auto",
+            len(raw),
+        )
         return {
             "text": "",
             "error": "transcription_failed",
@@ -77,7 +87,7 @@ async def transcribe(
                 "(e.g. curl -sI https://api.openai.com; set HTTPS_PROXY if you use a proxy)."
             ),
         }
-    logger.info(
+    logger.warning(
         "voice_transcribe user_text=%r lang=%s bytes=%s",
         _safe_voice_log_text(text),
         (language or "").strip() or "auto",

@@ -69,7 +69,17 @@ async function runWakeBridgeSyncOnce(): Promise<void> {
   const screenOff = readWakeListenScreenOffStorage();
   try {
     const { NeoNativeRouter } = await import("@/lib/neoNativeRouter");
-    const voiceChatMode = !!(await NeoNativeRouter.getWakeVoiceChatMode()).enabled;
+    const voiceChatPageActive =
+      typeof window !== "undefined" &&
+      typeof window.location?.pathname === "string" &&
+      window.location.pathname.startsWith("/voice");
+    /*
+     * Hard lock:
+     * Voice chat mode is page-scoped only. If user is not on /voice, force it OFF so
+     * app-open voice commands never drift into chat behavior.
+     */
+    await NeoNativeRouter.setWakeVoiceChatMode({ enabled: voiceChatPageActive });
+    const voiceChatMode = voiceChatPageActive;
     /*
      * MainActivity.onUserLeaveHint stops wake when the user leaves Neo for another app.
      * WebView visibility becomes hidden on screen-off / lock even while wake should stay up — do not treat

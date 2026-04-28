@@ -191,12 +191,12 @@ public class WakeWordForegroundService extends Service {
                             return false;
                         }
                         /*
-                         * External app use-case (YouTube/Contacts/WA/TG opened from voice):
-                         * keep fallback capture alive when user explicitly enabled wake modes, then command routing
-                         * still enforces wake phrase in consumeVoiceTranscript() when Neo is not foreground.
+                         * Strict silent policy for external/background app surfaces:
+                         * if Porcupine wake model is unavailable, do NOT run speech-first fallback capture.
+                         * This avoids random ambient speech being sent to STT while user is away from Neo UI.
                          */
                         if (!isNeoAppForeground() && !wakeKeywordAvailable) {
-                            return listenScreenOff || voiceChatMode;
+                            return false;
                         }
                         return true;
                     }
@@ -688,7 +688,9 @@ public class WakeWordForegroundService extends Service {
             "(?:^|[\\s,.!?])(?:"
                 + "hello\\s*neo|hello\\s*new|hello\\s*niyo|hello\\s*nio|"
                 + "hey\\s*neo|hi\\s*neo|halo\\s*neo|helo\\s*neo|hallo\\s*neo|yellow\\s*neo|"
-                + "हेलो\\s*नियो|हैलो\\s*नियो|नमस्ते\\s*नियो"
+                + "हेलो\\s*नियो|हैलो\\s*नियो|अललो\\s*नियो|हललो\\s*नियो|हलो\\s*नियो|"
+                + "हेलो\\s*नियों|हैलो\\s*नियों|हेलो\\s*नीयो|हैलो\\s*नीयो|"
+                + "हेलो\\s*नेयो|हैलो\\s*नेयो|हल्लों\\s*निग्यों|नमस्ते\\s*नियो"
                 + ")(?=[\\s,.!?]|$)",
             Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
 
