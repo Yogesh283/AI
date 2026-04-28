@@ -10,6 +10,8 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import androidx.core.content.ContextCompat;
+import androidx.lifecycle.Lifecycle;
+import androidx.lifecycle.LifecycleOwner;
 import com.getcapacitor.PermissionState;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -30,6 +32,14 @@ public class NeoNativeRouterPlugin extends Plugin {
 
     /** Time for {@link WakeWordForegroundService#onStartCommand} to finish {@link android.app.Service#startForeground}. */
     private static final long WAKE_RUNNING_VERIFY_MS = 450L;
+
+    /**
+     * JS can call {@link #startWakeListener} before {@link Activity} is {@link Lifecycle.State#RESUMED} again after a
+     * cold transition — Android 14+ then rejects microphone {@code startForeground}. Poll briefly until resumed.
+     */
+    private static final long WAKE_FGS_ELIGIBILITY_RETRY_MS = 150L;
+
+    private static final int MAX_WAKE_FGS_ELIGIBILITY_ATTEMPTS = 48;
 
     @PluginMethod
     public void setWakeScreenOffListen(PluginCall call) {
@@ -110,6 +120,38 @@ public class NeoNativeRouterPlugin extends Plugin {
             JSObject out = new JSObject();
             out.put("started", true);
             call.resolve(out);
+            return;
+        }
+        attemptWakeStartWhenEligible(call, screenOffListen, 0);
+    }
+
+    /** Android 14+: mic FGS requires an eligible process state; often only once {@link Activity} is RESUMED. */
+    private boolean canStartMicrophoneFgsNow() {
+        Activity a = getActivity();
+        if (a == null) {
+            return false;
+        }
+        if (a instanceof LifecycleOwner) {
+            Lifecycle.State s = ((LifecycleOwner) a).getLifecycle().getCurrentState();
+            return s.isAtLeast(Lifecycle.State.RESUMED);
+        }
+        return true;
+    }
+
+    private void attemptWakeStartWhenEligible(PluginCall call, boolean screenOffListen, int eligibilityAttempt) {
+        if (!canStartMicrophoneFgsNow()) {
+            if (eligibilityAttempt >= MAX_WAKE_FGS_ELIGIBILITY_ATTEMPTS) {
+                JSObject out = new JSObject();
+                out.put("started", false);
+                out.put("reason", "need-resumed-activity-for-microphone-fgs");
+                call.resolve(out);
+                return;
+            }
+            long delay = eligibilityAttempt == 0 ? 16L : WAKE_FGS_ELIGIBILITY_RETRY_MS;
+            new Handler(Looper.getMainLooper())
+                    .postDelayed(
+                            () -> attemptWakeStartWhenEligible(call, screenOffListen, eligibilityAttempt + 1),
+                            delay);
             return;
         }
         if (!dispatchWakeForegroundService(screenOffListen)) {
