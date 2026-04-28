@@ -6,6 +6,7 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Debug;
 import android.util.Log;
 import android.view.View;
 import android.widget.Toast;
@@ -86,11 +87,15 @@ public class MainActivity extends BridgeActivity {
          * Before inflation: on some MTK+Mali phones + "Wait for debugger", early HWUI/EGL can SIGABRT with
          * FORTIFY pthread_mutex / destroyed mutex (libc). Software-raster this window first.
          */
-        GpuWorkarounds.disableHardwareAccelerationForWindow(this);
+        if (Debug.isDebuggerConnected()) {
+            GpuWorkarounds.disableHardwareAccelerationForWindow(this);
+        }
         registerPlugin(NeoNativeRouterPlugin.class);
         super.onCreate(savedInstanceState);
         /* Second pass: on some API levels {@code getWindow()} is only ready after {@code super.onCreate}. */
-        GpuWorkarounds.disableHardwareAccelerationForWindow(this);
+        if (Debug.isDebuggerConnected()) {
+            GpuWorkarounds.disableHardwareAccelerationForWindow(this);
+        }
         /* Apply UA / cookies before first paint so the initial request to server.url is not stuck with "; wv". */
         configureWebViewForVoice();
         /*
@@ -436,10 +441,10 @@ public class MainActivity extends BridgeActivity {
             }
             attachWebRtcMicChromeClient(wv, bridge);
             /*
-             * Local dev: software layer avoids Mali/ANGLE eglCreateSync teardown with error.html.
-             * Production: same on MTK-class devices (see GpuWorkarounds / logcat FORTIFY mutex aborts).
+             * Use software layer only for local dev server troubleshooting.
+             * Hardware rendering is significantly faster for normal page navigation.
              */
-            if (usesLocalCapacitorServer() || GpuWorkarounds.shouldSoftwareRasterMainWindow()) {
+            if (usesLocalCapacitorServer()) {
                 wv.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
             }
         } catch (Throwable ignored) {

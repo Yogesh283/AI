@@ -181,6 +181,15 @@ public final class NeoCommandRouter {
         String text = normalize(raw);
         text = normalizeAsrCommandText(text);
         if (text.isEmpty()) return false;
+        final boolean readMessagesIntent = isReadMessagesIntent(text);
+        final boolean callOnlyIntent = isCallOnlyVoiceIntent(text);
+        final boolean pendingCallChoice = NeoPrefs.hasPendingCallChoices(context);
+        if (!readMessagesIntent && !callOnlyIntent && !pendingCallChoice) {
+            speak(
+                context,
+                "वॉयस कमांड अभी सिर्फ दो काम के लिए है: कॉल लगाना और व्हाट्सऐप/टेलीग्राम मैसेज पढ़कर सुनाना।");
+            return true;
+        }
         if (handleLockedExternalAppContext(context, text, raw)) {
             return true;
         }
@@ -203,7 +212,7 @@ public final class NeoCommandRouter {
         if (isMicControlIntent(text, raw)) {
             return true;
         }
-        if (isReadMessagesIntent(text)) {
+        if (readMessagesIntent) {
             if (tryReadMessengerNotification(context, text, raw)) {
                 return true;
             }
@@ -493,7 +502,7 @@ public final class NeoCommandRouter {
                 return true;
             }
             final String dial = candidates.get(0).telUri;
-            speakThen(context, calmCallPhrase(raw), 1250, () -> startTelIntent(context, dial));
+            speakThen(context, calmCallPhrase(raw), 240, () -> startTelIntent(context, dial));
             return true;
         }
 
@@ -503,12 +512,28 @@ public final class NeoCommandRouter {
             speakThen(
                 context,
                 calmCallPhrase(raw),
-                1250,
+                240,
                 () -> startTelIntent(context, telUri));
             return true;
         }
 
         return false;
+    }
+
+    private static boolean isCallOnlyVoiceIntent(String t) {
+        if (t == null || t.isEmpty()) {
+            return false;
+        }
+        if (extractTel(t) != null) {
+            return true;
+        }
+        if (t.matches(".*\\b(call|dial|phone|ring)\\b.*")) {
+            return true;
+        }
+        if (t.contains("कॉल") || t.contains("फोन")) {
+            return true;
+        }
+        return t.matches("(?is).*(को|ko)\\s+.*(कॉल|फोन|call|dial).*");
     }
 
     /**
@@ -1285,7 +1310,7 @@ public final class NeoCommandRouter {
     }
 
     private static String explainCantReadMessages() {
-        return "पूरा चैट सीधे नहीं पढ़ सकते। सेटिंग्स में नियो के लिए Notification access चालू करें—तब नवीनतम WhatsApp/Telegram सूचना पढ़ सकता हूँ। फिर बोलिए: व्हाट्सऐप खोलो या टेलीग्राम खोलो।";
+        return "मैसेज सुनाने के लिए सेटिंग्स में नियो का Notification access चालू करें। इसके बाद बोलिए: व्हाट्सऐप या टेलीग्राम का मैसेज पढ़ो।";
     }
 
     /**
@@ -1312,22 +1337,7 @@ public final class NeoCommandRouter {
                 String snap = NeoPrefs.getLastWhatsAppNotification(context);
                 if (snap != null && !snap.trim().isEmpty()) {
                     final String snippet = snap.trim();
-                    speakThen(
-                        context,
-                        "आपकी आखिरी व्हाट्सऐप सूचना: " + snippet,
-                        420,
-                        () ->
-                            openPreferredAppThenStore(
-                                context,
-                                new String[] {"com.whatsapp", "com.whatsapp.w4b"},
-                                Uri.parse("whatsapp://send"),
-                                "com.whatsapp"));
-                    busyAckHandler.postDelayed(
-                        () ->
-                            speak(
-                                context,
-                                "किसे मैसेज करना है? नाम बोलिए, मैं चैट खोलकर मैसेज तैयार कर दूंगा।"),
-                        820L);
+                    speak(context, "आपकी आखिरी व्हाट्सऐप सूचना: " + snippet);
                     return true;
                 }
             }
@@ -1341,32 +1351,7 @@ public final class NeoCommandRouter {
             line = line.substring(0, 517) + "...";
         }
         final String speakLine = line;
-        final boolean openWa = "wa".equals(app);
-        speakThen(
-            context,
-            ("wa".equals(app) ? "व्हाट्सऐप" : "टेलीग्राम") + " की सूचना: " + speakLine,
-            420,
-            () -> {
-                if (openWa) {
-                    openPreferredAppThenStore(
-                        context,
-                        new String[] {"com.whatsapp", "com.whatsapp.w4b"},
-                        Uri.parse("whatsapp://send"),
-                        "com.whatsapp");
-                } else {
-                    openPreferredAppThenStore(
-                        context,
-                        new String[] {"org.telegram.messenger", "org.thunderdog.challegram"},
-                        Uri.parse("tg://"),
-                        "org.telegram.messenger");
-                }
-            });
-        busyAckHandler.postDelayed(
-            () ->
-                speak(
-                    context,
-                    "अब बताइए किसे मैसेज करना है। नाम बोलिए, मैं मैसेज तैयार कर दूंगा।"),
-            820L);
+        speak(context, ("wa".equals(app) ? "व्हाट्सऐप" : "टेलीग्राम") + " की सूचना: " + speakLine);
         return true;
     }
 
