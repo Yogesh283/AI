@@ -174,6 +174,9 @@ public final class NeoCommandRouter {
 
         String text = normalize(raw);
         if (text.isEmpty()) return false;
+        if (handleChainedAppSwitchIntent(context, text, raw)) {
+            return true;
+        }
         if (handleVoiceLanguageSwitchIntent(context, text)) {
             return true;
         }
@@ -1571,6 +1574,9 @@ public final class NeoCommandRouter {
             || t.contains("ओपन")
             || t.contains("खोलो")
             || t.contains("खोल")
+            || t.contains("उघड")
+            || t.contains("उघडा")
+            || t.contains("सुरू")
             || t.contains("चलाओ")
             || t.contains("चला")
             || t.contains("दिखाओ")
@@ -1597,6 +1603,9 @@ public final class NeoCommandRouter {
             || t.contains("ओपन")
             || t.contains("खोलो")
             || t.contains("खोल")
+            || t.contains("उघड")
+            || t.contains("उघडा")
+            || t.contains("सुरू")
             || t.contains("चलाओ")
             || t.contains("चला")
             || t.contains("दिखाओ")
@@ -1620,6 +1629,9 @@ public final class NeoCommandRouter {
                 || t.contains("launch")
                 || t.contains("show")
                 || t.contains("start")
+                || t.contains("उघड")
+                || t.contains("उघडा")
+                || t.contains("सुरू")
                 || t.contains("दिखा")
                 || t.contains("ओपन")
                 || t.contains("लिस्ट")
@@ -1633,11 +1645,18 @@ public final class NeoCommandRouter {
             || t.matches(".*\\b(my\\s+contact|mycontact|my\\s+contacts)\\b.*")
             || t.contains("संपर्क खोल")
             || t.contains("फोन बुक खोल")
+            || t.contains("कॉन्टैक्ट उघड")
+            || t.contains("contacts उघड")
             || t.matches(".*\\b(खोल|open)\\b.*\\b(संपर्क|फोन\\s*बुक)\\b.*");
     }
 
     private static boolean isGenericOpenAppIntent(String t) {
-        if (!(t.matches(".*\\b(open|launch|start|show)\\b.*") || t.contains("खोल") || t.contains("ओपन"))) {
+        if (!(t.matches(".*\\b(open|launch|start|show)\\b.*")
+            || t.contains("खोल")
+            || t.contains("ओपन")
+            || t.contains("उघड")
+            || t.contains("उघडा")
+            || t.contains("सुरू"))) {
             return false;
         }
         if (isOpenProfileOrAccountIntent(t)) {
@@ -1659,11 +1678,93 @@ public final class NeoCommandRouter {
         String cleaned = t
             .replaceAll("\\b(hello|hey|hi|neo)\\b", " ")
             .replaceAll("\\b(open|launch|start|show|my|the|app|application|please|now)\\b", " ")
-            .replaceAll("ओपन|खोलो|खोल|ऐप|एप|मेरा|मेरी|कृपया|अभी", " ")
+            .replaceAll("ओपन|खोलो|खोल|ऐप|एप|मेरा|मेरी|कृपया|अभी|उघड|उघडा|सुरू", " ")
             .replaceAll("\\s+", " ")
             .trim();
         if (cleaned.isEmpty()) return null;
         return cleaned;
+    }
+
+    private static boolean handleChainedAppSwitchIntent(Context context, String text, String raw) {
+        boolean hasConnector =
+            text.contains(" and ")
+                || text.contains(" then ")
+                || text.contains(" aur ")
+                || text.contains(" फिर ")
+                || text.contains(" और ")
+                || text.contains(" मग ")
+                || text.contains(" नंतर ")
+                || text.contains(" ani ");
+        if (!hasConnector) return false;
+        int idxYt = lastAnyIndex(text, "youtube", "you tube", "यूट्यूब", "यूटूब");
+        int idxContacts = lastAnyIndex(text, "contacts", "contact", "कॉन्टैक्ट", "कांटेक्ट", "संपर्क");
+        int idxWa = lastAnyIndex(text, "whatsapp", "व्हाट्सएप", "वाट्सऐप", "व्हाट्सऐप", "वटसप");
+        int idxTg = lastAnyIndex(text, "telegram", "टेलीग्राम", "टेलिग्राम");
+        int max = Math.max(Math.max(idxYt, idxContacts), Math.max(idxWa, idxTg));
+        if (max < 0) return false;
+        if (max == idxYt) {
+            NeoPrefs.setLastVoiceAppContext(context, "youtube");
+            speakOpenAppWithFollowUp(
+                context,
+                raw,
+                "ठीक है, अब YouTube खोल रहा हूँ।",
+                220,
+                () -> openYouTubeSearchForPlayback(context, "latest songs"),
+                "आप क्या करना चाहेंगे? कौन सा गाना प्ले करना है?");
+            return true;
+        }
+        if (max == idxContacts) {
+            NeoPrefs.setLastVoiceAppContext(context, "contacts");
+            speakOpenAppWithFollowUp(
+                context,
+                raw,
+                "ठीक है, अब contacts खोल रहा हूँ।",
+                220,
+                () -> openContactsApp(context),
+                "आप क्या करना चाहेंगे? किसे कॉल करना है?");
+            return true;
+        }
+        if (max == idxWa) {
+            NeoPrefs.setLastVoiceAppContext(context, "wa");
+            speakOpenAppWithFollowUp(
+                context,
+                raw,
+                "ठीक है, अब WhatsApp खोल रहा हूँ।",
+                220,
+                () ->
+                    openPreferredAppThenStore(
+                        context,
+                        new String[] {"com.whatsapp", "com.whatsapp.w4b"},
+                        Uri.parse("https://api.whatsapp.com/send"),
+                        "com.whatsapp"),
+                "आप क्या करना चाहेंगे? किसे मैसेज करना है?");
+            return true;
+        }
+        NeoPrefs.setLastVoiceAppContext(context, "tg");
+        speakOpenAppWithFollowUp(
+            context,
+            raw,
+            "ठीक है, अब Telegram खोल रहा हूँ।",
+            220,
+            () ->
+                openPreferredAppThenStore(
+                    context,
+                    new String[] {"org.telegram.messenger", "org.thunderdog.challegram"},
+                    Uri.parse("tg://"),
+                    "org.telegram.messenger"),
+            "आप क्या करना चाहेंगे?");
+        return true;
+    }
+
+    private static int lastAnyIndex(String text, String... keys) {
+        int best = -1;
+        if (text == null) return best;
+        for (String k : keys) {
+            if (k == null || k.isEmpty()) continue;
+            int i = text.lastIndexOf(k.toLowerCase(Locale.ROOT));
+            if (i > best) best = i;
+        }
+        return best;
     }
 
     private static boolean openInstalledAppByLabel(Context context, String rawName) {
