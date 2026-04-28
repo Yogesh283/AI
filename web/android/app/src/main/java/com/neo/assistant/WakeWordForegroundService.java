@@ -184,11 +184,10 @@ public class WakeWordForegroundService extends Service {
                     @Override
                     public boolean allowFallbackHotCapture() {
                         /*
-                         * Off-screen + wake voice-chat: never run speech-first capture (no Porcupine gate).
-                         * Avoids Whisper → chat / TTS from ambient speech before a real "Hello Neo" hotword.
+                         * Screen-off mode: keep capture active so voice-chat remains available with display off.
                          */
-                        if (voiceChatMode && !isScreenInteractive()) {
-                            return false;
+                        if (!isScreenInteractive()) {
+                            return voiceChatMode || listenScreenOff;
                         }
                         /*
                          * Strict silent policy for external/background app surfaces:
@@ -521,6 +520,13 @@ public class WakeWordForegroundService extends Service {
             lastHandledCommandMs = now;
 
             if (!isScreenInteractive()) {
+                if (isLikelyOffScreenCallCommand(command)) {
+                    boolean handled = NeoCommandRouter.execute(this, command);
+                    if (NeoCommandRouter.isAISpeaking()) {
+                        return RELISTEN_DEFERRED;
+                    }
+                    return handled ? RELISTEN_MS_QUICK : RELISTEN_MS_AFTER_WAKE_ONLY_SCREEN_OFF;
+                }
                 handleWakeVoiceChat(command);
                 return RELISTEN_DEFERRED;
             }
@@ -575,6 +581,16 @@ public class WakeWordForegroundService extends Service {
         }
         /* On-screen chat only while user is inside Neo app voice chat page (page toggles voiceChatMode). */
         return voiceChatMode && isNeoAppForeground();
+    }
+
+    private boolean isLikelyOffScreenCallCommand(String command) {
+        if (command == null) return false;
+        String t = command.toLowerCase(Locale.ROOT);
+        return t.matches(".*\\b(call|dial|phone|ring)\\b.*")
+            || t.contains("कॉल")
+            || t.contains("काल")
+            || t.contains("फोन")
+            || t.contains("कोल");
     }
 
     /** Speech-first fallback when Porcupine keyword model is unavailable but wake voice-chat mode is on. */

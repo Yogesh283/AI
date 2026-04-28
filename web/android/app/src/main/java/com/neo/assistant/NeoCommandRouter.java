@@ -84,7 +84,13 @@ public final class NeoCommandRouter {
      * Package visibility for “open X” is fixed via MAIN/LAUNCHER {@code <queries>} in the manifest.
      */
     private static boolean startActivityCompat(Context context, Intent intent) {
-        if (!canLaunchExternalUiNow(context)) {
+        final String action = intent.getAction();
+        final Uri data = intent.getData();
+        final String scheme = data != null ? data.getScheme() : null;
+        final boolean isTelephonyIntent =
+            ("tel".equalsIgnoreCase(scheme)
+                && (Intent.ACTION_DIAL.equals(action) || Intent.ACTION_CALL.equals(action)));
+        if (!isTelephonyIntent && !canLaunchExternalUiNow(context)) {
             return false;
         }
         if ((intent.getFlags() & Intent.FLAG_ACTIVITY_NEW_TASK) == 0) {
@@ -147,7 +153,7 @@ public final class NeoCommandRouter {
 
     /** Wake heard with no command tail — short, assistant-style prompt (Alexa-like: brief + one beat to speak). */
     public static void speakWakeListeningAck(Context context, String rawHeard) {
-        speak(context, "जी, बोलिए।");
+        speak(context, "जी, मैं सुन रही हूँ। बताइए, मैं आपकी कैसे मदद करूँ?");
     }
 
     /** Wake voice-chat mode: speak backend/OpenAI chat text reply via the same TTS channel. */
@@ -175,6 +181,9 @@ public final class NeoCommandRouter {
         String text = normalize(raw);
         text = normalizeAsrCommandText(text);
         if (text.isEmpty()) return false;
+        if (handleLockedExternalAppContext(context, text, raw)) {
+            return true;
+        }
         if (handleChainedAppSwitchIntent(context, text, raw)) {
             return true;
         }
@@ -439,6 +448,28 @@ public final class NeoCommandRouter {
             }
             List<CallCandidate> candidates = lookupDialCandidatesForContactName(context, name, 3);
             if (candidates.isEmpty()) {
+                List<CallCandidate> suggestions = lookupDialCandidatesForContactName(context, name, 2, 40);
+                if (suggestions.size() >= 2) {
+                    JSONArray choices = new JSONArray();
+                    for (int i = 0; i < Math.min(2, suggestions.size()); i++) {
+                        try {
+                            JSONObject o = new JSONObject();
+                            o.put("name", suggestions.get(i).displayName);
+                            o.put("tel", suggestions.get(i).telUri);
+                            choices.put(o);
+                        } catch (Exception ignored) {
+                        }
+                    }
+                    NeoPrefs.armPendingCallChoices(context, choices, 45_000L);
+                    speak(
+                        context,
+                        "क्या आप "
+                            + suggestions.get(0).displayName
+                            + " कहना चाह रहे हैं या "
+                            + suggestions.get(1).displayName
+                            + "? बताइए पहला या दूसरा।");
+                    return true;
+                }
                 speak(
                     context,
                     "यह नाम आपकी संपर्क सूची में नहीं मिला। जिस नाम से सेव है, वही बोलकर फिर कोशिश करिए।");
@@ -477,6 +508,76 @@ public final class NeoCommandRouter {
             return true;
         }
 
+        return false;
+    }
+
+    /**
+     * When an external app was opened by voice and follow-up window is active,
+     * keep next turns inside the same app context (no cross-app jumps).
+     */
+    private static boolean handleLockedExternalAppContext(Context context, String text, String raw) {
+        if (!NeoPrefs.isVoiceFollowUpWindowActive(context)) {
+            return false;
+        }
+        String ctx = NeoPrefs.getLastVoiceAppContext(context);
+        if (ctx == null) {
+            return false;
+        }
+        ctx = ctx.trim().toLowerCase(Locale.ROOT);
+        if (ctx.isEmpty()) {
+            return false;
+        }
+
+        boolean asksContacts = isContactsIntent(text);
+        boolean asksYoutube = extractYouTubeQuery(text) != null || isYouTubeMusicLaunchIntent(text);
+        boolean asksWa = isWhatsAppIntent(text);
+        boolean asksTg = isTelegramIntent(text);
+        boolean asksDifferentApp =
+            ("youtube".equals(ctx) && (asksContacts || asksWa || asksTg))
+                || ("contacts".equals(ctx) && (asksYoutube || asksWa || asksTg))
+                || ("wa".equals(ctx) && (asksYoutube || asksContacts || asksTg))
+                || ("tg".equals(ctx) && (asksYoutube || asksContacts || asksWa));
+        if (asksDifferentApp) {
+            speak(context, "अभी इसी ऐप में कमांड दीजिए। ऐप बदलना हो तो पहले साफ़ बोलें: hello neo, open app.");
+            return true;
+        }
+
+        if ("youtube".equals(ctx)) {
+            String q = extractYouTubeQuery(text);
+            if ((q == null || q.trim().isEmpty()) && raw != null) {
+                String fallback = raw.trim();
+                if (!fallback.isEmpty()
+                        && fallback.length() <= 220
+                        && !fallback.matches("(?is).*\\b(open|launch|start|show|contacts?|whatsapp|telegram)\\b.*")) {
+                    q = fallback;
+                }
+            }
+            if (q == null || q.trim().isEmpty() || isGenericPronounOnlyQuery(q)) {
+                speak(context, "कौन सा गाना या वीडियो चलाना है? नाम बोलिए।");
+                NeoPrefs.armYoutubeVoiceQueryPending(context, 90_000L);
+                return true;
+            }
+            final String finalQ = q.trim();
+            speakThen(
+                context,
+                "ठीक है, अभी चलाता हूँ।",
+                180,
+                () -> openYouTubeSearchForPlayback(context, finalQ));
+            return true;
+        }
+
+        if ("wa".equals(ctx) || "tg".equals(ctx)) {
+            if (handleVoiceComposeSendMessage(context, text, raw)) return true;
+            if (handleDirectComposeByName(context, text, raw)) return true;
+            if (handleMessengerFindContact(context, text, raw)) return true;
+            if (text.contains("message")
+                    || text.contains("मैसेज")
+                    || text.contains("मेसेज")
+                    || text.contains("संदेश")) {
+                speak(context, "किसे मैसेज करना है? नाम और मैसेज बोलिए।");
+                return true;
+            }
+        }
         return false;
     }
 
@@ -2426,6 +2527,15 @@ public final class NeoCommandRouter {
         String nameQuery,
         int limit
     ) {
+        return lookupDialCandidatesForContactName(context, nameQuery, limit, 56);
+    }
+
+    private static List<CallCandidate> lookupDialCandidatesForContactName(
+        Context context,
+        String nameQuery,
+        int limit,
+        int minScore
+    ) {
         ArrayList<CallCandidate> out = new ArrayList<>();
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS)
                 != PackageManager.PERMISSION_GRANTED) {
@@ -2459,7 +2569,7 @@ public final class NeoCommandRouter {
                     continue;
                 }
                 int score = scoreContactNameMatch(disp.toLowerCase(Locale.ROOT), q);
-                if (score < 56) {
+                if (score < minScore) {
                     continue;
                 }
                 String telCandidate = normalizePhoneFieldToTelUri(num);
