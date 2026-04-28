@@ -40,6 +40,13 @@ logger = logging.getLogger(__name__)
 CHAT_TEMP_WITH_LIVE_WEB = 0.28
 
 
+def _safe_user_log_text(text: str, max_len: int = 240) -> str:
+    out = re.sub(r"\s+", " ", (text or "")).strip()
+    if len(out) <= max_len:
+        return out
+    return out[: max_len - 3] + "..."
+
+
 def _is_live_datetime_query(text: str) -> bool:
     s = (text or "").strip().lower()
     if not s:
@@ -1186,6 +1193,13 @@ async def post_chat(
     last_user = ctx.last_user
     web_block = ctx.web_block
     system_extra = ctx.system_extra
+    if last_user:
+        logger.info(
+            "chat_user_input uid=%s source=%s text=%r",
+            uid,
+            ctx.source,
+            _safe_user_log_text(last_user),
+        )
 
     try:
         live_ov = {"temperature": CHAT_TEMP_WITH_LIVE_WEB} if web_block else None
@@ -1358,6 +1372,13 @@ async def post_chat_stream(
             if emit_searching_ping:
                 yield _sse({"s": True})
             ctx = await _build_chat_route_context(body, user)
+            if ctx.last_user:
+                logger.info(
+                    "chat_stream_user_input uid=%s source=%s text=%r",
+                    ctx.uid,
+                    ctx.source,
+                    _safe_user_log_text(ctx.last_user),
+                )
             if ctx.early_reply is not None:
                 emitted_any = True
                 yield _sse({"d": ctx.early_reply})

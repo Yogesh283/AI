@@ -25,6 +25,13 @@ logger = logging.getLogger(__name__)
 MAX_AUDIO_BYTES = 24 * 1024 * 1024  # OpenAI allows ~25MB; stay under
 
 
+def _safe_voice_log_text(text: str, max_len: int = 240) -> str:
+    out = " ".join((text or "").split()).strip()
+    if len(out) <= max_len:
+        return out
+    return out[: max_len - 3] + "..."
+
+
 class TtsBody(BaseModel):
     text: str = ""
 
@@ -70,6 +77,12 @@ async def transcribe(
                 "(e.g. curl -sI https://api.openai.com; set HTTPS_PROXY if you use a proxy)."
             ),
         }
+    logger.info(
+        "voice_transcribe user_text=%r lang=%s bytes=%s",
+        _safe_voice_log_text(text),
+        (language or "").strip() or "auto",
+        len(raw),
+    )
 
     return {"text": text, "duration_ms": None}
 

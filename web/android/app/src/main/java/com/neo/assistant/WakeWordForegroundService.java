@@ -50,6 +50,7 @@ public class WakeWordForegroundService extends Service {
     private static final String CHANNEL_ID = "neo_wake_channel_silent_v2";
     private static final int NOTIFICATION_ID = 9001;
     private static final String TAG = "NeoWakeService";
+    private static final String USER_VOICE_TAG = "NeoVoiceUser";
 
     private boolean shouldListen = false;
     /** When false, pause mic when display is off (default). When true, try to keep wake for lock-screen use. */
@@ -287,6 +288,12 @@ public class WakeWordForegroundService extends Service {
             return;
         }
         mediaBackoffMs = MEDIA_ACTIVE_RECHECK_MS;
+        String spoken = raw == null ? "" : raw.trim();
+        if (!spoken.isEmpty()) {
+            Log.i(
+                USER_VOICE_TAG,
+                "user_transcript=\"" + (spoken.length() > 220 ? spoken.substring(0, 220) + "..." : spoken) + "\"");
+        }
         int delayMs = consumeVoiceTranscript(raw);
         if (!shouldListen || !mayUseMicNow()) {
             return;
