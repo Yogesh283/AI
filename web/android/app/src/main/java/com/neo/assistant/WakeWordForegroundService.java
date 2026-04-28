@@ -461,9 +461,15 @@ public class WakeWordForegroundService extends Service {
                 /* Screen off + user opted in: same Neo commands as screen on (may bring activity/UI to front). */
             }
 
-            String key = command.trim().toLowerCase(Locale.ROOT);
+            String key =
+                command
+                    .trim()
+                    .toLowerCase(Locale.ROOT)
+                    .replaceAll("[^\\p{L}\\p{N}\\s]", " ")
+                    .replaceAll("\\s+", " ")
+                    .trim();
             long now = System.currentTimeMillis();
-            long dedupeWindowMs = isScreenInteractive() ? 1400L : 900L;
+            long dedupeWindowMs = isScreenInteractive() ? 2600L : 1600L;
             if (key.equals(lastHandledCommandKey) && (now - lastHandledCommandMs) < dedupeWindowMs) {
                 return RELISTEN_MS_QUICK;
             }

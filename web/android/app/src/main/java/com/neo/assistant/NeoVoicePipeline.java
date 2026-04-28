@@ -32,6 +32,8 @@ final class NeoVoicePipeline implements Runnable {
     /** Slightly longer pause tolerance so Hinglish / short gaps do not cut the clip early. */
     private static final long SILENCE_END_MS_FALLBACK = 320;
     private static final long WAKE_DEBOUNCE_MS = 700L;
+    /** Fallback (no Porcupine): avoid re-capturing the same phrase/noise burst twice. */
+    private static final long FALLBACK_CAPTURE_DEBOUNCE_MS = 1300L;
     /** Prevent piling up multiple parallel /voice/transcribe requests on flaky networks. */
     private static final long TRANSCRIBE_BACKOFF_MS = 900L;
     /**
@@ -95,6 +97,7 @@ final class NeoVoicePipeline implements Runnable {
     private long silenceAccumMs;
     private long speechAccumMs;
     private long lastWakeMs;
+    private long lastFallbackCaptureMs;
     private final AtomicBoolean transcribeInFlight = new AtomicBoolean(false);
     private volatile long transcribeBackoffUntilMs = 0L;
 
@@ -260,7 +263,11 @@ final class NeoVoicePipeline implements Runnable {
                 }
                 double level = meanAbs(readFrame, n);
                 if (level > FALLBACK_START_THRESHOLD) {
-                    beginCaptureAtRingEnd();
+                    long nowMs = System.currentTimeMillis();
+                    if (nowMs - lastFallbackCaptureMs >= FALLBACK_CAPTURE_DEBOUNCE_MS) {
+                        lastFallbackCaptureMs = nowMs;
+                        beginCaptureAtRingEnd();
+                    }
                 }
             }
 
