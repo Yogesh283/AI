@@ -28,6 +28,8 @@ public final class NeoPrefs {
     public static final String KEY_YT_VOICE_PENDING_UNTIL = "yt_voice_pending_until";
     /** Voice command recognition language lock: "hi" or "en". */
     public static final String KEY_VOICE_CMD_LANG = "voice_cmd_lang";
+    /** Short in-app follow-up window after app-open prompt (epoch ms). */
+    public static final String KEY_VOICE_FOLLOWUP_UNTIL = "voice_followup_until";
     /** Pending call disambiguation choices JSON array: [{name,tel}, ...]. */
     public static final String KEY_PENDING_CALL_CHOICES = "pending_call_choices";
     /** Pending call disambiguation expiry (epoch ms). */
@@ -285,6 +287,31 @@ public final class NeoPrefs {
             .getSharedPreferences(FILE, Context.MODE_PRIVATE)
             .edit()
             .remove(KEY_YT_VOICE_PENDING_UNTIL)
+            .apply();
+    }
+
+    public static void armVoiceFollowUpWindow(Context c, long ttlMs) {
+        long until = System.currentTimeMillis() + Math.max(5000L, ttlMs);
+        c.getApplicationContext()
+            .getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .edit()
+            .putLong(KEY_VOICE_FOLLOWUP_UNTIL, until)
+            .apply();
+    }
+
+    public static boolean isVoiceFollowUpWindowActive(Context c) {
+        long until =
+            c.getApplicationContext()
+                .getSharedPreferences(FILE, Context.MODE_PRIVATE)
+                .getLong(KEY_VOICE_FOLLOWUP_UNTIL, 0L);
+        return until > System.currentTimeMillis();
+    }
+
+    public static void clearVoiceFollowUpWindow(Context c) {
+        c.getApplicationContext()
+            .getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .edit()
+            .remove(KEY_VOICE_FOLLOWUP_UNTIL)
             .apply();
     }
 

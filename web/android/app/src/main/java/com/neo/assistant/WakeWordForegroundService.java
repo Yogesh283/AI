@@ -95,6 +95,7 @@ public class WakeWordForegroundService extends Service {
     private final AtomicBoolean porcupineWakeForNextTranscript = new AtomicBoolean(false);
     private static final int CHAT_CONNECT_TIMEOUT_MS = 3000;
     private static final int CHAT_READ_TIMEOUT_MS = 5200;
+    private static final int CHAT_FALLBACK_MIN_CHARS = 3;
     /** Same-origin Next proxy as the WebView — not bare {@code /api/chat} on the public host. */
     private static final String CHAT_API_FALLBACK = "https://myneoxai.com/neo-api/api/chat";
     private static volatile boolean runningNow = false;
@@ -189,12 +190,12 @@ public class WakeWordForegroundService extends Service {
                             return false;
                         }
                         /*
-                         * When Neo UI is not foreground and Porcupine keyword model is unavailable, do not run
-                         * speech-first captures from ambient audio in external apps. External-app commands should
-                         * stay wake-gated by transcript wake phrase ("Hello Neo ...").
+                         * External app use-case (YouTube/Contacts/WA/TG opened from voice):
+                         * keep fallback capture alive when user explicitly enabled wake modes, then command routing
+                         * still enforces wake phrase in consumeVoiceTranscript() when Neo is not foreground.
                          */
                         if (!isNeoAppForeground() && !wakeKeywordAvailable) {
-                            return false;
+                            return listenScreenOff || voiceChatMode;
                         }
                         return true;
                     }
@@ -416,7 +417,7 @@ public class WakeWordForegroundService extends Service {
 
         boolean porcupineHeard = porcupineWakeForNextTranscript.getAndSet(false);
         boolean screenOnNow = isScreenInteractive();
-        String command = extractWakeCommand(said, screenOnNow);
+        String command = extractWakeCommand(said);
 
         try {
             if (command == null) {
@@ -427,6 +428,12 @@ public class WakeWordForegroundService extends Service {
                      */
                     if (isNeoAppForeground()) {
                         command = said;
+                    } else if (isExternalFollowUpWindowActive()) {
+                        /*
+                         * External app continuity window (after app-open prompt):
+                         * allow short follow-up turns without repeating wake phrase.
+                         */
+                        command = said;
                     } else {
                         /*
                          * User is currently in another app (screen still ON). Keep external flow wake-gated so
@@ -434,12 +441,6 @@ public class WakeWordForegroundService extends Service {
                          */
                         return RELISTEN_MS_QUICK;
                     }
-                } else if (isSpeechFirstFallbackMode()) {
-                    /*
-                     * Porcupine assets are unavailable in this build. Route transcript directly so multilingual
-                     * wake mis-hears ("हलో/హలో/हैलो ...") still execute app commands or fall back to voice chat.
-                     */
-                    return RELISTEN_MS_QUICK;
                 } else {
                     Log.i(
                         TAG,
@@ -521,9 +522,10 @@ public class WakeWordForegroundService extends Service {
 
             boolean handled = NeoCommandRouter.execute(this, command);
             if (!handled) {
-                /*
-                 * Always give audible feedback so the user knows Neo heard them.
-                 */
+                if (shouldFallbackToVoiceChat(command)) {
+                    handleWakeVoiceChat(command);
+                    return RELISTEN_DEFERRED;
+                }
                 NeoCommandRouter.speakCommandNotUnderstood(this, rawForTts);
                 if (NeoCommandRouter.isAISpeaking()) {
                     return RELISTEN_DEFERRED;
@@ -539,6 +541,28 @@ public class WakeWordForegroundService extends Service {
         }
     }
 
+    private boolean isExternalFollowUpWindowActive() {
+        if (isNeoAppForeground()) return true;
+        if (!NeoPrefs.isVoiceFollowUpWindowActive(this)) return false;
+        String lastCtx = NeoPrefs.getLastVoiceAppContext(this);
+        return lastCtx != null && !lastCtx.trim().isEmpty();
+    }
+
+    private boolean shouldFallbackToVoiceChat(String command) {
+        if (command == null) return false;
+        String q = command.trim();
+        if (q.length() < CHAT_FALLBACK_MIN_CHARS) return false;
+        /*
+         * Treat questions and non-imperative lines as chat to keep command+chat unified.
+         * Direct command verbs still stay on NeoCommandRouter path first.
+         */
+        String low = q.toLowerCase(Locale.ROOT);
+        if (low.endsWith("?")) return true;
+        if (low.matches(".*\\b(what|why|how|who|when|where|explain|tell|describe|meaning)\\b.*")) return true;
+        if (q.matches("(?is).*(क्या|क्यों|कैसे|कौन|कब|कहाँ|बताओ|समझाओ|समझाइए).*")) return true;
+        return true;
+    }
+
     /** Speech-first fallback when Porcupine keyword model is unavailable but wake voice-chat mode is on. */
     private boolean isSpeechFirstFallbackMode() {
         return !wakeKeywordAvailable && voiceChatMode;
@@ -549,10 +573,6 @@ public class WakeWordForegroundService extends Service {
      * Keeps this mode independent from app-intent command router behavior.
      */
     private void handleWakeVoiceChat(String userText) {
-        /* Safety guard: wake voice-chat belongs to screen-off flow only. */
-        if (isScreenInteractive()) {
-            return;
-        }
         final String q = userText == null ? "" : userText.trim();
         if (q.isEmpty()) {
             return;
@@ -660,7 +680,7 @@ public class WakeWordForegroundService extends Service {
                 + ")(?=[\\s,.!?]|$)",
             Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
 
-    private String extractWakeCommand(String said, boolean allowStandaloneFallback) {
+    private String extractWakeCommand(String said) {
         Matcher m = WAKE_IN_UTTERANCE.matcher(said);
         if (m.find()) {
             String rest = said.substring(m.end()).trim();
@@ -669,39 +689,7 @@ public class WakeWordForegroundService extends Service {
             }
             return rest;
         }
-        /*
-         * Dev/sideload builds often ship without Porcupine ({@code wakeKeywordAvailable=false}). Still route
-         * obvious short intents (contacts / YouTube / WhatsApp) without forcing “Hello Neo”.
-         */
-        if (allowStandaloneFallback && !wakeKeywordAvailable && looksLikeStandaloneNeoCommand(said)) {
-            return said.trim();
-        }
         return null;
-    }
-
-    /** Narrow imperative phrases — avoids treating random chat as a command when wake keyword is unavailable. */
-    private boolean looksLikeStandaloneNeoCommand(String said) {
-        if (said == null) return false;
-        String s = said.trim();
-        if (s.length() < 3 || s.length() > 220) return false;
-        String lower = s.toLowerCase(Locale.ROOT);
-        if (lower.matches(
-                "(?is).*(?:^|\\s)(?:open|launch|start|show)\\s+(?:contact|contacts)\\b.*")) return true;
-        if (lower.matches(
-                "(?is).*(?:contact|contacts)\\b.*(?:^|\\s)(?:open|launch|start|show)\\b.*")) return true;
-        if (lower.contains("youtube") || lower.contains("you tube")) return true;
-        if (s.contains("यूट्यूब") || s.contains("यूटूब")) return true;
-        if (lower.contains("whatsapp")) return true;
-        if (s.contains("व्हाट्स")
-                || s.contains("व्हाट्सऐप")
-                || s.contains("वटसप")
-                || s.contains("वॉट्सएप")
-                || s.contains("వాట్సాప్")
-                || s.contains("వర్చప్")) return true;
-        if (lower.contains("telegram")) return true;
-        if (s.contains("संपर्क") && (lower.contains("open") || s.contains("खोल"))) return true;
-        if (lower.matches("(?is)^(open\\s+)?youtube\\s*$")) return true;
-        return false;
     }
 
     private String normalize(String s) {

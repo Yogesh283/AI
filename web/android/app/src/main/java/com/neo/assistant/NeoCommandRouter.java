@@ -35,6 +35,7 @@ import org.json.JSONObject;
 public final class NeoCommandRouter {
     /** Assistant replies are always Hindi; TTS uses this locale (voices may still fall back if missing). */
     private static final Locale ASSISTANT_TTS_LOCALE = new Locale("hi", "IN");
+    private static final long IN_APP_FOLLOWUP_WINDOW_MS = 20_000L;
 
     private static TextToSpeech tts;
     private static boolean ttsReady = false;
@@ -630,6 +631,7 @@ public final class NeoCommandRouter {
                 () -> {
                     pendingBusyRunnable = null;
                     try {
+                        NeoPrefs.armVoiceFollowUpWindow(context, IN_APP_FOLLOWUP_WINDOW_MS);
                         open.run();
                     } catch (Exception ignored) {
                     } finally {
@@ -645,6 +647,7 @@ public final class NeoCommandRouter {
             delayMs,
             () -> {
                 try {
+                    NeoPrefs.armVoiceFollowUpWindow(context, IN_APP_FOLLOWUP_WINDOW_MS);
                     open.run();
                 } catch (Exception ignored) {
                 }
