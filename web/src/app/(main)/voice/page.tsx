@@ -66,6 +66,13 @@ function shouldSuppressLiveVoiceRealtimeError(msg: string): boolean {
 const VOICE_CHAT_TTS_SPEED: TtsSpeedPreset = "natural";
 const VOICE_CHAT_TTS_TONE: TtsTonePreset = "warm";
 const VOICE_CHAT_AVATAR_OPTS = { voiceChatOpenAiTts: true as const };
+/** Voice page should feel instant; abort slow live-web enrich quickly and continue answer generation. */
+const VOICE_LIVE_WEB_TIMEOUT_MS = 2800;
+/** Start assistant response fast; only wait this small grace for live-web block. */
+const VOICE_LIVE_WEB_QUICK_START_GRACE_MS = 700;
+/** Hard realtime behavior for on-screen/off-screen session continuity. */
+const VOICE_REALTIME_PRIORITY_INSTRUCTION =
+  "Realtime priority is mandatory: in both app-open and off-screen continuation, respond immediately as soon as user finishes speaking. Do not add intentional delays, long prefaces, or waiting fillers. Keep first response tokens fast and concise, then expand only if user asks.";
 
 function IconMic({ className }: { className?: string }) {
   return (
@@ -459,6 +466,12 @@ export default function VoicePage() {
             liveEnsureMicRef.current = live.ensureLocalMicLive;
             /* One uplink arm after bridge open — avoid repeated native calls (APK “tun” / focus churn). */
             live.ensureLocalMicLive();
+            live.sendClientEvent({
+              type: "session.update",
+              session: {
+                instructions: VOICE_REALTIME_PRIORITY_INSTRUCTION,
+              },
+            });
             setLiveConnecting(false);
             setListening(true);
             /*
@@ -604,11 +617,33 @@ export default function VoicePage() {
             setLiveWebFetching(true);
             let block = "";
             let liveFetchFailed = false;
+            let fetchResolvedInGrace = false;
             try {
-              const j = await postLiveWebContext(line, {
-                timeoutMs: LIVE_WEB_CONTEXT_DEFAULT_TIMEOUT_MS,
+              const fetchPromise = postLiveWebContext(line, {
+                timeoutMs: Math.min(LIVE_WEB_CONTEXT_DEFAULT_TIMEOUT_MS, VOICE_LIVE_WEB_TIMEOUT_MS),
               });
-              block = (j.block || "").trim();
+              const quick = await Promise.race([
+                fetchPromise.then((j) => ({ done: true as const, block: (j.block || "").trim() })),
+                new Promise<{ done: false }>((resolve) =>
+                  setTimeout(() => resolve({ done: false as const }), VOICE_LIVE_WEB_QUICK_START_GRACE_MS),
+                ),
+              ]);
+              if (quick.done) {
+                fetchResolvedInGrace = true;
+                block = quick.block;
+              } else {
+                fetchPromise
+                  .then((j) => {
+                    if (!sessionOnRef.current || myTurn !== voiceLiveWebTurnRef.current) return;
+                    const lateBlock = (j.block || "").trim();
+                    if (lateBlock) {
+                      /* Late live block is intentionally ignored for this turn to keep response start instant. */
+                    }
+                  })
+                  .catch(() => {
+                    /* late failure ignored */
+                  });
+              }
             } catch {
               liveFetchFailed = true;
               /* timeout/offline/API error — continue fast; backend falls back to cached DB snapshots when possible */
@@ -670,7 +705,9 @@ export default function VoicePage() {
             } else {
               const hint = liveFetchFailed
                 ? "Live Google lookup did not run this turn (network or timeout). Answer the user helpfully from your knowledge anyway—full sentences, same language as the user. For time-sensitive facts (today's rates, live scores), say you don't have a fresh lookup right now without inventing numbers. Do not send them to other websites for the same answer."
-                : "No fresh web snippets for this query—answer normally from your knowledge: be useful, complete, and in the user's language. For precise live figures you cannot verify, say so briefly and still explain what you can.";
+                : fetchResolvedInGrace
+                  ? "No fresh web snippets for this query—answer normally from your knowledge: be useful, complete, and in the user's language. For precise live figures you cannot verify, say so briefly and still explain what you can."
+                  : "Start responding immediately without waiting for live web snippets. Give a clear helpful answer in the user's language from your knowledge first.";
               send({
                 type: "conversation.item.create",
                 item: {

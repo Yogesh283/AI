@@ -69,6 +69,32 @@ public final class NeoCommandRouter {
         }
     }
 
+    private static boolean isAssistantMale(Context context) {
+        String g = NeoPrefs.getAssistantTtsGender(context);
+        return TTS_GENDER_MALE.equalsIgnoreCase(g);
+    }
+
+    public static String getListeningAckLine(Context context) {
+        if (isAssistantMale(context)) {
+            return "जी, मैं सुन रहा हूँ। बताइए, मैं आपकी कैसे मदद करूँ?";
+        }
+        return "जी, मैं सुन रही हूँ। बताइए, मैं आपकी कैसे मदद करूँ?";
+    }
+
+    public static String getNetworkRetryLine(Context context) {
+        if (isAssistantMale(context)) {
+            return "मैं सुन रहा हूँ। नेटवर्क थोड़ा धीमा है, कृपया एक बार फिर बोलिए।";
+        }
+        return "मैं सुन रही हूँ। नेटवर्क थोड़ा धीमा है, कृपया एक बार फिर बोलिए।";
+    }
+
+    public static String getQuickProcessingLine(Context context) {
+        if (isAssistantMale(context)) {
+            return "जी, एक सेकंड।";
+        }
+        return "जी, एक सेकंड।";
+    }
+
     /**
      * {@link WakeWordForegroundService} wraps {@link #execute} with this so background wake routing has
      * <strong>no TTS</strong> (no wake hint, no errors spoken, no “opening…” lines). Actions still pause STT via
@@ -166,7 +192,7 @@ public final class NeoCommandRouter {
     public static void speakWakeListeningAck(Context context, String rawHeard) {
         /* Next utterance may omit the wake phrase until this window expires (see WakeWordForegroundService). */
         NeoPrefs.armVoiceFollowUpWindow(context, IN_APP_FOLLOWUP_WINDOW_MS);
-        speak(context, "जी, मैं सुन रही हूँ। बताइए, मैं आपकी कैसे मदद करूँ?");
+        speak(context, getListeningAckLine(context));
     }
 
     /** Wake voice-chat mode: speak backend/OpenAI chat text reply via the same TTS channel. */
@@ -2017,12 +2043,20 @@ public final class NeoCommandRouter {
         if (wantsEnglish) {
             NeoPrefs.setVoiceCommandLanguage(context, "en");
             NeoVoiceWhisperClient.setForcedLanguage("en");
-            speak(context, "Sure sir, I will listen and respond in English.");
+            speak(
+                    context,
+                    isAssistantMale(context)
+                            ? "Sure, I will listen and respond in English."
+                            : "Sure, I will listen and respond in English.");
             return true;
         }
         NeoPrefs.setVoiceCommandLanguage(context, "hi");
         NeoVoiceWhisperClient.setForcedLanguage("hi");
-        speak(context, "ठीक है सर, अब मैं हिंदी में सुनूंगा और हिंदी में जवाब दूंगा।");
+        speak(
+                context,
+                isAssistantMale(context)
+                        ? "ठीक है, अब मैं हिंदी में सुनूंगा और हिंदी में जवाब दूंगा।"
+                        : "ठीक है, अब मैं हिंदी में सुनूंगी और हिंदी में जवाब दूंगी।");
         return true;
     }
 

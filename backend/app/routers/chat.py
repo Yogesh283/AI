@@ -995,6 +995,11 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
 
     voice_mode_extra = ""
     if body.source == "voice":
+        realtime_voice_priority = (
+            " Realtime priority (mandatory): whether app is open or off-screen continuation is active, "
+            "start responding immediately when user stops speaking. Avoid deliberate pauses and long lead-ins; "
+            "deliver the first useful line fast, then continue naturally."
+        )
         if hindi_only:
             voice_mode_extra = (
                 " Voice mode: reply only in Shuddh Hindi (Devanagari), no English — same natural phone-call rhythm. "
@@ -1004,6 +1009,7 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
                 "'आप कैसे हैं?' या 'आज आपका दिन कैसा रहा?' ताकि संवाद व्यक्तिगत लगे. "
                 "Aim to reflect what they actually said; keep the exchange smooth, clear, and trustworthy—human-like "
                 "and friendly, not robotic."
+                f"{realtime_voice_priority}"
             )
         else:
             voice_mode_extra = (
@@ -1019,6 +1025,7 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
                 "'How are you feeling today?' or 'How did your day go?' when context allows. "
                 "Ground answers in their actual words; keep the flow smooth and interruption-free unless "
                 "disambiguation is truly needed."
+                f"{realtime_voice_priority}"
             )
 
     vision_policy = ""

@@ -30,7 +30,7 @@ final class NeoVoicePipeline implements Runnable {
     private static final long MIN_SPEECH_MS_FOR_TRANSCRIBE_FALLBACK = 90;
     private static final long SILENCE_END_MS = 260;
     /** Slightly longer pause tolerance so Hinglish / short gaps do not cut the clip early. */
-    private static final long SILENCE_END_MS_FALLBACK = 420;
+    private static final long SILENCE_END_MS_FALLBACK = 300;
     private static final long WAKE_DEBOUNCE_MS = 550L;
     /** Fallback (no Porcupine): avoid re-capturing the same phrase/noise burst twice. */
     private static final long FALLBACK_CAPTURE_DEBOUNCE_MS = 2200L;

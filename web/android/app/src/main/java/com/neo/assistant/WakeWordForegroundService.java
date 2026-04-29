@@ -94,9 +94,14 @@ public class WakeWordForegroundService extends Service {
     private volatile long assistantTtsCooldownUntilMs = 0L;
     /** Set when Porcupine fires for the clip that produced the next Whisper transcript (speech-first path leaves false). */
     private final AtomicBoolean porcupineWakeForNextTranscript = new AtomicBoolean(false);
-    private static final int CHAT_CONNECT_TIMEOUT_MS = 3000;
-    private static final int CHAT_READ_TIMEOUT_MS = 9000;
+    private static final int CHAT_CONNECT_TIMEOUT_MS = 1400;
+    private static final int CHAT_READ_TIMEOUT_MS = 4200;
     private static final int CHAT_FALLBACK_MIN_CHARS = 3;
+    private static final String VOICE_CHAT_REALTIME_SYSTEM_PROMPT =
+            "AI निर्देश: वॉयस चैट (on-screen और off-screen) में इनपुट/आउटपुट अत्यंत त्वरित रखें। "
+                    + "यूज़र के बोलते ही लगभग उसी क्षण जवाब शुरू करें। "
+                    + "कोई अनावश्यक देरी, लंबा प्रीफ़ेस, या filler न दें। "
+                    + "पहली उपयोगी पंक्ति तुरंत दें, फिर आवश्यक हो तो विस्तार करें।";
     /** Off-screen chat: after wake, keep conversation open briefly without repeating wake word. */
     private static final long OFFSCREEN_CHAT_SILENCE_TIMEOUT_MS = 30_000L;
     /** Same-origin Next proxy as the WebView — not bare {@code /api/chat} on the public host. */
@@ -701,6 +706,7 @@ public class WakeWordForegroundService extends Service {
             return;
         }
         chatRequestInFlight = true;
+        NeoCommandRouter.speakVoiceChatReply(this, NeoCommandRouter.getQuickProcessingLine(this));
         new Thread(
                 () -> {
                     String reply = "";
@@ -723,7 +729,7 @@ public class WakeWordForegroundService extends Service {
                              */
                             NeoCommandRouter.speakVoiceChatReply(
                                 this,
-                                "मैं सुन रही हूँ। नेटवर्क थोड़ा धीमा है, कृपया एक बार फिर बोलिए।");
+                                NeoCommandRouter.getNetworkRetryLine(this));
                             if (!NeoCommandRouter.isAISpeaking()) {
                                 schedulePassiveRelisten(RELISTEN_MS_ERROR);
                             }
@@ -747,6 +753,10 @@ public class WakeWordForegroundService extends Service {
 
             JSONObject body = new JSONObject();
             JSONArray messages = new JSONArray();
+            JSONObject system = new JSONObject();
+            system.put("role", "system");
+            system.put("content", VOICE_CHAT_REALTIME_SYSTEM_PROMPT);
+            messages.put(system);
             JSONObject user = new JSONObject();
             user.put("role", "user");
             user.put("content", userText);
