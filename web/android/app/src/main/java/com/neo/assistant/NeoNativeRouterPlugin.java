@@ -83,6 +83,17 @@ public class NeoNativeRouterPlugin extends Plugin {
         call.resolve(o);
     }
 
+    /**
+     * JS: OpenAI Live WebRTC session on/off. When on, {@link MainActivity} keeps the Capacitor WebView from
+     * staying paused under the lock screen so mic + downlink can keep running.
+     */
+    @PluginMethod
+    public void setVoiceLiveWebRtcActive(PluginCall call) {
+        Boolean on = call.getBoolean("active", false);
+        NeoPrefs.setVoiceLiveWebRtcActive(getContext(), Boolean.TRUE.equals(on));
+        call.resolve();
+    }
+
     @PluginMethod
     public void startWakeListener(PluginCall call) {
         Boolean so = call.getBoolean("screenOffListen", false);

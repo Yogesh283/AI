@@ -14,6 +14,8 @@ export type NeoNativeRouterPlugin = {
   getWakePorcupineStream(): Promise<{ enabled: boolean }>;
   setWakeVoiceChatMode(options: { enabled: boolean }): Promise<void>;
   getWakeVoiceChatMode(): Promise<{ enabled: boolean }>;
+  /** APK: WebRTC Live session — native layer avoids pausing WebView when screen locks. */
+  setVoiceLiveWebRtcActive(options: { active: boolean }): Promise<void>;
 };
 
 /** Android: runs `NeoCommandRouter.execute` (real app intents, not WebView https). */
@@ -39,5 +41,6 @@ export const NeoNativeRouter = registerPlugin<NeoNativeRouterPlugin>("NeoNativeR
     getWakePorcupineStream: async () => ({ enabled: false }),
     setWakeVoiceChatMode: async () => {},
     getWakeVoiceChatMode: async () => ({ enabled: false }),
+    setVoiceLiveWebRtcActive: async () => {},
   },
 });

@@ -13,6 +13,11 @@ public final class NeoPrefs {
     public static final String KEY_WAKE_PORCUPINE_STREAM = "wake_porcupine_stream";
     /** Separate wake voice chat mode (OpenAI reply over TTS) independent of command router mode. */
     public static final String KEY_WAKE_VOICE_CHAT_MODE = "wake_voice_chat_mode";
+    /**
+     * True while OpenAI Realtime WebRTC is active in the WebView — used to avoid {@link WebView#onPause()}
+     * pausing mic/data channels when the screen locks (otherwise lock-screen voice chat appears “dead”).
+     */
+    public static final String KEY_VOICE_LIVE_WEBRTC_ACTIVE = "voice_live_webrtc_active";
     /** Latest WhatsApp notification line (title + text) when {@link NeoNotificationListenerService} is enabled. */
     public static final String KEY_LAST_WA_SNIPPET = "last_wa_notif_snippet";
     /** Ring buffer JSON: [{app,title,text,ts}, …] newest first — WhatsApp + Telegram previews for voice “read for …”. */
@@ -87,6 +92,20 @@ public final class NeoPrefs {
             .getSharedPreferences(FILE, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KEY_WAKE_VOICE_CHAT_MODE, on)
+            .apply();
+    }
+
+    public static boolean isVoiceLiveWebRtcActive(Context c) {
+        return c.getApplicationContext()
+            .getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .getBoolean(KEY_VOICE_LIVE_WEBRTC_ACTIVE, false);
+    }
+
+    public static void setVoiceLiveWebRtcActive(Context c, boolean on) {
+        c.getApplicationContext()
+            .getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_VOICE_LIVE_WEBRTC_ACTIVE, on)
             .apply();
     }
 

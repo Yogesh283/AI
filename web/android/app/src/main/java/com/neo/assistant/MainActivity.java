@@ -488,6 +488,35 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
+    /**
+     * {@link com.getcapacitor.BridgeActivity} pauses the WebView in {@code onPause}/{@code onStop}, which stops
+     * WebRTC and {@code getUserMedia} — lock-screen OpenAI Live then looks “broken”. When the web layer reports an
+     * active Realtime session, re-{@link WebView#onResume()} so audio + data channel keep running.
+     */
+    private void keepWebViewResumedForActiveVoiceLive() {
+        if (!NeoPrefs.isVoiceLiveWebRtcActive(this)) {
+            return;
+        }
+        try {
+            Bridge bridge = getBridge();
+            if (bridge == null) {
+                return;
+            }
+            WebView wv = bridge.getWebView();
+            if (wv == null) {
+                return;
+            }
+            wv.onResume();
+        } catch (Throwable ignored) {
+        }
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        keepWebViewResumedForActiveVoiceLive();
+    }
+
     @Override
     public void onUserLeaveHint() {
         super.onUserLeaveHint();
@@ -504,6 +533,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onStop() {
         super.onStop();
+        keepWebViewResumedForActiveVoiceLive();
         /*
          * Screen off / keyguard while Neo was open does not always fire onUserLeaveHint. If the user enabled
          * screen-off listen or wake voice-chat, keep the foreground wake service so “Hello Neo” voice chat can

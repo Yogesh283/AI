@@ -109,6 +109,17 @@ function isVoiceUserStopIntent(text: string): boolean {
   return /^(रुको|बस|चुप|बंद|रोक|रोको|बस करो|रोक दो|बस हो)/.test(raw);
 }
 
+/** Tells Android not to pause WebView during Live WebRTC (lock screen / app switch). */
+async function syncNativeVoiceLiveWebRtcFlag(active: boolean): Promise<void> {
+  if (!isNativeCapacitor()) return;
+  try {
+    const { NeoNativeRouter } = await import("@/lib/neoNativeRouter");
+    await NeoNativeRouter.setVoiceLiveWebRtcActive({ active });
+  } catch {
+    /* ignore */
+  }
+}
+
 export default function VoicePage() {
   const [hasMounted, setHasMounted] = useState(false);
   const [listening, setListening] = useState(false);
@@ -342,6 +353,7 @@ export default function VoicePage() {
   }, []);
 
   const stopSession = useCallback(() => {
+    void syncNativeVoiceLiveWebRtcFlag(false);
     liveAssistStreamOpenRef.current = false;
     liveUserTranscriptOpenRef.current = false;
     try {
@@ -458,6 +470,7 @@ export default function VoicePage() {
             /* No second Web Speech session here: it fought the WebRTC mic and caused OS “tun” cues on phones. */
           }
           if (s === "closed") {
+            void syncNativeVoiceLiveWebRtcFlag(false);
             liveSendClientEventRef.current = null;
             liveEnsureMicRef.current = null;
             setLiveConnecting(false);
@@ -742,6 +755,7 @@ export default function VoicePage() {
         },
         { localAudioStream: acquiredMic },
       );
+      void syncNativeVoiceLiveWebRtcFlag(true);
       acquiredMic = null;
       liveCloseRef.current = live.close;
       liveCancelRef.current = live.cancelAssistant;
@@ -757,6 +771,7 @@ export default function VoicePage() {
         live.setAssistantAudioMuted(false);
       }
     } catch (e) {
+      void syncNativeVoiceLiveWebRtcFlag(false);
       resumeNativeWakeAfterVoiceLive();
       if (acquiredMic) {
         for (const t of acquiredMic.getTracks()) {
@@ -820,6 +835,7 @@ export default function VoicePage() {
 
   useEffect(() => {
     return () => {
+      void syncNativeVoiceLiveWebRtcFlag(false);
       sessionOnRef.current = false;
       try {
         liveCloseRef.current?.();
