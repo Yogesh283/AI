@@ -143,7 +143,12 @@ export default function VoicePage() {
   const liveCancelRef = useRef<(() => void) | null>(null);
   const liveSendClientEventRef = useRef<((o: Record<string, unknown>) => void) | null>(null);
   const liveEnsureMicRef = useRef<(() => void) | null>(null);
-  /** APK Live: unmute model downlink only after user says Hello Neo (see finalized user transcript). */
+  /** Realtime remote audio mute — set when session opens; used on lock-screen / app background. */
+  const liveMuteFnRef = useRef<((muted: boolean) => void) | null>(null);
+  /**
+   * APK: while screen is off/background, assistant downlink stays muted until “Hello Neo” in transcript
+   * (see visibility handler + onUserTranscript). Browser/desktop: treated as unlocked when session is visible.
+   */
   const liveAssistantAudioUnlockedRef = useRef(true);
   /** APK: native wake was stopped so WebRTC can own the mic for Live voice. */
   const nativeWakePausedForLiveRef = useRef(false);
@@ -348,6 +353,7 @@ export default function VoicePage() {
     liveCancelRef.current = null;
     liveSendClientEventRef.current = null;
     liveEnsureMicRef.current = null;
+    liveMuteFnRef.current = null;
     voiceLiveWebTurnRef.current += 1;
     liveWebPipelineRef.current = Promise.resolve();
     liveResponseBusyRef.current = false;
@@ -440,12 +446,14 @@ export default function VoicePage() {
             setLiveConnecting(false);
             setListening(true);
             /*
-             * APK: user opened Voice Live from the mic button (gesture). Realtime ASR often omits “Hello Neo”
-             * from transcripts — keeping assistant audio muted until then made replies permanently silent.
+             * APK: if user is on the voice screen, unmute immediately. If session opened while already hidden
+             * (rare), keep muted until they say “Hello Neo” (handled in onUserTranscript + visibility).
              */
             if (isNativeCapacitor()) {
-              liveAssistantAudioUnlockedRef.current = true;
-              live.setAssistantAudioMuted(false);
+              const vis =
+                typeof document === "undefined" || document.visibilityState === "visible";
+              liveAssistantAudioUnlockedRef.current = vis;
+              live.setAssistantAudioMuted(!vis);
             }
             /* No second Web Speech session here: it fought the WebRTC mic and caused OS “tun” cues on phones. */
           }
@@ -502,16 +510,29 @@ export default function VoicePage() {
         onUserTranscript: (t) => {
           const line = t.trim();
           if (!line) return;
-          /* Tab/app background: do not run Live web pipeline or request assistant speech (Hello Neo / wake is native). */
-          if (typeof document !== "undefined" && document.visibilityState !== "visible") {
-            liveUserTranscriptOpenRef.current = false;
-            return;
-          }
+          /* APK lock screen / background: “Hello Neo” (or wake phrase) un-mutes assistant; must run before background guard. */
           if (isNativeCapacitor() && !liveAssistantAudioUnlockedRef.current) {
             const { hadWake } = extractHelloNeoCommand(line);
             if (hadWake) {
               liveAssistantAudioUnlockedRef.current = true;
-              live.setAssistantAudioMuted(false);
+              try {
+                live.setAssistantAudioMuted(false);
+              } catch {
+                /* ignore */
+              }
+            }
+          }
+          /*
+           * Browser: no Live web pipeline when tab hidden. APK: only after wake unlock (off-screen voice chat).
+           */
+          if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+            if (!isNativeCapacitor()) {
+              liveUserTranscriptOpenRef.current = false;
+              return;
+            }
+            if (!liveAssistantAudioUnlockedRef.current) {
+              liveUserTranscriptOpenRef.current = false;
+              return;
             }
           }
           if (isVoiceUserStopIntent(line)) {
@@ -726,9 +747,11 @@ export default function VoicePage() {
       liveCancelRef.current = live.cancelAssistant;
       liveSendClientEventRef.current = live.sendClientEvent;
       liveEnsureMicRef.current = live.ensureLocalMicLive;
+      liveMuteFnRef.current = live.setAssistantAudioMuted;
       if (isNativeCapacitor()) {
-        liveAssistantAudioUnlockedRef.current = false;
-        live.setAssistantAudioMuted(true);
+        const vis = typeof document === "undefined" || document.visibilityState === "visible";
+        liveAssistantAudioUnlockedRef.current = vis;
+        live.setAssistantAudioMuted(!vis);
       } else {
         liveAssistantAudioUnlockedRef.current = true;
         live.setAssistantAudioMuted(false);
@@ -823,7 +846,28 @@ export default function VoicePage() {
       stopSession();
     };
     const onVisibility = () => {
-      if (document.visibilityState !== "visible") hardStop();
+      if (document.visibilityState === "visible") {
+        if (isNativeCapacitor() && sessionOnRef.current) {
+          liveAssistantAudioUnlockedRef.current = true;
+          try {
+            liveMuteFnRef.current?.(false);
+          } catch {
+            /* ignore */
+          }
+        }
+        return;
+      }
+      /* Screen off / app background: keep WebRTC session on APK so lock-screen voice chat can work. */
+      if (isNativeCapacitor() && sessionOnRef.current) {
+        liveAssistantAudioUnlockedRef.current = false;
+        try {
+          liveMuteFnRef.current?.(true);
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
+      hardStop();
     };
     window.addEventListener("pagehide", hardStop);
     window.addEventListener("beforeunload", hardStop);
