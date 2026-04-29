@@ -434,22 +434,14 @@ public class WakeWordForegroundService extends Service {
             if (command == null) {
                 if (screenOnNow) {
                     /*
-                     * On-screen assistant mode: allow direct commands without forcing wake phrase every turn.
-                     * Off-screen path remains wake-gated ("Hello Neo").
+                     * Stay silent on random speech: require wake phrase in text, Porcupine keyword, or a
+                     * short post–"Hello Neo" follow-up window (see {@link #isPostWakeFollowUpCommandWindowActive}).
                      */
-                    if (isNeoAppForeground()) {
+                    if (porcupineHeard) {
                         command = said;
-                    } else if (isExternalFollowUpWindowActive()) {
-                        /*
-                         * External app continuity window (after app-open prompt):
-                         * allow short follow-up turns without repeating wake phrase.
-                         */
+                    } else if (isPostWakeFollowUpCommandWindowActive()) {
                         command = said;
                     } else {
-                        /*
-                         * User is currently in another app (screen still ON). Keep external flow wake-gated so
-                         * random speech does not fire commands; "Hello Neo <command>" still executes.
-                         */
                         return RELISTEN_MS_QUICK;
                     }
                 } else {
@@ -552,9 +544,27 @@ public class WakeWordForegroundService extends Service {
         }
     }
 
+    /**
+     * Hot-capture allowlist when Porcupine is unavailable and user is in another app: only during a real
+     * follow-up (recent wake + we set last context, e.g. after opening YouTube/Contacts).
+     */
     private boolean isExternalFollowUpWindowActive() {
-        if (isNeoAppForeground()) return true;
         if (!NeoPrefs.isVoiceFollowUpWindowActive(this)) return false;
+        String lastCtx = NeoPrefs.getLastVoiceAppContext(this);
+        return lastCtx != null && !lastCtx.trim().isEmpty();
+    }
+
+    /**
+     * After a recent "Hello Neo" (or wake ack), user may say the next command without repeating the wake
+     * phrase. In another app, require an active continuity context as well.
+     */
+    private boolean isPostWakeFollowUpCommandWindowActive() {
+        if (!NeoPrefs.isVoiceFollowUpWindowActive(this)) {
+            return false;
+        }
+        if (isNeoAppForeground()) {
+            return true;
+        }
         String lastCtx = NeoPrefs.getLastVoiceAppContext(this);
         return lastCtx != null && !lastCtx.trim().isEmpty();
     }

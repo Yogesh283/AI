@@ -992,13 +992,13 @@ export default function VoicePage() {
       />
 
       <div className="mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col px-4 py-6 md:max-w-xl">
-        <div className="neo-screen-card flex min-h-0 flex-1 flex-col items-center justify-center rounded-[16px] px-4 py-5">
+        <div className="neo-screen-card flex min-h-0 flex-1 flex-col items-center justify-center rounded-[16px] px-4 py-5 text-center">
           {showRealtimeSupportWarning ? (
             <p className="mb-6 max-w-sm text-center text-[11px] leading-relaxed text-amber-400/90">
               Live needs HTTPS and WebRTC. Update Android System WebView / Chrome on this device.
             </p>
           ) : null}
-            <div className="relative flex flex-col items-center">
+            <div className="relative mx-auto flex flex-col items-center justify-center">
               <div
                 className="pointer-events-none absolute -left-20 top-1/2 h-[2px] w-16 bg-gradient-to-r from-transparent via-[#58adff]/90 to-transparent"
                 aria-hidden
@@ -1058,10 +1058,10 @@ export default function VoicePage() {
             </button>
           </div>
 
-          <p className="mt-4 text-sm font-medium text-slate-800">
+          <p className="mt-4 w-full text-center text-sm font-medium text-slate-800">
             {sessionOn ? "Listening..." : "Voice Chat"}
           </p>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 w-full text-center text-xs text-slate-500">
             {sessionOn ? "Tap the button to stop" : "Speak with AI naturally"}
           </p>
           {err && !sessionOn ? (

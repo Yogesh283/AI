@@ -153,6 +153,8 @@ public final class NeoCommandRouter {
 
     /** Wake heard with no command tail — short, assistant-style prompt (Alexa-like: brief + one beat to speak). */
     public static void speakWakeListeningAck(Context context, String rawHeard) {
+        /* Next utterance may omit the wake phrase until this window expires (see WakeWordForegroundService). */
+        NeoPrefs.armVoiceFollowUpWindow(context, IN_APP_FOLLOWUP_WINDOW_MS);
         speak(context, "जी, मैं सुन रही हूँ। बताइए, मैं आपकी कैसे मदद करूँ?");
     }
 
@@ -182,14 +184,10 @@ public final class NeoCommandRouter {
         text = normalizeAsrCommandText(text);
         if (text.isEmpty()) return false;
         final boolean readMessagesIntent = isReadMessagesIntent(text);
-        final boolean callOnlyIntent = isCallOnlyVoiceIntent(text);
-        final boolean pendingCallChoice = NeoPrefs.hasPendingCallChoices(context);
-        if (!readMessagesIntent && !callOnlyIntent && !pendingCallChoice) {
-            speak(
-                context,
-                "वॉयस कमांड अभी सिर्फ दो काम के लिए है: कॉल लगाना और व्हाट्सऐप/टेलीग्राम मैसेज पढ़कर सुनाना।");
-            return true;
-        }
+        /*
+         * No upfront “scope” lecture — only speak when a concrete intent matches below; unrelated speech falls
+         * through to false (wake layer stays silent).
+         */
         if (handleLockedExternalAppContext(context, text, raw)) {
             return true;
         }
@@ -518,22 +516,6 @@ public final class NeoCommandRouter {
         }
 
         return false;
-    }
-
-    private static boolean isCallOnlyVoiceIntent(String t) {
-        if (t == null || t.isEmpty()) {
-            return false;
-        }
-        if (extractTel(t) != null) {
-            return true;
-        }
-        if (t.matches(".*\\b(call|dial|phone|ring)\\b.*")) {
-            return true;
-        }
-        if (t.contains("कॉल") || t.contains("फोन")) {
-            return true;
-        }
-        return t.matches("(?is).*(को|ko)\\s+.*(कॉल|फोन|call|dial).*");
     }
 
     /**
