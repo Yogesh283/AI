@@ -97,11 +97,27 @@ public class WakeWordForegroundService extends Service {
     private static final int CHAT_CONNECT_TIMEOUT_MS = 3000;
     private static final int CHAT_READ_TIMEOUT_MS = 9000;
     private static final int CHAT_FALLBACK_MIN_CHARS = 3;
+    /** Off-screen chat: after wake, keep conversation open briefly without repeating wake word. */
+    private static final long OFFSCREEN_CHAT_SILENCE_TIMEOUT_MS = 30_000L;
     /** Same-origin Next proxy as the WebView — not bare {@code /api/chat} on the public host. */
     private static final String CHAT_API_FALLBACK = "https://myneoxai.com/neo-api/api/chat";
     private static volatile boolean runningNow = false;
     private static volatile boolean runningScreenOffListen = false;
     private static volatile boolean runningVoiceChatMode = false;
+    private volatile boolean offScreenVoiceChatActive = false;
+    private volatile long offScreenVoiceChatLastUserSpeechMs = 0L;
+    private final Runnable offScreenVoiceChatTimeoutRunnable =
+            () -> {
+                if (!offScreenVoiceChatActive) return;
+                long idleMs = System.currentTimeMillis() - offScreenVoiceChatLastUserSpeechMs;
+                if (idleMs < OFFSCREEN_CHAT_SILENCE_TIMEOUT_MS) {
+                    long remaining = OFFSCREEN_CHAT_SILENCE_TIMEOUT_MS - idleMs;
+                    scheduleOffScreenVoiceChatTimeout(Math.max(350L, remaining));
+                    return;
+                }
+                offScreenVoiceChatActive = false;
+                Log.i(TAG, "offscreen voice chat auto-quiet after 30s silence; wake required again");
+            };
 
     static boolean isRunningNow() {
         return runningNow;
@@ -265,6 +281,7 @@ public class WakeWordForegroundService extends Service {
 
     private void stopListeningSilently() {
         releaseMicAudioFocus();
+        deactivateOffScreenVoiceChatSession();
     }
 
     private void resumePassiveMic() {
@@ -440,9 +457,29 @@ public class WakeWordForegroundService extends Service {
         boolean porcupineHeard = porcupineWakeForNextTranscript.getAndSet(false);
         boolean screenOnNow = isScreenInteractive();
         String command = extractWakeCommand(said);
+        final boolean offScreenVoicePath = !screenOnNow && voiceChatMode;
 
         try {
             if (command == null) {
+                if (offScreenVoicePath) {
+                    if (porcupineHeard) {
+                        activateOffScreenVoiceChatSession();
+                        command = said;
+                    } else if (offScreenVoiceChatActive) {
+                        touchOffScreenVoiceChatSession();
+                        command = said;
+                    } else {
+                        Log.i(
+                                TAG,
+                                "voiceCommand ignored: no wake phrase match (Porcupine="
+                                        + wakeKeywordAvailable
+                                        + ") len="
+                                        + said.length()
+                                        + " text="
+                                        + (said.length() > 160 ? said.substring(0, 160) + "..." : said));
+                        return RELISTEN_MS_QUICK;
+                    }
+                } else
                 if (screenOnNow) {
                     /*
                      * Stay silent on random speech: require wake phrase in text, Porcupine keyword, or a
@@ -474,6 +511,9 @@ public class WakeWordForegroundService extends Service {
              */
             final boolean allowAssistantVoice = command != null || porcupineHeard;
             NeoCommandRouter.setAssistantTtsAllowed(allowAssistantVoice);
+            if (offScreenVoicePath && (command != null || porcupineHeard)) {
+                touchOffScreenVoiceChatSession();
+            }
 
             if (command.isEmpty()) {
                 /*
@@ -602,6 +642,32 @@ public class WakeWordForegroundService extends Service {
         }
         /* On-screen chat only while user is inside Neo app voice chat page (page toggles voiceChatMode). */
         return voiceChatMode && isNeoAppForeground();
+    }
+
+    private void activateOffScreenVoiceChatSession() {
+        offScreenVoiceChatActive = true;
+        offScreenVoiceChatLastUserSpeechMs = System.currentTimeMillis();
+        scheduleOffScreenVoiceChatTimeout(OFFSCREEN_CHAT_SILENCE_TIMEOUT_MS);
+    }
+
+    private void touchOffScreenVoiceChatSession() {
+        if (!offScreenVoiceChatActive) {
+            activateOffScreenVoiceChatSession();
+            return;
+        }
+        offScreenVoiceChatLastUserSpeechMs = System.currentTimeMillis();
+        scheduleOffScreenVoiceChatTimeout(OFFSCREEN_CHAT_SILENCE_TIMEOUT_MS);
+    }
+
+    private void deactivateOffScreenVoiceChatSession() {
+        offScreenVoiceChatActive = false;
+        offScreenVoiceChatLastUserSpeechMs = 0L;
+        mainHandler.removeCallbacks(offScreenVoiceChatTimeoutRunnable);
+    }
+
+    private void scheduleOffScreenVoiceChatTimeout(long delayMs) {
+        mainHandler.removeCallbacks(offScreenVoiceChatTimeoutRunnable);
+        mainHandler.postDelayed(offScreenVoiceChatTimeoutRunnable, delayMs);
     }
 
     private boolean isLikelyOffScreenCallCommand(String command) {

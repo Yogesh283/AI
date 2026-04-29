@@ -24,7 +24,7 @@ final class NeoVoicePipeline implements Runnable {
 
     /** ~500 ms pre-roll at 16 kHz (adjust if sample rate differs). */
     private static final int PREROLL_SAMPLES = 8000;
-    private static final int MAX_CAPTURE_SAMPLES = 16000 * 22;
+    private static final int MAX_CAPTURE_SAMPLES = 16000 * 12;
     private static final long MIN_CAPTURE_SAMPLES = 3600;
     private static final long MIN_SPEECH_MS_FOR_TRANSCRIBE = 110;
     private static final long MIN_SPEECH_MS_FOR_TRANSCRIBE_FALLBACK = 90;
@@ -33,9 +33,11 @@ final class NeoVoicePipeline implements Runnable {
     private static final long SILENCE_END_MS_FALLBACK = 420;
     private static final long WAKE_DEBOUNCE_MS = 550L;
     /** Fallback (no Porcupine): avoid re-capturing the same phrase/noise burst twice. */
-    private static final long FALLBACK_CAPTURE_DEBOUNCE_MS = 900L;
+    private static final long FALLBACK_CAPTURE_DEBOUNCE_MS = 2200L;
     /** Prevent piling up multiple parallel /voice/transcribe requests on flaky networks. */
     private static final long TRANSCRIBE_BACKOFF_MS = 900L;
+    /** Fallback mode (no Porcupine) can spam long clips on noisy/off-screen input; back off harder after empty/timeout. */
+    private static final long TRANSCRIBE_BACKOFF_MS_FALLBACK = 4200L;
     /**
      * Mean abs PCM per sample fallback thresholds (when Porcupine is unavailable).
      * Tuned for softer speech pickup while single-flight + backoff guards prevent request storms.
@@ -317,6 +319,10 @@ final class NeoVoicePipeline implements Runnable {
     }
 
     private void beginCaptureAtRingEnd() {
+        long now = System.currentTimeMillis();
+        if (transcribeInFlight.get() || now < transcribeBackoffUntilMs) {
+            return;
+        }
         long end = ring.getTotalWritten();
         long start = Math.max(0L, end - PREROLL_SAMPLES);
         captureBuf = new short[MAX_CAPTURE_SAMPLES];
@@ -442,7 +448,8 @@ final class NeoVoicePipeline implements Runnable {
         }
         final String out = text == null ? "" : text.trim();
         if (out.isEmpty()) {
-            transcribeBackoffUntilMs = System.currentTimeMillis() + TRANSCRIBE_BACKOFF_MS;
+            long coolDown = wakeWordEnabled ? TRANSCRIBE_BACKOFF_MS : TRANSCRIBE_BACKOFF_MS_FALLBACK;
+            transcribeBackoffUntilMs = System.currentTimeMillis() + coolDown;
             mainHandler.post(() -> host.requestRelistenMs(320));
             return;
         }
