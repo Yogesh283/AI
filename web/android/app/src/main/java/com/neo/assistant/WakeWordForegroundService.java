@@ -103,7 +103,7 @@ public class WakeWordForegroundService extends Service {
                     + "कोई अनावश्यक देरी, लंबा प्रीफ़ेस, या filler न दें। "
                     + "पहली उपयोगी पंक्ति तुरंत दें, फिर आवश्यक हो तो विस्तार करें।";
     /** Off-screen chat: after wake, keep conversation open briefly without repeating wake word. */
-    private static final long OFFSCREEN_CHAT_SILENCE_TIMEOUT_MS = 30_000L;
+    private static final long OFFSCREEN_CHAT_SILENCE_TIMEOUT_MS = 10_000L;
     /** Same-origin Next proxy as the WebView — not bare {@code /api/chat} on the public host. */
     private static final String CHAT_API_FALLBACK = "https://myneoxai.com/neo-api/api/chat";
     private static volatile boolean runningNow = false;
@@ -804,8 +804,10 @@ public class WakeWordForegroundService extends Service {
     private static final Pattern WAKE_IN_UTTERANCE =
         Pattern.compile(
             "(?:^|[\\s,.!?])(?:"
+                + "neo|n\\s*eo|"
                 + "hello\\s*neo|hello\\s*new|hello\\s*niyo|hello\\s*nio|"
                 + "hey\\s*neo|hi\\s*neo|halo\\s*neo|helo\\s*neo|hallo\\s*neo|yellow\\s*neo|"
+                + "नियो|नीयो|नेयो|निओ|नियो|नियो\\s*जी|नियो\\s*sir|"
                 + "हेलो\\s*नियो|हैलो\\s*नियो|अलो\\s*नियो|अललो\\s*नियो|हललो\\s*नियो|हलो\\s*नियो|"
                 + "हेलो\\s*नियों|हैलो\\s*नियों|हेलो\\s*नीयो|हैलो\\s*नीयो|"
                 + "हेलो\\s*नेयो|हैलो\\s*नेयो|हेलो\\s*ने\\s*यो|हैलो\\s*ने\\s*यो|"
