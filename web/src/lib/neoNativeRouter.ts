@@ -16,6 +16,8 @@ export type NeoNativeRouterPlugin = {
   getWakeVoiceChatMode(): Promise<{ enabled: boolean }>;
   /** APK: WebRTC Live session — native layer avoids pausing WebView when screen locks. */
   setVoiceLiveWebRtcActive(options: { active: boolean }): Promise<void>;
+  /** APK native voice-command / wake TTS gender preference. */
+  setAssistantTtsGender(options: { gender: "male" | "female" }): Promise<void>;
 };
 
 /** Android: runs `NeoCommandRouter.execute` (real app intents, not WebView https). */
@@ -42,5 +44,6 @@ export const NeoNativeRouter = registerPlugin<NeoNativeRouterPlugin>("NeoNativeR
     setWakeVoiceChatMode: async () => {},
     getWakeVoiceChatMode: async () => ({ enabled: false }),
     setVoiceLiveWebRtcActive: async () => {},
+    setAssistantTtsGender: async () => {},
   },
 });

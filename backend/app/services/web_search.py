@@ -18,6 +18,9 @@ from app.services.newsapi_search import fetch_newsapi_everything_snippets
 logger = logging.getLogger(__name__)
 _cse_403_warned = False
 
+# Returned when every web provider is empty — callers merging with Bing may treat as no Google hits.
+FETCH_GOOGLE_NO_HITS = "(No live web results for this query.)"
+
 # Google Programmable Search allows long `q`; keep below API limits but avoid truncating bilingual queries.
 MAX_GOOGLE_QUERY_CHARS = 450
 
@@ -597,7 +600,7 @@ async def fetch_google_snippets(query: str, *, limit: int = 8) -> str:
                 + bundle
             )
         return bundle
-    return "(No live web results for this query.)"
+    return FETCH_GOOGLE_NO_HITS
 
 
 def should_auto_fetch_web(user_text: str) -> bool:

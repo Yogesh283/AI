@@ -13,6 +13,8 @@ public final class NeoPrefs {
     public static final String KEY_WAKE_PORCUPINE_STREAM = "wake_porcupine_stream";
     /** Separate wake voice chat mode (OpenAI reply over TTS) independent of command router mode. */
     public static final String KEY_WAKE_VOICE_CHAT_MODE = "wake_voice_chat_mode";
+    /** Native command/off-screen TTS gender ("male"|"female") synced from profile voice settings. */
+    public static final String KEY_ASSISTANT_TTS_GENDER = "assistant_tts_gender";
     /**
      * True while OpenAI Realtime WebRTC is active in the WebView — used to avoid {@link WebView#onPause()}
      * pausing mic/data channels when the screen locks (otherwise lock-screen voice chat appears “dead”).
@@ -92,6 +94,26 @@ public final class NeoPrefs {
             .getSharedPreferences(FILE, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KEY_WAKE_VOICE_CHAT_MODE, on)
+            .apply();
+    }
+
+    public static String getAssistantTtsGender(Context c) {
+        String g =
+            c.getApplicationContext()
+                .getSharedPreferences(FILE, Context.MODE_PRIVATE)
+                .getString(KEY_ASSISTANT_TTS_GENDER, "female");
+        if ("male".equalsIgnoreCase(g)) {
+            return "male";
+        }
+        return "female";
+    }
+
+    public static void setAssistantTtsGender(Context c, String gender) {
+        String g = "male".equalsIgnoreCase(gender) ? "male" : "female";
+        c.getApplicationContext()
+            .getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_ASSISTANT_TTS_GENDER, g)
             .apply();
     }
 

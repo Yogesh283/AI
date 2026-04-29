@@ -35,6 +35,8 @@ import org.json.JSONObject;
 public final class NeoCommandRouter {
     /** Assistant replies are always Hindi; TTS uses this locale (voices may still fall back if missing). */
     private static final Locale ASSISTANT_TTS_LOCALE = new Locale("hi", "IN");
+    private static final String TTS_GENDER_MALE = "male";
+    private static final String TTS_GENDER_FEMALE = "female";
     private static final long IN_APP_FOLLOWUP_WINDOW_MS = 20_000L;
 
     private static TextToSpeech tts;
@@ -53,9 +55,18 @@ public final class NeoCommandRouter {
      * Tap routing from WebView leaves this {@code true} (default).
      */
     private static volatile boolean assistantTtsAllowed = true;
+    /** Synced from profile voice settings; default woman voice until changed. */
+    private static volatile String assistantTtsGender = TTS_GENDER_FEMALE;
 
     public static void setAssistantTtsAllowed(boolean allowed) {
         assistantTtsAllowed = allowed;
+    }
+
+    public static void setAssistantTtsGender(String gender) {
+        assistantTtsGender = TTS_GENDER_MALE.equalsIgnoreCase(gender) ? TTS_GENDER_MALE : TTS_GENDER_FEMALE;
+        if (ttsReady) {
+            applyNeoAssistantVoiceProfile();
+        }
     }
 
     /**
@@ -779,7 +790,7 @@ public final class NeoCommandRouter {
             tts.setSpeechRate(1.08f);
             tts.setPitch(1.0f);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                Voice v = pickBestAssistantVoice(tts, ASSISTANT_TTS_LOCALE);
+                Voice v = pickBestAssistantVoice(tts, ASSISTANT_TTS_LOCALE, assistantTtsGender);
                 if (v != null && tts.setVoice(v) == TextToSpeech.SUCCESS) {
                     return;
                 }
@@ -789,8 +800,8 @@ public final class NeoCommandRouter {
         }
     }
 
-    /** Prefer highest-quality Hindi voice; no English fallback (assistant speaks Hindi only). */
-    private static Voice pickBestAssistantVoice(TextToSpeech engine, Locale preferred) {
+    /** Prefer highest-quality Hindi voice and nudge toward requested gender when names/features expose it. */
+    private static Voice pickBestAssistantVoice(TextToSpeech engine, Locale preferred, String preferredGender) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return null;
         try {
             Set<Voice> voices = engine.getVoices();
@@ -809,6 +820,11 @@ public final class NeoCommandRouter {
             Collections.sort(
                 candidates,
                 (a, b) -> {
+                    int ga = genderMatchScore(a, preferredGender);
+                    int gb = genderMatchScore(b, preferredGender);
+                    if (ga != gb) {
+                        return Integer.compare(gb, ga);
+                    }
                     int qa = a.getQuality();
                     int qb = b.getQuality();
                     if (qa != qb) {
@@ -826,6 +842,43 @@ public final class NeoCommandRouter {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private static int genderMatchScore(Voice v, String preferredGender) {
+        if (v == null) return 0;
+        String p = preferredGender == null ? "" : preferredGender.toLowerCase(Locale.ROOT);
+        if (!TTS_GENDER_MALE.equals(p) && !TTS_GENDER_FEMALE.equals(p)) return 0;
+        String name = v.getName() == null ? "" : v.getName().toLowerCase(Locale.ROOT);
+        Set<String> feats = v.getFeatures();
+        String feat =
+            feats == null || feats.isEmpty()
+                ? ""
+                : feats.toString().toLowerCase(Locale.ROOT);
+        String merged = name + " " + feat;
+        boolean femaleHint =
+            merged.contains("female")
+                || merged.contains("woman")
+                || merged.contains("zira")
+                || merged.contains("samantha")
+                || merged.contains("shruti")
+                || merged.contains("veena");
+        boolean maleHint =
+            merged.contains("male")
+                || merged.contains("man ")
+                || merged.contains("david")
+                || merged.contains("rishi")
+                || merged.contains("arjun")
+                || merged.contains("hemant");
+        if (TTS_GENDER_FEMALE.equals(p)) {
+            if (femaleHint && !maleHint) return 2;
+            if (femaleHint) return 1;
+            if (maleHint) return -1;
+            return 0;
+        }
+        if (maleHint && !femaleHint) return 2;
+        if (maleHint) return 1;
+        if (femaleHint) return -1;
+        return 0;
     }
 
     static void shutdown() {
@@ -2728,6 +2781,10 @@ public final class NeoCommandRouter {
 
     private static void speak(Context context, String text) {
         if (text == null || text.trim().isEmpty()) return;
+        try {
+            assistantTtsGender = NeoPrefs.getAssistantTtsGender(context);
+        } catch (Exception ignored) {
+        }
         if (!assistantTtsAllowed) {
             return;
         }

@@ -62,8 +62,15 @@ const components: Components = {
   code: ({ className, children, ...rest }) => {
     const isBlock = Boolean(className?.includes("language-"));
     if (isBlock) {
+      /*
+       * Fenced blocks render as <pre><code class="language-…">. Parent `pre` supplies bg; keep text light on dark.
+       * Do not rely on bg here — the old [&_pre_code]:bg-transparent on the wrapper made text-slate-100 on slate-50 (invisible).
+       */
       return (
-        <code className={`block rounded-lg bg-slate-900 p-3 text-[13px] text-slate-100 ${className ?? ""}`} {...rest}>
+        <code
+          className={`block w-full whitespace-pre-wrap break-words bg-transparent p-0 font-mono text-[13px] leading-relaxed text-slate-100 ${className ?? ""}`}
+          {...rest}
+        >
           {children}
         </code>
       );
@@ -78,7 +85,10 @@ const components: Components = {
     );
   },
   pre: ({ children, ...rest }) => (
-    <pre className="mb-3 max-w-full overflow-x-auto rounded-xl border border-slate-200 bg-slate-50 p-0 last:mb-0" {...rest}>
+    <pre
+      className="mb-3 max-w-full overflow-x-auto rounded-xl border border-slate-600/90 bg-slate-900 p-3 text-slate-100 shadow-inner last:mb-0"
+      {...rest}
+    >
       {children}
     </pre>
   ),
@@ -116,7 +126,7 @@ type Props = {
 /** GFM markdown for assistant replies — tuned for light chat bubbles. */
 export function ChatMarkdown({ text, className = "" }: Props) {
   return (
-    <div className={`break-words text-slate-800 [&_pre_code]:bg-transparent [&_pre_code]:p-0 ${className}`}>
+    <div className={`break-words text-slate-800 ${className}`}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
         {text}
       </ReactMarkdown>

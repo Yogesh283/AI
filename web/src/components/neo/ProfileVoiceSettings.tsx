@@ -22,6 +22,7 @@ import {
   normalizeVoicePersonaId,
   writeStoredVoicePersonaId,
 } from "@/lib/voicePersonas";
+import { isNativeCapacitor } from "@/lib/nativeAppLinks";
 
 type Props = {
   user: AuthUser;
@@ -46,11 +47,23 @@ export function ProfileVoiceSettings({ user, onUserUpdated, onMessage }: Props) 
   const [voiceCmdAudio, setVoiceCmdAudio] = useState<NeoVoiceCommandAudioFeedback>("silent");
   const [savingPersona, setSavingPersona] = useState(false);
 
+  const syncNativeAssistantTtsGender = useCallback(async (g: TtsVoiceGender) => {
+    if (!isNativeCapacitor()) return;
+    try {
+      const { NeoNativeRouter } = await import("@/lib/neoNativeRouter");
+      await NeoNativeRouter.setAssistantTtsGender({ gender: g });
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   useEffect(() => {
-    setHelloNeoGender(readHelloNeoTtsGender());
+    const g = readHelloNeoTtsGender();
+    setHelloNeoGender(g);
     setHelloNeoSpeed(readHelloNeoTtsSpeedPreset());
     setVoiceCmdAudio(readNeoVoiceCommandAudioFeedback());
-  }, []);
+    void syncNativeAssistantTtsGender(g);
+  }, [syncNativeAssistantTtsGender]);
 
   const applyPersona = useCallback(
     async (id: "arjun" | "sara") => {
@@ -60,6 +73,7 @@ export function ProfileVoiceSettings({ user, onUserUpdated, onMessage }: Props) 
       const p = getVoicePersona(pid);
       writeStoredVoicePersonaId(pid);
       writeTtsGender(p.ttsGender);
+      void syncNativeAssistantTtsGender(p.ttsGender);
       setPersona(pid);
       const token = getStoredToken();
       if (token) {
@@ -79,7 +93,7 @@ export function ProfileVoiceSettings({ user, onUserUpdated, onMessage }: Props) 
       }
       setSavingPersona(false);
     },
-    [onMessage, onUserUpdated],
+    [onMessage, onUserUpdated, syncNativeAssistantTtsGender],
   );
 
   const applySpeed = useCallback(
@@ -94,10 +108,11 @@ export function ProfileVoiceSettings({ user, onUserUpdated, onMessage }: Props) 
   const applyHelloNeoGender = useCallback(
     (g: TtsVoiceGender) => {
       writeHelloNeoTtsGender(g);
+      void syncNativeAssistantTtsGender(g);
       setHelloNeoGender(g);
       onMessage("Hello Neo voice saved (separate from voice chat).", null);
     },
-    [onMessage],
+    [onMessage, syncNativeAssistantTtsGender],
   );
 
   const applyHelloNeoSpeed = useCallback(

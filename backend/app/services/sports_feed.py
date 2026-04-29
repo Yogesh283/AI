@@ -7,6 +7,7 @@ Live facts: MySQL `new_data` (cron snapshots) + `live_data` / Bing →
 
 from __future__ import annotations
 
+import asyncio
 import re
 from datetime import datetime, timezone
 
@@ -88,12 +89,13 @@ def google_fetch_query(user_text: str) -> str:
 
 async def build_live_web_context_block(last_user: str, *, now_ist: datetime) -> str:
     """
-    Live-data pipeline: MySQL `new_data` (cron snapshots) when relevant → `live_data` / Bing →
-    Brave / Google CSE / News RSS. Same block feeds text chat and voice `/live-context`. `now_ist` stamps IST.
+    Live-data pipeline: MySQL `new_data` (cron) + **Bing cache** and **Google stack** (CSE / SerpAPI / Brave / RSS)
+    are combined. Previously Bing alone skipped Google entirely, which often produced stale or weak snippets —
+    chat and voice now merge both when available. `now_ist` stamps IST.
     """
     from app.db_mysql import new_data_bundle_for_live_context, pool_ready
     from app.services.live_data_cache import try_live_db_then_bing_snippets
-    from app.services.web_search import fetch_google_snippets
+    from app.services.web_search import FETCH_GOOGLE_NO_HITS, fetch_google_snippets
 
     primary = google_fetch_query(last_user)
     lim = 10 if is_sports_live_query(last_user) else 8
@@ -105,17 +107,34 @@ async def build_live_web_context_block(last_user: str, *, now_ist: datetime) -> 
         except Exception:
             db_snap = ""
 
-    g = await try_live_db_then_bing_snippets(primary, limit=lim)
-    if not g.strip():
-        g = await fetch_google_snippets(primary, limit=lim)
-    if not g.strip() and is_sports_live_query(last_user):
-        y = datetime.now(timezone.utc).year
-        m = re.search(r"\b(20\d{2})\b", (last_user or "").strip())
-        if m:
-            y = int(m.group(1))
-        g = await fetch_google_snippets(
-            f"IPL {y} points table standings teams ranked latest news", limit=lim
-        )
+    async def bing_part() -> str:
+        return await try_live_db_then_bing_snippets(primary, limit=lim)
+
+    async def google_part() -> str:
+        g0 = await fetch_google_snippets(primary, limit=lim)
+        if (not (g0 or "").strip() or (g0 or "").strip() == FETCH_GOOGLE_NO_HITS) and is_sports_live_query(
+            last_user
+        ):
+            y = datetime.now(timezone.utc).year
+            m = re.search(r"\b(20\d{2})\b", (last_user or "").strip())
+            if m:
+                y = int(m.group(1))
+            g0 = await fetch_google_snippets(
+                f"IPL {y} points table standings teams ranked latest news", limit=lim
+            )
+        return g0 or ""
+
+    g_bing, g_google = await asyncio.gather(bing_part(), google_part())
+    gg = (g_google or "").strip()
+    if gg == FETCH_GOOGLE_NO_HITS:
+        gg = ""
+
+    merged_fetch: list[str] = []
+    if (g_bing or "").strip():
+        merged_fetch.append((g_bing or "").strip())
+    if gg:
+        merged_fetch.append(gg)
+    g = "\n\n".join(merged_fetch) if merged_fetch else ""
 
     parts: list[str] = []
     if db_snap.strip():

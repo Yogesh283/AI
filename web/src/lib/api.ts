@@ -70,6 +70,12 @@ export async function postChat(
   return r.json() as Promise<{ reply: string; memory_snippets?: string[] }>;
 }
 
+/**
+ * Google live snippet block for voice Realtime injection — same backend path as chat (`build_live_web_context_block`).
+ * Keep timeout aligned with chat streaming: the server runs refine + DB + CSE/RSS; sub‑3s client aborts were dropping snippets.
+ */
+export const LIVE_WEB_CONTEXT_DEFAULT_TIMEOUT_MS = 12_000;
+
 /** Google live snippet block for voice Realtime injection (same backend pipeline as chat). */
 export async function postLiveWebContext(
   query: string,
@@ -79,7 +85,7 @@ export async function postLiveWebContext(
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token) headers.Authorization = `Bearer ${token}`;
   const url = `${chatUrl()}/live-context`;
-  const timeoutMs = Math.max(500, opts?.timeoutMs ?? 2800);
+  const timeoutMs = Math.max(500, opts?.timeoutMs ?? LIVE_WEB_CONTEXT_DEFAULT_TIMEOUT_MS);
   const ctrl = new AbortController();
   const onAbort = () => ctrl.abort();
   if (opts?.signal) {

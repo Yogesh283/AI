@@ -94,6 +94,15 @@ public class NeoNativeRouterPlugin extends Plugin {
         call.resolve();
     }
 
+    /** Profile voice settings → native wake/command TTS gender ("male" | "female"). */
+    @PluginMethod
+    public void setAssistantTtsGender(PluginCall call) {
+        String g = call.getString("gender", "female");
+        NeoPrefs.setAssistantTtsGender(getContext(), g);
+        NeoCommandRouter.setAssistantTtsGender(g);
+        call.resolve();
+    }
+
     @PluginMethod
     public void startWakeListener(PluginCall call) {
         Boolean so = call.getBoolean("screenOffListen", false);

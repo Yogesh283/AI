@@ -4,7 +4,11 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { MainTopNav } from "@/components/neo/MainTopNav";
 import { fetchMe, getStoredToken, getStoredUser, patchVoicePersona, saveSession } from "@/lib/auth";
 /* Voice Live thread is separate from /dashboard text chat — no shared neo-chat-msgs store. */
-import { postLiveWebContext, postVoiceRealtimeToken } from "@/lib/api";
+import {
+  LIVE_WEB_CONTEXT_DEFAULT_TIMEOUT_MS,
+  postLiveWebContext,
+  postVoiceRealtimeToken,
+} from "@/lib/api";
 import {
   DEFAULT_VOICE_SPEECH_LANG,
   normalizeVoiceSpeechLang,
@@ -39,7 +43,7 @@ import {
   isOpenAiRealtimeVoiceSupported,
   startOpenAiRealtimeVoiceSession,
 } from "@/lib/openaiRealtimeVoice";
-import { extractHelloNeoCommand } from "@/lib/neoVoiceCommands";
+import { isStrictHelloNeoWakePhrase } from "@/lib/neoVoiceCommands";
 
 const VOICE_HISTORY_PREFIX = "neo-voice-history-";
 
@@ -523,10 +527,12 @@ export default function VoicePage() {
         onUserTranscript: (t) => {
           const line = t.trim();
           if (!line) return;
-          /* APK lock screen / background: “Hello Neo” (or wake phrase) un-mutes assistant; must run before background guard. */
+          /*
+           * APK lock screen / background: only a strict “Hello Neo” / “Hi Neo” / नमस्ते नियो style phrase arms Live —
+           * not bare “Neo” in other speech (see isStrictHelloNeoWakePhrase). Must run before background guard.
+           */
           if (isNativeCapacitor() && !liveAssistantAudioUnlockedRef.current) {
-            const { hadWake } = extractHelloNeoCommand(line);
-            if (hadWake) {
+            if (isStrictHelloNeoWakePhrase(line)) {
               liveAssistantAudioUnlockedRef.current = true;
               try {
                 live.setAssistantAudioMuted(false);
@@ -599,13 +605,15 @@ export default function VoicePage() {
             let block = "";
             let liveFetchFailed = false;
             try {
-              const j = await postLiveWebContext(line, { timeoutMs: 2200 });
+              const j = await postLiveWebContext(line, {
+                timeoutMs: LIVE_WEB_CONTEXT_DEFAULT_TIMEOUT_MS,
+              });
               block = (j.block || "").trim();
             } catch {
               liveFetchFailed = true;
               /* timeout/offline/API error — continue fast; backend falls back to cached DB snapshots when possible */
             }
-            /* `postLiveWebContext` is already awaited — do not pad multi-second waits (felt broken / “late”). */
+            /* Same `/live-context` pipeline as text chat; timeout matches chat stream (refine + Google can take several seconds). */
             if (!sessionOnRef.current || myTurn !== voiceLiveWebTurnRef.current) {
               setLiveWebFetching(false);
               return;

@@ -297,6 +297,26 @@ export function extractHelloNeoCommand(raw: string): { hadWake: boolean; rest: s
   return { hadWake: true, rest: after.trim() };
 }
 
+/**
+ * APK lock-screen / off-screen Live: **only** explicit greeting + Neo unlocks assistant audio — not bare “Neo” in a sentence.
+ * (General command parsing still uses {@link extractHelloNeoCommand}, which also matches standalone “neo”.)
+ */
+export function isStrictHelloNeoWakePhrase(raw: string): boolean {
+  const t = raw
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\u2019/g, "'")
+    .replace(/[\u201c\u201d]/g, '"');
+  if (!t) return false;
+  const strictOnly = [
+    /\b(hello|hi|hey|hallo|helo|hullo|hola)[,!.']*\s+neo\b/i,
+    /\b(hello|hi|hey|hallo|helo|hullo|hola)[,!.']*\s+new\b/i,
+    /\bnamaste[,!.']*\s+neo\b/i,
+    /(नमस्ते|हेलो|हाय|हैलो|हॅलो)[,!.']*\s*नियो/u,
+  ];
+  return strictOnly.some((re) => re.test(t));
+}
+
 export function stripHelloNeoPrefix(raw: string): { hadWake: boolean; rest: string } {
   return extractHelloNeoCommand(raw);
 }
