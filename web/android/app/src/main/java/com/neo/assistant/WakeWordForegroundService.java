@@ -94,8 +94,8 @@ public class WakeWordForegroundService extends Service {
     private volatile long assistantTtsCooldownUntilMs = 0L;
     /** Set when Porcupine fires for the clip that produced the next Whisper transcript (speech-first path leaves false). */
     private final AtomicBoolean porcupineWakeForNextTranscript = new AtomicBoolean(false);
-    private static final int CHAT_CONNECT_TIMEOUT_MS = 1400;
-    private static final int CHAT_READ_TIMEOUT_MS = 4200;
+    private static final int CHAT_CONNECT_TIMEOUT_MS = 1800;
+    private static final int CHAT_READ_TIMEOUT_MS = 8000;
     private static final int CHAT_FALLBACK_MIN_CHARS = 3;
     private static final String VOICE_CHAT_REALTIME_SYSTEM_PROMPT =
             "AI निर्देश: वॉयस चैट (on-screen और off-screen) में इनपुट/आउटपुट अत्यंत त्वरित रखें। "
@@ -706,7 +706,6 @@ public class WakeWordForegroundService extends Service {
             return;
         }
         chatRequestInFlight = true;
-        NeoCommandRouter.speakVoiceChatReply(this, NeoCommandRouter.getQuickProcessingLine(this));
         new Thread(
                 () -> {
                     String reply = "";
