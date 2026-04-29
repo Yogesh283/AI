@@ -306,6 +306,10 @@ public class WakeWordForegroundService extends Service {
             return;
         }
         if (chatRequestInFlight) {
+            if (!isScreenInteractive() && offScreenVoiceChatActive) {
+                touchOffScreenVoiceChatSession();
+            }
+            schedulePassiveRelisten(RELISTEN_MS_QUICK);
             return;
         }
         if (isMediaPlaybackActive()) {
@@ -462,7 +466,11 @@ public class WakeWordForegroundService extends Service {
         boolean porcupineHeard = porcupineWakeForNextTranscript.getAndSet(false);
         boolean screenOnNow = isScreenInteractive();
         String command = extractWakeCommand(said);
-        final boolean offScreenVoicePath = !screenOnNow && voiceChatMode;
+        /*
+         * Off-screen conversational follow-up should work once wake is active even if only
+         * screen-off listen mode is enabled from settings.
+         */
+        final boolean offScreenVoicePath = !screenOnNow && (voiceChatMode || listenScreenOff || offScreenVoiceChatActive);
 
         try {
             if (command == null) {
