@@ -95,7 +95,7 @@ public class WakeWordForegroundService extends Service {
     /** Set when Porcupine fires for the clip that produced the next Whisper transcript (speech-first path leaves false). */
     private final AtomicBoolean porcupineWakeForNextTranscript = new AtomicBoolean(false);
     private static final int CHAT_CONNECT_TIMEOUT_MS = 3000;
-    private static final int CHAT_READ_TIMEOUT_MS = 5200;
+    private static final int CHAT_READ_TIMEOUT_MS = 9000;
     private static final int CHAT_FALLBACK_MIN_CHARS = 3;
     /** Same-origin Next proxy as the WebView — not bare {@code /api/chat} on the public host. */
     private static final String CHAT_API_FALLBACK = "https://myneoxai.com/neo-api/api/chat";
@@ -730,9 +730,10 @@ public class WakeWordForegroundService extends Service {
             "(?:^|[\\s,.!?])(?:"
                 + "hello\\s*neo|hello\\s*new|hello\\s*niyo|hello\\s*nio|"
                 + "hey\\s*neo|hi\\s*neo|halo\\s*neo|helo\\s*neo|hallo\\s*neo|yellow\\s*neo|"
-                + "हेलो\\s*नियो|हैलो\\s*नियो|अललो\\s*नियो|हललो\\s*नियो|हलो\\s*नियो|"
+                + "हेलो\\s*नियो|हैलो\\s*नियो|अलो\\s*नियो|अललो\\s*नियो|हललो\\s*नियो|हलो\\s*नियो|"
                 + "हेलो\\s*नियों|हैलो\\s*नियों|हेलो\\s*नीयो|हैलो\\s*नीयो|"
-                + "हेलो\\s*नेयो|हैलो\\s*नेयो|हल्लों\\s*निग्यों|नमस्ते\\s*नियो"
+                + "हेलो\\s*नेयो|हैलो\\s*नेयो|हेलो\\s*ने\\s*यो|हैलो\\s*ने\\s*यो|"
+                + "ने\\s*यो|हल्लों\\s*निग्यों|नमस्ते\\s*नियो"
                 + ")(?=[\\s,.!?]|$)",
             Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
 
