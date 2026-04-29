@@ -184,7 +184,7 @@ export function DashboardChatPanel() {
     return () => window.removeEventListener("focus", onFocus);
   }, []);
 
-  /** Voice page appends user lines to the same persisted thread — pull them in without refresh. */
+  /** Same-tab thread updates from other components using {@link NEO_CHAT_MESSAGES_CHANGED_EVENT}. */
   useEffect(() => {
     const onVoiceSynced = (e: Event) => {
       const ce = e as CustomEvent<{ userId?: string }>;

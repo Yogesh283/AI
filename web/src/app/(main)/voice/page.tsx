@@ -3,13 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { MainTopNav } from "@/components/neo/MainTopNav";
 import { fetchMe, getStoredToken, getStoredUser, patchVoicePersona, saveSession } from "@/lib/auth";
-import {
-  appendUserMessageToChatStorage,
-  chatMessagesKey,
-  loadChatMessages,
-  NEO_CHAT_MESSAGES_CHANGED_EVENT,
-  saveChatMessages,
-} from "@/lib/chatStorage";
+/* Voice Live thread is separate from /dashboard text chat — no shared neo-chat-msgs store. */
 import { postLiveWebContext, postVoiceRealtimeToken } from "@/lib/api";
 import {
   DEFAULT_VOICE_SPEECH_LANG,
@@ -165,8 +159,10 @@ export default function VoicePage() {
   const liveAssistStreamOpenRef = useRef(false);
   /** True while OpenAI `input_audio_transcription.delta` is building the current user line. */
   const liveUserTranscriptOpenRef = useRef(false);
-  /** After first hydrate from `loadChatMessages` / voice backup — blocks saving `[]` over a good thread. */
+  /** After first hydrate from voice-only local backup — blocks saving `[]` over a good session. */
   const voiceHistoryHydratedRef = useRef(false);
+  /** Skip redundant localStorage writes when thread unchanged (streaming deltas). */
+  const lastPersistedJsonRef = useRef<string>("");
 
   useEffect(() => {
     historyRef.current = history;
@@ -208,16 +204,9 @@ export default function VoicePage() {
     };
   }, []);
 
-  /* Same persisted thread as /dashboard text chat — do not use voice-only storage as primary. */
+  /* Voice-only transcript backup (not typed chat). UI stays mic-first — no transcript bubbles on this page. */
   useEffect(() => {
     const uid = getStoredUser()?.id ?? "anon";
-    const fromChat = loadChatMessages(uid);
-    if (fromChat && fromChat.length > 0) {
-      historyRef.current = fromChat;
-      setHistory(fromChat);
-      voiceHistoryHydratedRef.current = true;
-      return;
-    }
     try {
       const raw = localStorage.getItem(`${VOICE_HISTORY_PREFIX}${uid}`);
       if (!raw) {
@@ -247,70 +236,24 @@ export default function VoicePage() {
     voiceHistoryHydratedRef.current = true;
   }, []);
 
-  /* When text chat updates the shared thread (same tab or other), refresh voice history if Live is off. */
-  useEffect(() => {
-    const uid = getStoredUser()?.id ?? "anon";
-    const onChatChanged = (e: Event) => {
-      const ce = e as CustomEvent<{ userId?: string }>;
-      if (ce.detail?.userId && ce.detail.userId !== uid) return;
-      if (sessionOnRef.current) return;
-      const loaded = loadChatMessages(uid);
-      if (loaded && loaded.length > 0) {
-        historyRef.current = loaded;
-        setHistory(loaded);
-      }
-    };
-    window.addEventListener(NEO_CHAT_MESSAGES_CHANGED_EVENT, onChatChanged as EventListener);
-    return () => window.removeEventListener(NEO_CHAT_MESSAGES_CHANGED_EVENT, onChatChanged as EventListener);
-  }, []);
-
-  /* Other browser tab updated typed chat in localStorage — pull thread when Live is off. */
-  useEffect(() => {
-    const uid = getStoredUser()?.id ?? "anon";
-    const key = chatMessagesKey(uid);
-    const onStorage = (e: StorageEvent) => {
-      if (e.key !== key || !e.newValue) return;
-      if (sessionOnRef.current) return;
-      try {
-        const parsed = JSON.parse(e.newValue) as unknown;
-        if (!Array.isArray(parsed) || parsed.length === 0) return;
-        const clean = parsed.filter(
-          (x): x is Turn =>
-            !!x &&
-            typeof x === "object" &&
-            (x as Turn).role !== undefined &&
-            ((x as Turn).role === "user" || (x as Turn).role === "assistant") &&
-            typeof (x as Turn).content === "string",
-        );
-        if (clean.length === 0) return;
-        historyRef.current = clean;
-        setHistory(clean);
-      } catch {
-        /* ignore */
-      }
-    };
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, []);
-
-  /* Mirror Live voice thread into shared chat storage (user + assistant) so Chat page matches Voice. */
+  /*
+   * Persist voice thread only under neo-voice-history-* (does not touch typed chat).
+   * Debounced ~85ms during streaming assistant tokens.
+   */
   useEffect(() => {
     if (!voiceHistoryHydratedRef.current) return;
     if (history.length === 0) return;
     const uid = getStoredUser()?.id ?? "anon";
     const t = window.setTimeout(() => {
       try {
-        saveChatMessages(uid, history);
-        localStorage.setItem(`${VOICE_HISTORY_PREFIX}${uid}`, JSON.stringify(history));
-        window.dispatchEvent(
-          new CustomEvent(NEO_CHAT_MESSAGES_CHANGED_EVENT, {
-            detail: { userId: uid },
-          } as CustomEventInit<{ userId: string }>),
-        );
+        const snap = JSON.stringify(historyRef.current);
+        if (snap === lastPersistedJsonRef.current) return;
+        lastPersistedJsonRef.current = snap;
+        localStorage.setItem(`${VOICE_HISTORY_PREFIX}${uid}`, snap);
       } catch {
         /* quota */
       }
-    }, 400);
+    }, 85);
     return () => window.clearTimeout(t);
   }, [history]);
 
@@ -425,6 +368,17 @@ export default function VoicePage() {
     setListening(false);
     liveAssistantAudioUnlockedRef.current = !isNativeCapacitor();
     resumeNativeWakeAfterVoiceLive();
+    try {
+      const uid = getStoredUser()?.id ?? "anon";
+      const h = historyRef.current;
+      if (h.length > 0) {
+        const snap = JSON.stringify(h);
+        lastPersistedJsonRef.current = snap;
+        localStorage.setItem(`${VOICE_HISTORY_PREFIX}${uid}`, snap);
+      }
+    } catch {
+      /* quota */
+    }
   }, [stopBargeInRecognition, stopRecognitionOnly, stopVoiceOutput, resumeNativeWakeAfterVoiceLive]);
 
   const startLiveVoice = useCallback(async (micPromise: Promise<MediaStream>) => {
@@ -581,7 +535,6 @@ export default function VoicePage() {
           }
           lastVoicePipelineUserLineRef.current = { line, at: nowMs };
           liveUserTranscriptOpenRef.current = false;
-          appendUserMessageToChatStorage(getStoredUser()?.id ?? "anon", line);
           setHistory((h) => {
             const next = [...h];
             const L = next.length - 1;
@@ -612,7 +565,7 @@ export default function VoicePage() {
             let block = "";
             let liveFetchFailed = false;
             try {
-              const j = await postLiveWebContext(line, { timeoutMs: 2500 });
+              const j = await postLiveWebContext(line, { timeoutMs: 2200 });
               block = (j.block || "").trim();
             } catch {
               liveFetchFailed = true;
@@ -667,15 +620,15 @@ export default function VoicePage() {
                     {
                       type: "input_text",
                       text:
-                        "Current-data strict mode: for this turn, speak only current facts that are explicitly present in the Live web data lines above. Do not guess any number/date/rank/price from memory. If a specific current value is missing in those lines, say it is not confirmed from retrieved live data.",
+                        "Use the Live web lines above for breaking news, prices, scores, dates, and rankings when present. You may still answer fully from general knowledge for explanations, how-to, definitions, and context—sound helpful and confident. Only disclaim or say you lack live confirmation when the user asks for an exact current number/date/rank/price and it does not appear in the snippets above.",
                     },
                   ],
                 },
               });
             } else {
               const hint = liveFetchFailed
-                ? "Live Google lookup failed (network or server). Answer briefly with clear uncertainty. Do not tell the user to visit other sites, official portals, or search engines for the same question—NeoXAI handles lookup here."
-                : "Live Google lookup returned no usable snippets for this question. Summarize what you can from training without inventing specifics. Do not tell the user to browse elsewhere or search the web themselves for this same info—keep the answer here.";
+                ? "Live Google lookup did not run this turn (network or timeout). Answer the user helpfully from your knowledge anyway—full sentences, same language as the user. For time-sensitive facts (today's rates, live scores), say you don't have a fresh lookup right now without inventing numbers. Do not send them to other websites for the same answer."
+                : "No fresh web snippets for this query—answer normally from your knowledge: be useful, complete, and in the user's language. For precise live figures you cannot verify, say so briefly and still explain what you can.";
               send({
                 type: "conversation.item.create",
                 item: {

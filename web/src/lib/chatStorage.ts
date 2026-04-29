@@ -8,7 +8,7 @@ export type ChatTurn = { role: "user" | "assistant"; content: string };
 
 const PREFIX = "neo-chat-msgs-v1-";
 
-/** Same-tab + voice page: Dashboard reloads persisted messages when this fires. */
+/** Same-tab: Dashboard reloads persisted messages when this fires. */
 export const NEO_CHAT_MESSAGES_CHANGED_EVENT = "neo-chat-messages-changed";
 
 function normTranscript(s: string): string {
@@ -31,13 +31,13 @@ function seedChatIfEmpty(userId: string): ChatTurn[] {
   return [
     {
       role: "assistant",
-      content: `I'm ${NEO_ASSISTANT_NAME} — your typed chat and voice chat stay in sync here.`,
+      content: `I'm ${NEO_ASSISTANT_NAME} — ask anything here; voice chat uses a separate thread in the app.`,
     },
   ];
 }
 
 /**
- * Append a user line from Live voice or Google STT fallback so /dashboard shows it without refresh.
+ * Append a user line (e.g. future typed shortcuts). Voice Live no longer writes here — it keeps its own store.
  */
 export function appendUserMessageToChatStorage(userId: string, text: string): void {
   if (typeof window === "undefined") return;
@@ -91,6 +91,23 @@ export function saveChatMessages(userId: string, messages: ChatTurn[]): void {
     localStorage.setItem(chatMessagesKey(userId), JSON.stringify(messages));
   } catch {
     /* quota / private mode */
+  }
+}
+
+/**
+ * Save full thread + dispatch {@link NEO_CHAT_MESSAGES_CHANGED_EVENT} so Dashboard/text chat updates in the same tab.
+ */
+export function persistChatThreadAndBroadcast(userId: string, messages: ChatTurn[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    saveChatMessages(userId, messages);
+    window.dispatchEvent(
+      new CustomEvent(NEO_CHAT_MESSAGES_CHANGED_EVENT, {
+        detail: { userId },
+      } as CustomEventInit<{ userId: string }>),
+    );
+  } catch {
+    /* quota */
   }
 }
 
