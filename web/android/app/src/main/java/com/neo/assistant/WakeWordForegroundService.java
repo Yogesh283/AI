@@ -114,6 +114,14 @@ public class WakeWordForegroundService extends Service {
     private final Runnable offScreenVoiceChatTimeoutRunnable =
             () -> {
                 if (!offScreenVoiceChatActive) return;
+                /*
+                 * Do not expire the session while the model is still answering or TTS is playing — otherwise
+                 * the user's next question arrives with no wake phrase and hits "voiceCommand ignored".
+                 */
+                if (chatRequestInFlight || NeoCommandRouter.isAISpeaking()) {
+                    scheduleOffScreenVoiceChatTimeout(1000L);
+                    return;
+                }
                 long idleMs = System.currentTimeMillis() - offScreenVoiceChatLastUserSpeechMs;
                 if (idleMs < OFFSCREEN_CHAT_SILENCE_TIMEOUT_MS) {
                     long remaining = OFFSCREEN_CHAT_SILENCE_TIMEOUT_MS - idleMs;
@@ -121,7 +129,11 @@ public class WakeWordForegroundService extends Service {
                     return;
                 }
                 offScreenVoiceChatActive = false;
-                Log.i(TAG, "offscreen voice chat auto-quiet after 30s silence; wake required again");
+                Log.i(
+                        TAG,
+                        "offscreen voice chat auto-quiet after "
+                                + (OFFSCREEN_CHAT_SILENCE_TIMEOUT_MS / 1000)
+                                + "s silence; wake required again");
             };
 
     static boolean isRunningNow() {
@@ -483,10 +495,18 @@ public class WakeWordForegroundService extends Service {
                     } else if (offScreenVoiceChatActive) {
                         touchOffScreenVoiceChatSession();
                         command = said;
+                    } else if (NeoPrefs.isVoiceFollowUpWindowActive(this)
+                            && (voiceChatMode || listenScreenOff)) {
+                        /*
+                         * Same turn as a recent wake / reply: prefs window can outlive the in-memory session
+                         * if the 10s idle timer fired during a long backend or TTS answer.
+                         */
+                        touchOffScreenVoiceChatSession();
+                        command = said;
                     } else {
                         Log.i(
                                 TAG,
-                                "voiceCommand ignored: no wake phrase match (Porcupine="
+                                "voiceCommand ignored: no wake phrase match (wakeKeywordAvailable="
                                         + wakeKeywordAvailable
                                         + ") len="
                                         + said.length()
@@ -510,7 +530,7 @@ public class WakeWordForegroundService extends Service {
                 } else {
                     Log.i(
                         TAG,
-                        "voiceCommand ignored: no wake phrase match (Porcupine="
+                        "voiceCommand ignored: no wake phrase match (wakeKeywordAvailable="
                             + wakeKeywordAvailable
                             + ") len="
                             + said.length()

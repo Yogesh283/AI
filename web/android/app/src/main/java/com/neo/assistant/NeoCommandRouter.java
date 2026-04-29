@@ -200,6 +200,8 @@ public final class NeoCommandRouter {
         if (text == null || text.trim().isEmpty()) {
             return;
         }
+        /* Lets off-screen follow-ups omit "Hello Neo" until this window expires (see WakeWordForegroundService). */
+        NeoPrefs.armVoiceFollowUpWindow(context, IN_APP_FOLLOWUP_WINDOW_MS);
         speak(context, text.trim());
     }
 
