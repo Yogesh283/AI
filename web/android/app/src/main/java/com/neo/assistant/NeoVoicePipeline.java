@@ -27,10 +27,10 @@ final class NeoVoicePipeline implements Runnable {
     private static final int MAX_CAPTURE_SAMPLES = 16000 * 12;
     private static final long MIN_CAPTURE_SAMPLES = 3600;
     private static final long MIN_SPEECH_MS_FOR_TRANSCRIBE = 110;
-    private static final long MIN_SPEECH_MS_FOR_TRANSCRIBE_FALLBACK = 90;
+    private static final long MIN_SPEECH_MS_FOR_TRANSCRIBE_FALLBACK = 220;
     private static final long SILENCE_END_MS = 260;
     /** Slightly longer pause tolerance so Hinglish / short gaps do not cut the clip early. */
-    private static final long SILENCE_END_MS_FALLBACK = 300;
+    private static final long SILENCE_END_MS_FALLBACK = 420;
     private static final long WAKE_DEBOUNCE_MS = 550L;
     /** Fallback (no Porcupine): avoid re-capturing the same phrase/noise burst twice. */
     private static final long FALLBACK_CAPTURE_DEBOUNCE_MS = 2200L;
@@ -42,7 +42,7 @@ final class NeoVoicePipeline implements Runnable {
      * Mean abs PCM per sample fallback thresholds (when Porcupine is unavailable).
      * Tuned for softer speech pickup while single-flight + backoff guards prevent request storms.
      */
-    private static final double FALLBACK_START_THRESHOLD = 200.0;
+    private static final double FALLBACK_START_THRESHOLD = 240.0;
     private static final double FALLBACK_SPEECH_THRESHOLD = 125.0;
 
     public interface Host {
