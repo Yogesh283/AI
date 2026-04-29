@@ -467,10 +467,12 @@ public class WakeWordForegroundService extends Service {
         boolean screenOnNow = isScreenInteractive();
         String command = extractWakeCommand(said);
         /*
-         * Off-screen conversational follow-up should work once wake is active even if only
-         * screen-off listen mode is enabled from settings.
+         * Treat both "screen off" and "app not foreground" as off-screen voice path.
+         * Users often speak while Neo is backgrounded but display is still on (another app open).
          */
-        final boolean offScreenVoicePath = !screenOnNow && (voiceChatMode || listenScreenOff || offScreenVoiceChatActive);
+        final boolean offScreenVoicePath =
+                (!screenOnNow || !isNeoAppForeground())
+                        && (voiceChatMode || listenScreenOff || offScreenVoiceChatActive);
 
         try {
             if (command == null) {
