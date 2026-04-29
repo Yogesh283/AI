@@ -956,7 +956,7 @@ export default function VoicePage() {
   const showRealtimeSupportWarning = hasMounted && !isOpenAiRealtimeVoiceSupported();
 
   return (
-    <div className="relative z-[1] flex min-h-0 flex-1 flex-col bg-[#F5F7FA] md:min-h-0">
+    <div className="relative z-[1] flex h-full min-h-0 flex-1 flex-col bg-[#F5F7FA] md:min-h-0">
       <MainTopNav
         center={headerTitle}
         trailingBeforeProfile={
@@ -991,8 +991,8 @@ export default function VoicePage() {
         }
       />
 
-      <div className="mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col px-4 py-6 md:max-w-xl">
-        <div className="neo-screen-card flex min-h-0 flex-1 flex-col items-center justify-center rounded-[16px] px-4 py-5 text-center">
+      <div className="mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col justify-center px-4 py-4 md:max-w-xl md:py-6">
+        <div className="neo-screen-card flex min-h-0 w-full flex-col items-center justify-center rounded-[16px] px-4 py-8 text-center sm:py-10">
           {showRealtimeSupportWarning ? (
             <p className="mb-6 max-w-sm text-center text-[11px] leading-relaxed text-amber-400/90">
               Live needs HTTPS and WebRTC. Update Android System WebView / Chrome on this device.

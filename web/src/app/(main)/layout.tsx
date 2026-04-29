@@ -14,6 +14,7 @@ export default function MainLayout({
 }) {
   const path = usePathname();
   const isChat = path === "/dashboard" || path === "/chat";
+  const isVoice = path === "/voice";
   const isProfile = path === "/profile";
   const pullToRefreshEnabled = !isChat && !isProfile;
   const mainRef = useRef<HTMLElement | null>(null);
@@ -85,7 +86,7 @@ export default function MainLayout({
       />
       <div
         className={`relative z-[1] flex min-h-0 ${
-          isChat
+          isChat || isVoice
             ? "h-[100dvh] max-h-[100dvh] overflow-hidden"
             : "min-h-[100dvh] md:h-[100dvh] md:max-h-[100dvh] md:overflow-hidden"
         }`}
@@ -97,7 +98,7 @@ export default function MainLayout({
           onTouchMove={pullToRefreshEnabled ? onTouchMove : undefined}
           onTouchEnd={pullToRefreshEnabled ? onTouchEnd : undefined}
           className={`relative flex min-h-0 min-w-0 flex-1 flex-col bg-transparent pb-[calc(5.25rem+env(safe-area-inset-bottom,0px))] pt-[env(safe-area-inset-top,0px)] md:pb-0 md:pt-0 ${
-            isChat
+            isChat || isVoice
               ? "h-full max-h-full overflow-hidden overscroll-none"
               : isProfile
                 ? "overflow-hidden overscroll-none [touch-action:pan-y]"
@@ -125,7 +126,7 @@ export default function MainLayout({
           ) : null}
           <div
             className={`flex min-h-0 min-w-0 flex-col ${
-              isChat ? "flex-1" : ""
+              isChat || isVoice ? "min-h-0 flex-1" : ""
             }`}
           >
             {children}

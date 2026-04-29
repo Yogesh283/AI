@@ -133,7 +133,9 @@ final class NeoVoicePipeline implements Runnable {
          */
         if (audioRecord != null) {
             try {
-                audioRecord.stop(); // best-effort: unblock read() so worker can exit quickly
+                if (audioRecord.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) {
+                    audioRecord.stop(); // unblock read() so worker can exit; avoid duplicate AppOps finish
+                }
             } catch (Exception ignored) {
             }
         }

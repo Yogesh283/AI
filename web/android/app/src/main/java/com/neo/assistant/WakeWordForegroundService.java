@@ -140,7 +140,6 @@ public class WakeWordForegroundService extends Service {
         NeoVoiceWhisperClient.setForcedLanguage(NeoPrefs.getVoiceCommandLanguage(this));
         wakeKeywordAvailable = PorcupineStreamWake.canInit(this);
         createChannel();
-        acquirePartialWakeLock();
         audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
         voicePipeline =
             new NeoVoicePipeline(
@@ -359,6 +358,12 @@ public class WakeWordForegroundService extends Service {
             stopSelf();
             return START_NOT_STICKY;
         }
+        /*
+         * Hold PARTIAL_WAKE_LOCK only after microphone FGS is active — avoids AppOps / OEM quirks from
+         * acquiring wake lock in onCreate before {@link #startForeground} (and matches multiple START_STICKY
+         * deliveries: {@link #acquirePartialWakeLock} is idempotent per service instance).
+         */
+        acquirePartialWakeLock();
         runningNow = true;
         shouldListen = true;
         Log.i(
@@ -403,8 +408,14 @@ public class WakeWordForegroundService extends Service {
         }
         screenReceiver = null;
         releaseMicAudioFocus();
-        if (wakeLock != null && wakeLock.isHeld()) {
-            wakeLock.release();
+        if (wakeLock != null) {
+            try {
+                if (wakeLock.isHeld()) {
+                    wakeLock.release();
+                }
+            } catch (RuntimeException ignored) {
+            }
+            wakeLock = null;
         }
         NeoCommandRouter.shutdown();
         super.onDestroy();
@@ -882,6 +893,9 @@ public class WakeWordForegroundService extends Service {
 
     private void acquirePartialWakeLock() {
         try {
+            if (wakeLock != null) {
+                return;
+            }
             PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
             if (pm == null) return;
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "NeoAssistant:WakeWord");
