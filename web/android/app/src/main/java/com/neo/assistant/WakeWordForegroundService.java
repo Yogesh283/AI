@@ -104,8 +104,11 @@ public class WakeWordForegroundService extends Service {
                     + "answer clearly. Use short spoken sentences and natural rhythm—easy for text-to-speech to sound "
                     + "smooth. No markdown, bullets, tables, or code unless they explicitly ask. Avoid stiff openers "
                     + "('Certainly', 'I'd be happy to'). Start helping quickly while staying conversational.";
-    /** Off-screen chat: after wake, keep conversation open briefly without repeating wake word. */
-    private static final long OFFSCREEN_CHAT_SILENCE_TIMEOUT_MS = 10_000L;
+    /**
+     * Off-screen chat: idle silence before requiring “Hello Neo” again. Short windows felt like the assistant
+     * “went quiet” mid-conversation (especially while the user listens to a long TTS reply).
+     */
+    private static final long OFFSCREEN_CHAT_SILENCE_TIMEOUT_MS = 180_000L;
     /** Same-origin Next proxy as the WebView — not bare {@code /api/chat} on the public host. */
     private static final String CHAT_API_FALLBACK = "https://myneoxai.com/neo-api/api/chat";
     private static volatile boolean runningNow = false;
@@ -135,7 +138,7 @@ public class WakeWordForegroundService extends Service {
                         TAG,
                         "offscreen voice chat auto-quiet after "
                                 + (OFFSCREEN_CHAT_SILENCE_TIMEOUT_MS / 1000)
-                                + "s silence; wake required again");
+                                + "s user silence; wake required again");
             };
 
     static boolean isRunningNow() {
@@ -257,6 +260,13 @@ public class WakeWordForegroundService extends Service {
                 if (!shouldListen) return;
                 if (!mayUseMicNow()) return;
                 if (NeoCommandRouter.isAISpeaking()) return;
+                /*
+                 * User just finished hearing Neo’s reply — refresh off-screen session idle deadline so the
+                 * silence timer does not fire immediately after a long answer (friend-like back-and-forth).
+                 */
+                if (offScreenVoiceChatActive) {
+                    touchOffScreenVoiceChatSession();
+                }
                 assistantTtsCooldownUntilMs = System.currentTimeMillis() + RELISTEN_MS_AFTER_TTS_COOLDOWN;
                 schedulePassiveRelisten(RELISTEN_MS_AFTER_TTS_COOLDOWN);
             });
@@ -509,7 +519,7 @@ public class WakeWordForegroundService extends Service {
                             && (voiceChatMode || listenScreenOff)) {
                         /*
                          * Same turn as a recent wake / reply: prefs window can outlive the in-memory session
-                         * if the 10s idle timer fired during a long backend or TTS answer.
+                         * if the idle timer fired during a long backend or TTS answer.
                          */
                         touchOffScreenVoiceChatSession();
                         command = said;

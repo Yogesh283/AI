@@ -37,7 +37,8 @@ public final class NeoCommandRouter {
     private static final Locale ASSISTANT_TTS_LOCALE = new Locale("hi", "IN");
     private static final String TTS_GENDER_MALE = "male";
     private static final String TTS_GENDER_FEMALE = "female";
-    private static final long IN_APP_FOLLOWUP_WINDOW_MS = 20_000L;
+    /** Wake / off-screen: long enough for natural follow-up lines without repeating “Hello Neo”. */
+    private static final long IN_APP_FOLLOWUP_WINDOW_MS = 120_000L;
 
     private static TextToSpeech tts;
     private static boolean ttsReady = false;
