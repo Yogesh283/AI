@@ -98,10 +98,12 @@ public class WakeWordForegroundService extends Service {
     private static final int CHAT_READ_TIMEOUT_MS = 8000;
     private static final int CHAT_FALLBACK_MIN_CHARS = 3;
     private static final String VOICE_CHAT_REALTIME_SYSTEM_PROMPT =
-            "AI निर्देश: वॉयस चैट (on-screen और off-screen) में इनपुट/आउटपुट अत्यंत त्वरित रखें। "
-                    + "यूज़र के बोलते ही लगभग उसी क्षण जवाब शुरू करें। "
-                    + "कोई अनावश्यक देरी, लंबा प्रीफ़ेस, या filler न दें। "
-                    + "पहली उपयोगी पंक्ति तुरंत दें, फिर आवश्यक हो तो विस्तार करें।";
+            "Neo voice assistant (including screen-off): reply in the same language style the user used "
+                    + "(Hindi, English, or Hinglish). Sound warm, friendly, and human—like a supportive friend on a "
+                    + "call, never robotic or lecture-like. Reflect what they actually said; acknowledge briefly, then "
+                    + "answer clearly. Use short spoken sentences and natural rhythm—easy for text-to-speech to sound "
+                    + "smooth. No markdown, bullets, tables, or code unless they explicitly ask. Avoid stiff openers "
+                    + "('Certainly', 'I'd be happy to'). Start helping quickly while staying conversational.";
     /** Off-screen chat: after wake, keep conversation open briefly without repeating wake word. */
     private static final long OFFSCREEN_CHAT_SILENCE_TIMEOUT_MS = 10_000L;
     /** Same-origin Next proxy as the WebView — not bare {@code /api/chat} on the public host. */
@@ -240,6 +242,14 @@ public class WakeWordForegroundService extends Service {
                     @Override
                     public void onPorcupineHotword() {
                         porcupineWakeForNextTranscript.set(true);
+                    }
+
+                    @Override
+                    public int captureSilenceEndMsHint() {
+                        if (voiceChatMode || listenScreenOff) {
+                            return 780;
+                        }
+                        return -1;
                     }
                 });
         NeoCommandRouter.setAssistantSpeechEndedRunnable(
@@ -551,6 +561,21 @@ public class WakeWordForegroundService extends Service {
             }
 
             if (command.isEmpty()) {
+                /*
+                 * Off-screen / background voice-chat: do not play "listening" TTS — it steals time and makes
+                 * users repeat the question. Arm follow-up + listen immediately so one utterance can carry both
+                 * wake and query when VAD merges them, or the next line is captured without a second wake.
+                 */
+                boolean silentWakeSurface =
+                        (voiceChatMode || listenScreenOff)
+                                && (!isNeoAppForeground() || !isScreenInteractive());
+                if (silentWakeSurface) {
+                    NeoPrefs.armVoiceFollowUpWindow(this, 20_000L);
+                    if (NeoCommandRouter.isAISpeaking()) {
+                        return RELISTEN_DEFERRED;
+                    }
+                    return RELISTEN_MS_QUICK;
+                }
                 /*
                  * User expectation: one "Hello Neo" should always produce an audible acknowledgment.
                  * Keep it short and let TTS completion drive the next relisten.

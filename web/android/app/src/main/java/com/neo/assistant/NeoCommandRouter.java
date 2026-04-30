@@ -42,6 +42,8 @@ public final class NeoCommandRouter {
     private static TextToSpeech tts;
     private static boolean ttsReady = false;
     private static String pendingSpeech;
+    /** When {@link #pendingSpeech} was queued from wake voice-chat (smoother TTS profile). */
+    private static boolean pendingSpeechVoiceChat;
     private static final Handler busyAckHandler = new Handler(Looper.getMainLooper());
     private static Runnable pendingBusyRunnable;
     /** While assistant TTS is playing — wake / voice layers must ignore mic input (no speaker→mic loop). */
@@ -195,6 +197,22 @@ public final class NeoCommandRouter {
         speak(context, getListeningAckLine(context));
     }
 
+    /** Strip markdown/noise so Google TTS sounds natural on spoken replies (wake & off-screen voice chat). */
+    private static String stripForSpokenVoiceChat(String raw) {
+        if (raw == null) return "";
+        String s = raw.trim();
+        if (s.isEmpty()) return "";
+        s = s.replace("\r\n", "\n");
+        s = s.replaceAll("(?s)```[^`]*```", " ");
+        s = s.replaceAll("`+", "");
+        s = s.replaceAll("(?m)^#+\\s*", "");
+        s = s.replaceAll("\\*\\*([^*]*)\\*\\*", "$1");
+        s = s.replaceAll("\\*([^*]*)\\*", "$1");
+        s = s.replaceAll("_{1,2}([^_]+)_{1,2}", "$1");
+        s = s.replaceAll("\\s+", " ").trim();
+        return s;
+    }
+
     /** Wake voice-chat mode: speak backend/OpenAI chat text reply via the same TTS channel. */
     public static void speakVoiceChatReply(Context context, String text) {
         if (text == null || text.trim().isEmpty()) {
@@ -202,7 +220,11 @@ public final class NeoCommandRouter {
         }
         /* Lets off-screen follow-ups omit "Hello Neo" until this window expires (see WakeWordForegroundService). */
         NeoPrefs.armVoiceFollowUpWindow(context, IN_APP_FOLLOWUP_WINDOW_MS);
-        speak(context, text.trim());
+        String cleaned = stripForSpokenVoiceChat(text);
+        if (cleaned.isEmpty()) {
+            return;
+        }
+        speakVoiceChatDelivery(context, cleaned);
     }
 
     /** Mic is toggled in the UI; voice phrases must not trigger TTS or other routers (no “use the mic button” spam). */
@@ -817,6 +839,28 @@ public final class NeoCommandRouter {
         try {
             tts.setSpeechRate(1.08f);
             tts.setPitch(1.0f);
+            applyAssistantVoiceSelection();
+        } catch (Exception ignored) {
+        }
+    }
+
+    /**
+     * Voice-chat replies (on-screen Realtime + wake/off-screen chat): slightly slower, smoother cadence and a
+     * touch more warmth so long answers stay pleasant to hear—still the same high-quality neural voice pick.
+     */
+    private static void applyNeoAssistantVoiceChatProfile() {
+        if (tts == null || !ttsReady) return;
+        try {
+            tts.setSpeechRate(1.02f);
+            tts.setPitch(1.03f);
+            applyAssistantVoiceSelection();
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static void applyAssistantVoiceSelection() {
+        if (tts == null || !ttsReady) return;
+        try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 Voice v = pickBestAssistantVoice(tts, ASSISTANT_TTS_LOCALE, assistantTtsGender);
                 if (v != null && tts.setVoice(v) == TextToSpeech.SUCCESS) {
@@ -925,6 +969,7 @@ public final class NeoCommandRouter {
         tts = null;
         ttsReady = false;
         pendingSpeech = null;
+        pendingSpeechVoiceChat = false;
     }
 
     private static void attachUtteranceListener() {
@@ -951,9 +996,13 @@ public final class NeoCommandRouter {
         }
     }
 
-    private static void speakInternal(String text) {
+    private static void speakInternal(String text, boolean voiceChatDelivery) {
         if (tts == null || !ttsReady) return;
-        applyNeoAssistantVoiceProfile();
+        if (voiceChatDelivery) {
+            applyNeoAssistantVoiceChatProfile();
+        } else {
+            applyNeoAssistantVoiceProfile();
+        }
         attachUtteranceListener();
         isAISpeaking = true;
         String uttId = "neo-utt-" + System.nanoTime();
@@ -2816,6 +2865,15 @@ public final class NeoCommandRouter {
     }
 
     private static void speak(Context context, String text) {
+        speakWithVoiceChatFlag(context, text, false);
+    }
+
+    /** Wake / HTTP voice-chat path: smoother TTS tuned for long conversational replies. */
+    private static void speakVoiceChatDelivery(Context context, String text) {
+        speakWithVoiceChatFlag(context, text, true);
+    }
+
+    private static void speakWithVoiceChatFlag(Context context, String text, boolean voiceChatDelivery) {
         if (text == null || text.trim().isEmpty()) return;
         try {
             assistantTtsGender = NeoPrefs.getAssistantTtsGender(context);
@@ -2832,6 +2890,7 @@ public final class NeoCommandRouter {
         }
         if (tts == null) {
             pendingSpeech = text;
+            pendingSpeechVoiceChat = voiceChatDelivery;
             tts =
                 new TextToSpeech(
                     context.getApplicationContext(),
@@ -2840,19 +2899,25 @@ public final class NeoCommandRouter {
                             ttsReady = true;
                             tts.setLanguage(ASSISTANT_TTS_LOCALE);
                             attachUtteranceListener();
-                            applyNeoAssistantVoiceProfile();
+                            if (pendingSpeechVoiceChat) {
+                                applyNeoAssistantVoiceChatProfile();
+                            } else {
+                                applyNeoAssistantVoiceProfile();
+                            }
                             if (pendingSpeech != null) {
-                                speakInternal(pendingSpeech);
+                                speakInternal(pendingSpeech, pendingSpeechVoiceChat);
                                 pendingSpeech = null;
+                                pendingSpeechVoiceChat = false;
                             }
                         }
                     });
             return;
         }
         if (ttsReady) {
-            speakInternal(text);
+            speakInternal(text, voiceChatDelivery);
         } else {
             pendingSpeech = text;
+            pendingSpeechVoiceChat = voiceChatDelivery;
         }
     }
 }

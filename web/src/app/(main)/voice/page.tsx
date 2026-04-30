@@ -72,7 +72,9 @@ const VOICE_LIVE_WEB_TIMEOUT_MS = 2800;
 const VOICE_LIVE_WEB_QUICK_START_GRACE_MS = 700;
 /** Hard realtime behavior for on-screen/off-screen session continuity. */
 const VOICE_REALTIME_PRIORITY_INSTRUCTION =
-  "Realtime priority is mandatory: in both app-open and off-screen continuation, respond immediately as soon as user finishes speaking. Do not add intentional delays, long prefaces, or waiting fillers. Keep first response tokens fast and concise, then expand only if user asks.";
+  "Realtime priority: start answering soon after the user stops—avoid long dead air or stiff fillers. " +
+  "Be warm, friendly, and human; mirror their language (Hindi / English / Hinglish). Short, natural phrases first; " +
+  "then elaborate only if they want detail. Sound smooth when spoken—no markdown unless they ask for code.";
 
 function IconMic({ className }: { className?: string }) {
   return (

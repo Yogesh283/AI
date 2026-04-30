@@ -10,7 +10,7 @@ from fastapi.responses import RedirectResponse
 
 from app.config import settings
 from app.db_mysql import close_pool, init_pool, mysql_configured, pool_ready
-from app.routers import auth, chat, memory, voice
+from app.routers import auth, chat, images, memory, site_settings, voice
 from app.services.ai import _openai_api_key
 
 logger = logging.getLogger(__name__)
@@ -127,6 +127,9 @@ app.include_router(auth.router)
 app.include_router(chat.router)
 app.include_router(memory.router)
 app.include_router(voice.router)
+app.include_router(site_settings.router_public)
+app.include_router(site_settings.router_admin)
+app.include_router(images.router)
 
 
 @app.get("/")

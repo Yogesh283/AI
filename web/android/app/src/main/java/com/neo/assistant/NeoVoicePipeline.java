@@ -70,6 +70,14 @@ final class NeoVoicePipeline implements Runnable {
 
         /** Porcupine detected the hotword and a capture window is starting (worker thread). */
         default void onPorcupineHotword() {}
+
+        /**
+         * End-of-utterance silence before finalize (ms). Return {@code <= 0} for pipeline defaults.
+         * Longer gaps avoid splitting "Hello Neo" + question into two transcripts off-screen.
+         */
+        default int captureSilenceEndMsHint() {
+            return -1;
+        }
     }
 
     private enum VoiceState {
@@ -355,7 +363,11 @@ final class NeoVoicePipeline implements Runnable {
         System.arraycopy(frame, 0, captureBuf, captureLen, len);
         captureLen += len;
 
-        final long silenceEndMs = wakeWordEnabled ? SILENCE_END_MS : SILENCE_END_MS_FALLBACK;
+        int hint = host.captureSilenceEndMsHint();
+        final long silenceEndMs =
+                hint > 0
+                        ? hint
+                        : (wakeWordEnabled ? SILENCE_END_MS : SILENCE_END_MS_FALLBACK);
         if (speechAccumMs >= 80 && silenceAccumMs >= silenceEndMs && captureLen >= MIN_CAPTURE_SAMPLES) {
             finalizeCaptureAndTranscribe();
         } else if (captureLen >= MAX_CAPTURE_SAMPLES - frameLen) {

@@ -281,3 +281,57 @@ export async function postVoiceRealtimeToken(body: {
   }
   return r.json() as Promise<VoiceRealtimeTokenResponse>;
 }
+
+export type ImageGenerateResponse = {
+  image_data_url?: string | null;
+  image_url?: string | null;
+  revised_prompt?: string | null;
+};
+
+/** OpenAI Images API via backend (DALL·E 3 default). Can take 30–90s. */
+export async function postImageGenerate(prompt: string): Promise<ImageGenerateResponse> {
+  const b = apiOrigin().replace(/\/$/, "");
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  let r: Response;
+  try {
+    r = await fetch(`${b}/api/images/generate`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ prompt: prompt.trim() }),
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(msg.trim() || "fetch failed");
+  }
+  if (!r.ok) {
+    const t = (await r.text()).trim();
+    let msg = t;
+    try {
+      const j = JSON.parse(t) as { detail?: string | string[] };
+      const d = j.detail;
+      if (typeof d === "string" && d) msg = d;
+      else if (Array.isArray(d) && d.length) msg = d.map(String).join("; ");
+    } catch {
+      /* plain */
+    }
+    throw new Error(msg || `HTTP ${r.status} ${r.statusText}`);
+  }
+  return r.json() as Promise<ImageGenerateResponse>;
+}
+
+/** Public subscription bands from GET /api/public/subscription-plans (MySQL-backed). */
+export type SubscriptionPlanTier = {
+  title?: string;
+  monthly_min: number;
+  monthly_max: number;
+  annual_min: number;
+  annual_max: number;
+};
+
+export type SubscriptionPlansResponse = {
+  currency: string;
+  currency_symbol: string;
+  plans: Record<string, SubscriptionPlanTier>;
+};

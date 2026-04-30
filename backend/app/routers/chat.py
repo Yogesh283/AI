@@ -1008,7 +1008,8 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
                 "भावनात्मक रूप से सहानुभूतिपूर्ण रहें, और समय-समय पर स्वाभाविक ढंग से पूछें "
                 "'आप कैसे हैं?' या 'आज आपका दिन कैसा रहा?' ताकि संवाद व्यक्तिगत लगे. "
                 "Aim to reflect what they actually said; keep the exchange smooth, clear, and trustworthy—human-like "
-                "and friendly, not robotic."
+                "and friendly, not robotic. "
+                "Optimize phrasing for mobile TTS: short clauses and natural pauses."
                 f"{realtime_voice_priority}"
             )
         else:
@@ -1024,7 +1025,8 @@ async def _build_chat_route_context(body: ChatRequest, user: dict | None) -> Cha
                 "Be empathetic and personal; occasionally ask gentle check-ins like "
                 "'How are you feeling today?' or 'How did your day go?' when context allows. "
                 "Ground answers in their actual words; keep the flow smooth and interruption-free unless "
-                "disambiguation is truly needed."
+                "disambiguation is truly needed. "
+                "Optimize phrasing for mobile TTS: short clauses, natural pauses, easy-to-hear wording."
                 f"{realtime_voice_priority}"
             )
 
@@ -1531,6 +1533,30 @@ async def post_chat_stream(
                     emitted_any = True
                     yield _sse({"d": delta})
                 full = "".join(parts)
+            # Model/stream occasionally returns no tokens — recover so SSE always carries assistant text.
+            if not (full or "").strip():
+                try:
+                    live_ov = {"temperature": CHAT_TEMP_WITH_LIVE_WEB} if (ctx.web_block or "").strip() else None
+                    fb = await unified_chat_completion(
+                        msgs,
+                        user_id=ctx.uid,
+                        openai_request_overrides=live_ov,
+                    )
+                    full = (fb.text or "").strip()
+                except Exception as ex:
+                    logger.warning("chat stream empty reply recovery failed: %s", ex)
+                    full = ""
+                if not (full or "").strip():
+                    full = (
+                        "I couldn’t produce a reply this time. Please tap Send again, or check neo-api "
+                        "and the AI backend (OPENAI / NEO_CHAT_BACKEND)."
+                    )
+                if emit_searching_ping:
+                    for i in range(0, len(full), 120):
+                        yield _sse({"d": full[i : i + 120]})
+                else:
+                    yield _sse({"d": full})
+                emitted_any = True
             result = _completion_result_from_stream_usage(full, usage_h, model_id=model_id)
             await _persist_chat_exchange(
                 ctx.uid,

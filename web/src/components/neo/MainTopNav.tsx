@@ -23,6 +23,7 @@ export const MAIN_NAV_MENU: { href: string; label: string }[] = [
   { href: "/profile", label: "Profile" },
   { href: "/customize", label: "Customize" },
   { href: "/faq", label: "FAQ" },
+  { href: "/personal-assistant", label: "Modes & plans" },
   { href: "/terms", label: "Terms & Conditions" },
 ];
 
@@ -52,7 +53,7 @@ export function MainTopNav({ center, trailingBeforeProfile }: Props) {
   const profileLetter = firstCharFromProfileName(displayName);
 
   return (
-    <header className="neo-topbar sticky top-0 z-40 flex h-[52px] shrink-0 items-center justify-between gap-2 px-4 text-slate-900 sm:h-14 sm:gap-3 sm:px-5 md:px-6">
+    <header className="neo-topbar relative z-40 flex h-[52px] shrink-0 items-center justify-between gap-2 px-4 text-slate-900 sm:h-14 sm:gap-3 sm:px-5 md:px-6">
       <div className="relative shrink-0">
         <button
           type="button"

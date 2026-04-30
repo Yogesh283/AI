@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
-import { MainTopNav } from "@/components/neo/MainTopNav";
+import { NeoPageShell } from "@/components/neo/NeoPageShell";
 import {
   fetchMe,
   getStoredToken,
@@ -73,9 +73,10 @@ export default function VoicePersonasPage() {
   }, []);
 
   return (
-    <div className="relative z-[1] mx-auto flex min-h-screen max-w-3xl flex-col bg-[#F5F7FA] px-4 pb-28 pt-0 md:min-h-0 md:flex-1 md:px-8 md:pb-12 md:pt-0">
-      <MainTopNav center={<span className="text-slate-900">Voice avatar</span>} />
-
+    <NeoPageShell
+      navCenter={<span className="text-[13px] font-semibold tracking-tight text-slate-900">Voice avatar</span>}
+      contentClassName="pt-0"
+    >
       <p className="mb-6 mt-4 max-w-md text-[12px] leading-relaxed text-slate-600">
         Select how your assistant appears in voice mode.
       </p>
@@ -135,6 +136,6 @@ export default function VoicePersonasPage() {
           })}
         </div>
       </section>
-    </div>
+    </NeoPageShell>
   );
 }

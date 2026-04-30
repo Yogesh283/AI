@@ -93,6 +93,8 @@ class Settings(BaseSettings):
     new_data_training_export_path: str = ""
     # How often to append new rows from MySQL `new_data` into export JSONL.
     new_data_training_export_interval_seconds: int = 1800
+    # Optional: protect PUT /api/admin/subscription-plans (pricing JSON in MySQL `public_settings`).
+    admin_api_key: str = ""
 
     @model_validator(mode="after")
     def _merge_google_client_id(self):

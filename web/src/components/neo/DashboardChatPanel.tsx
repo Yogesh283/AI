@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { getStoredUser } from "@/lib/auth";
-import { postChatStream } from "@/lib/api";
+import { postChat, postChatStream, type ChatApiMessage } from "@/lib/api";
 import {
   createSpeechRecognition,
   isSpeechRecognitionSupported,
@@ -438,6 +438,57 @@ export function DashboardChatPanel() {
           });
         },
       );
+      /* Stream finished but no text (rare) — same payload as non-stream so user always sees a reply. */
+      const after = msgsRef.current;
+      const lastIdx = after.length - 1;
+      if (
+        lastIdx >= 0 &&
+        after[lastIdx]?.role === "assistant" &&
+        !after[lastIdx].content.trim() &&
+        !signal.aborted
+      ) {
+        const fbMsgs: ChatApiMessage[] = after.slice(0, -1).map((m) => {
+          if (m.role === "user" && m.imageDataUrl) {
+            const c = m.content.trim() === "📷" ? "" : m.content;
+            return { role: "user", content: c, image_url: m.imageDataUrl };
+          }
+          return { role: m.role, content: m.content };
+        });
+        try {
+          const j = await postChat(fbMsgs, uid, {
+            source: "chat",
+            useWeb: true,
+            speechLang: "en-IN",
+          });
+          const reply = (j.reply || "").trim() || "No reply from server.";
+          setMsgs((prev) => {
+            const out = [...prev];
+            const L = out.length - 1;
+            if (L >= 0 && out[L].role === "assistant") {
+              out[L] = { role: "assistant", content: reply };
+            }
+            msgsRef.current = out;
+            return out;
+          });
+        } catch (fe) {
+          const hint =
+            fe instanceof Error && fe.message.trim()
+              ? fe.message
+              : "Could not load a fallback reply.";
+          setMsgs((prev) => {
+            const out = [...prev];
+            const L = out.length - 1;
+            if (L >= 0 && out[L].role === "assistant") {
+              out[L] = {
+                role: "assistant",
+                content: `Chat fallback failed: ${hint}`,
+              };
+            }
+            msgsRef.current = out;
+            return out;
+          });
+        }
+      }
       setMsgs((prev) => {
         msgsRef.current = prev;
         return prev;

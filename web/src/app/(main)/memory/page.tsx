@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { GradientButton } from "@/components/neo/GradientButton";
+import { NeoPageShell } from "@/components/neo/NeoPageShell";
 import { NEO_ASSISTANT_NAME } from "@/lib/siteBranding";
 import { getMemory, type MemoryChatRow } from "@/lib/api";
 import { getStoredUser } from "@/lib/auth";
@@ -53,8 +54,10 @@ export default function MemoryPage() {
   const user = getStoredUser();
 
   return (
-    <div className="relative z-[1] px-4 pb-10 pt-6 md:px-8 md:pt-8">
-      <div className="mx-auto max-w-3xl">
+    <NeoPageShell
+      navCenter={<span className="text-[13px] font-semibold tracking-tight text-slate-900">Memory</span>}
+      contentClassName="pt-6 md:pt-8"
+    >
         <h1 className="mb-1 text-2xl font-bold tracking-tight text-slate-900">
           NeoXAI Memory
         </h1>
@@ -177,7 +180,6 @@ export default function MemoryPage() {
             Back to dashboard
           </GradientButton>
         </div>
-      </div>
-    </div>
+    </NeoPageShell>
   );
 }

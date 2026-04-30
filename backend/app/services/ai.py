@@ -5,9 +5,9 @@ import json
 import logging
 import os
 from collections.abc import AsyncIterator
-from typing import Any
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import httpx
 from dotenv import load_dotenv
@@ -573,3 +573,82 @@ async def mint_openai_realtime_client_secret(
         if not isinstance(data, dict):
             return None, "openai_unexpected_shape"
         return data, None
+
+
+@dataclass(frozen=True)
+class ImageGenerateResult:
+    """OpenAI Images API — either a data URL (b64) or a short-lived HTTPS URL."""
+
+    image_data_url: str | None = None
+    image_url: str | None = None
+    revised_prompt: str | None = None
+
+
+async def openai_image_generate(
+    prompt: str,
+    *,
+    size: str = "1024x1024",
+) -> ImageGenerateResult:
+    """
+    POST /v1/images/generations (DALL·E 3 by default).
+    Set OPENAI_IMAGE_MODEL to override (e.g. dall-e-2). Requires billing-enabled OpenAI key.
+    """
+    key = _openai_api_key()
+    if not key:
+        raise ValueError("OPENAI_API_KEY is not configured")
+    p = (prompt or "").strip()
+    if len(p) < 2:
+        raise ValueError("Prompt is too short")
+    model = (os.getenv("OPENAI_IMAGE_MODEL") or "dall-e-3").strip()
+    payload: dict[str, Any] = {
+        "model": model,
+        "prompt": p[:4000],
+        "n": 1,
+        "response_format": "b64_json",
+    }
+    mlow = model.lower()
+    if "dall-e-3" in mlow:
+        payload["size"] = size if size in ("1024x1024", "1792x1024", "1024x1792") else "1024x1024"
+    elif "dall-e-2" in mlow:
+        payload["size"] = size if size in ("256x256", "512x512", "1024x1024") else "1024x1024"
+    else:
+        payload["size"] = size
+
+    # Image generation can take 30–90s
+    img_timeout = httpx.Timeout(180.0, connect=25.0)
+    async with httpx.AsyncClient(timeout=img_timeout, trust_env=True) as client:
+        r = await _post_openai_with_retries(
+            client,
+            "https://api.openai.com/v1/images/generations",
+            max_attempts=2,
+            headers={
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+        )
+        r.raise_for_status()
+        try:
+            data = r.json()
+        except ValueError as e:
+            logger.warning("OpenAI images invalid JSON: %s", e)
+            raise ValueError("Invalid JSON from OpenAI images API") from e
+
+    items = data.get("data")
+    if not isinstance(items, list) or not items:
+        raise ValueError("OpenAI returned no image data")
+    first = items[0]
+    if not isinstance(first, dict):
+        raise ValueError("OpenAI image entry malformed")
+    revised = first.get("revised_prompt")
+    rev_out = revised.strip() if isinstance(revised, str) and revised.strip() else None
+    b64 = first.get("b64_json")
+    if isinstance(b64, str) and b64.strip():
+        return ImageGenerateResult(
+            image_data_url=f"data:image/png;base64,{b64.strip()}",
+            revised_prompt=rev_out,
+        )
+    url = first.get("url")
+    if isinstance(url, str) and url.strip():
+        return ImageGenerateResult(image_url=url.strip(), revised_prompt=rev_out)
+    raise ValueError("OpenAI image response missing b64_json and url")

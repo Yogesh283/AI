@@ -16,7 +16,9 @@ export default function MainLayout({
   const isChat = path === "/dashboard" || path === "/chat";
   const isVoice = path === "/voice";
   const isProfile = path === "/profile";
-  const pullToRefreshEnabled = !isChat && !isProfile;
+  const isPersonalAssistant = path === "/personal-assistant";
+  /* Long scroll pages: pull-to-refresh fights vertical scroll on mobile WebViews */
+  const pullToRefreshEnabled = !isChat && !isProfile && !isPersonalAssistant;
   const mainRef = useRef<HTMLElement | null>(null);
   const pullStartYRef = useRef<number | null>(null);
   const pullActiveRef = useRef(false);
@@ -102,7 +104,7 @@ export default function MainLayout({
               ? "h-full max-h-full overflow-hidden overscroll-none"
               : isProfile
                 ? "overflow-hidden overscroll-none [touch-action:pan-y]"
-                : "overflow-y-auto overscroll-none"
+                : "overflow-y-auto overscroll-y-contain [touch-action:pan-y]"
           }`}
         >
           {pullToRefreshEnabled ? (
@@ -124,11 +126,7 @@ export default function MainLayout({
               </div>
             </div>
           ) : null}
-          <div
-            className={`flex min-h-0 min-w-0 flex-col ${
-              isChat || isVoice ? "min-h-0 flex-1" : ""
-            }`}
-          >
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             {children}
           </div>
         </main>

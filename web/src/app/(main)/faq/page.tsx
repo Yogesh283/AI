@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { MainTopNav } from "@/components/neo/MainTopNav";
+import { NeoPageShell } from "@/components/neo/NeoPageShell";
 
 export const metadata = {
   title: "FAQ & Product Guide | Neo AI",
@@ -32,15 +32,7 @@ function TopicSection({
 
 export default function FaqPage() {
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-[#F5F7FA]">
-      <div
-        className="pointer-events-none absolute inset-0 opacity-[0.35] [background-image:radial-gradient(circle_at_1px_1px,rgba(15,23,42,0.06)_1px,transparent_1px)] [background-size:10px_10px]"
-        aria-hidden
-      />
-      <div className="relative z-[1] flex min-h-0 flex-1 flex-col overflow-hidden">
-        <MainTopNav />
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-16 pt-6 sm:px-6">
-          <div className="mx-auto max-w-3xl">
+    <NeoPageShell>
             <header className="mb-10 text-center sm:text-left">
               <p className="text-sm font-medium text-blue-600">FAQ · Neo AI</p>
               <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">
@@ -121,9 +113,6 @@ export default function FaqPage() {
                 Terms & Conditions
               </Link>
             </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    </NeoPageShell>
   );
 }

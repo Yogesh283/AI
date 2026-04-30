@@ -17,6 +17,49 @@ const UPSTREAM = (process.env.NEO_API_INTERNAL_URL ?? "http://127.0.0.1:8010").r
   ""
 );
 
+/** When FastAPI is down, public pricing page still loads (same defaults as backend `DEFAULT_SUBSCRIPTION_PLAN_PRICING`). */
+const SUBSCRIPTION_PLANS_FALLBACK = {
+  currency: "INR",
+  currency_symbol: "₹",
+  plans: {
+    basic: {
+      title: "Basic",
+      monthly_min: 300,
+      monthly_max: 500,
+      annual_min: 3000,
+      annual_max: 5000,
+    },
+    standard: {
+      title: "Standard",
+      monthly_min: 700,
+      monthly_max: 1000,
+      annual_min: 8000,
+      annual_max: 10000,
+    },
+    premium: {
+      title: "Premium",
+      monthly_min: 1500,
+      monthly_max: 1500,
+      annual_min: 15000,
+      annual_max: 15000,
+    },
+  },
+} as const;
+
+function isSubscriptionPlansPublicGet(req: NextRequest): boolean {
+  if (req.method !== "GET") return false;
+  const u = new URL(req.url);
+  const path = u.pathname.replace(/^\/neo-api/, "") || "/";
+  return path.replace(/\/$/, "") === "/api/public/subscription-plans";
+}
+
+function subscriptionPlansFallbackResponse(): Response {
+  return Response.json(SUBSCRIPTION_PLANS_FALLBACK, {
+    status: 200,
+    headers: { "Cache-Control": "no-store" },
+  });
+}
+
 function rewriteLoopbackLocation(location: string): string {
   const raw = location.trim();
   if (!raw) return raw;
@@ -141,6 +184,10 @@ async function proxy(req: NextRequest): Promise<Response> {
     try {
       return await proxyViaHttpModule(req, target);
     } catch (err) {
+      if (isSubscriptionPlansPublicGet(req)) {
+        console.warn("[neo-api proxy] upstream down — serving subscription-plans fallback", target, err);
+        return subscriptionPlansFallbackResponse();
+      }
       const msg =
         err instanceof Error
           ? `${err.message}${err.cause instanceof Error ? ` (${err.cause.message})` : ""}`
@@ -176,12 +223,24 @@ async function proxy(req: NextRequest): Promise<Response> {
   try {
     res = await fetch(target, init);
   } catch (err) {
+    if (isSubscriptionPlansPublicGet(req)) {
+      console.warn("[neo-api proxy] fetch failed — subscription-plans fallback", target, err);
+      return subscriptionPlansFallbackResponse();
+    }
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[neo-api proxy] fetch failed", target, err);
     return Response.json(
       { detail: `Upstream unreachable: ${msg}`, target },
       { status: 502 }
     );
+  }
+
+  if (
+    isSubscriptionPlansPublicGet(req) &&
+    !res.ok &&
+    res.status >= 502
+  ) {
+    return subscriptionPlansFallbackResponse();
   }
 
   const out = new Headers();

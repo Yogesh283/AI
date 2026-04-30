@@ -53,6 +53,7 @@ async def init_pool() -> None:
             await ensure_live_data_table()
             await ensure_new_data_table()
             await ensure_api_daily_usage_table()
+            await ensure_public_settings_table()
         except Exception as e:
             logger.warning("ensure_*_table failed during pool init: %s", e)
     except Exception as e:
@@ -525,6 +526,151 @@ async def ensure_api_daily_usage_table() -> None:
     async with _pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute(_API_DAILY_USAGE_DDL)
+
+
+PUBLIC_SETTING_SUBSCRIPTION_PLANS = "subscription_plan_pricing"
+
+DEFAULT_SUBSCRIPTION_PLAN_PRICING: dict[str, Any] = {
+    "currency": "INR",
+    "currency_symbol": "₹",
+    "plans": {
+        "basic": {
+            "title": "Basic",
+            "monthly_min": 300,
+            "monthly_max": 500,
+            "annual_min": 3000,
+            "annual_max": 5000,
+        },
+        "standard": {
+            "title": "Standard",
+            "monthly_min": 700,
+            "monthly_max": 1000,
+            "annual_min": 8000,
+            "annual_max": 10000,
+        },
+        "premium": {
+            "title": "Premium",
+            "monthly_min": 1500,
+            "monthly_max": 1500,
+            "annual_min": 15000,
+            "annual_max": 15000,
+        },
+    },
+}
+
+
+_PUBLIC_SETTINGS_DDL = """
+CREATE TABLE IF NOT EXISTS `public_settings` (
+  `setting_key` VARCHAR(128) NOT NULL,
+  `setting_value` JSON NOT NULL,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`setting_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+"""
+
+
+def _deep_merge_dict(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = dict(base)
+    for k, v in patch.items():
+        if k in out and isinstance(out[k], dict) and isinstance(v, dict):
+            out[k] = _deep_merge_dict(out[k], v)
+        else:
+            out[k] = v
+    return out
+
+
+def _parse_json_cell(raw: Any) -> dict[str, Any]:
+    if raw is None:
+        return {}
+    if isinstance(raw, dict):
+        return dict(raw)
+    if isinstance(raw, (bytes, bytearray)):
+        raw = raw.decode("utf-8", errors="replace")
+    if isinstance(raw, str):
+        try:
+            return json.loads(raw)
+        except Exception:
+            return {}
+    return {}
+
+
+async def ensure_public_settings_table() -> None:
+    if _pool is None:
+        return
+    if await _mysql_table_exists("public_settings"):
+        await _seed_subscription_plan_defaults_maybe()
+        return
+    async with _pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(_PUBLIC_SETTINGS_DDL.strip())
+    await _seed_subscription_plan_defaults_maybe()
+
+
+async def _seed_subscription_plan_defaults_maybe() -> None:
+    if _pool is None:
+        return
+    try:
+        async with _pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT setting_key FROM public_settings WHERE setting_key = %s LIMIT 1",
+                    (PUBLIC_SETTING_SUBSCRIPTION_PLANS,),
+                )
+                row = await cur.fetchone()
+                if row:
+                    return
+                payload = json.dumps(DEFAULT_SUBSCRIPTION_PLAN_PRICING)
+                await cur.execute(
+                    "INSERT INTO public_settings (setting_key, setting_value) VALUES (%s, CAST(%s AS JSON))",
+                    (PUBLIC_SETTING_SUBSCRIPTION_PLANS, payload),
+                )
+    except Exception as e:
+        logger.warning("seed subscription_plan_pricing failed: %s", e)
+
+
+async def get_subscription_plan_pricing_public() -> dict[str, Any]:
+    """Merged defaults + DB row for `subscription_plan_pricing`. Safe when MySQL is off."""
+    if _pool is None:
+        return dict(DEFAULT_SUBSCRIPTION_PLAN_PRICING)
+    try:
+        async with _pool.acquire() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cur:
+                await cur.execute(
+                    "SELECT setting_value FROM public_settings WHERE setting_key = %s LIMIT 1",
+                    (PUBLIC_SETTING_SUBSCRIPTION_PLANS,),
+                )
+                row = await cur.fetchone()
+        if not row:
+            return dict(DEFAULT_SUBSCRIPTION_PLAN_PRICING)
+        stored = _parse_json_cell(row.get("setting_value"))
+        merged = _deep_merge_dict(dict(DEFAULT_SUBSCRIPTION_PLAN_PRICING), stored)
+        merged.setdefault("plans", {})
+        for pk, pv in DEFAULT_SUBSCRIPTION_PLAN_PRICING.get("plans", {}).items():
+            if pk not in merged["plans"] or not isinstance(merged["plans"].get(pk), dict):
+                merged["plans"][pk] = dict(pv)
+            else:
+                merged["plans"][pk] = _deep_merge_dict(dict(pv), merged["plans"][pk])
+        return merged
+    except Exception as e:
+        logger.warning("get_subscription_plan_pricing_public failed: %s", e)
+        return dict(DEFAULT_SUBSCRIPTION_PLAN_PRICING)
+
+
+async def merge_subscription_plan_pricing(patch: dict[str, Any]) -> dict[str, Any]:
+    """Deep-merge admin patch into stored pricing (validated in router)."""
+    if _pool is None:
+        raise RuntimeError("MySQL not configured")
+    current = await get_subscription_plan_pricing_public()
+    merged = _deep_merge_dict(current, patch)
+    payload = json.dumps(merged)
+    async with _pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "INSERT INTO public_settings (setting_key, setting_value) VALUES (%s, CAST(%s AS JSON)) "
+                "ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)",
+                (PUBLIC_SETTING_SUBSCRIPTION_PLANS, payload),
+            )
+    return merged
 
 
 async def reserve_daily_api_call(api_name: str, *, daily_limit: int) -> bool:

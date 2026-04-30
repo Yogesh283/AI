@@ -306,7 +306,7 @@ export function HelloNeoVoiceStrip({ variant = "dock" }: Props) {
             { source: "voice", speechLang: lang },
           );
           const ai = (j.reply || "").trim();
-          if (ai.length > 24) reply = ai.slice(0, 1200);
+          if (ai.length > 0) reply = ai.slice(0, 1200);
         } catch {
           /* keep template reply */
         }
